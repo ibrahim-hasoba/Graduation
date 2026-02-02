@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Graduation.API/Graduation.API.csproj" />
+    <Project Path="Graduation.BLL/Graduation.BLL.csproj" />
+    <Project Path="Graduation.DAL/Graduation.DAL.csproj" />
+    <Project Path="Shared/Shared.csproj" Id="5e9b5a4f-428a-4866-982a-85a4c494f9dc" />
+  </Folder>
+</Solution>
