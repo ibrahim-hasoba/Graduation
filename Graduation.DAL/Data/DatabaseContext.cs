@@ -175,6 +175,28 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(ci => ci.AddedAt);
             });
 
+            // 1. One-to-One: One User = One Store (Egyptian Business Rule)
+            builder.Entity<Vendor>()
+                .HasIndex(v => v.UserId)
+                .IsUnique();
+
+            // 1. Add matching filters to child entities
+            builder.Entity<ProductImage>().HasQueryFilter(pi => pi.Product.IsActive);
+            builder.Entity<ProductReview>().HasQueryFilter(pr => pr.Product.IsActive);
+            builder.Entity<CartItem>().HasQueryFilter(ci => ci.Product.IsActive);
+
+            // 2. For Orders, we usually want to see the order even if a vendor becomes inactive
+            // Change these relationships to "Restricted" or ensure filters match
+            builder.Entity<OrderItem>().HasQueryFilter(oi => oi.Product.IsActive);
+
+            // 3. Optimized RefreshToken Indexing
+            builder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasIndex(rt => rt.Token).IsUnique();
+                // Composite index for the 'Validate' method to make it lightning fast
+                entity.HasIndex(rt => new { rt.Token, rt.UserId, rt.IsRevoked });
+            });
+
             // Order Configuration
             builder.Entity<Order>(entity =>
             {

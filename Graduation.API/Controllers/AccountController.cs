@@ -2,6 +2,7 @@
 using Graduation.API.Errors;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Interfaces;
+using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
-using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 using System.Text;
 
 namespace Graduation.API.Controllers
@@ -23,548 +24,266 @@ namespace Graduation.API.Controllers
         private readonly IEmailService _emailService;
         private readonly IConfiguration _configuration;
         private readonly IRefreshTokenService _refreshTokenService;
-        private readonly IFacebookAuthService _facebookAuthService;
+        private readonly DatabaseContext _context;
 
         public AccountController(
             UserManager<AppUser> userManager,
             JwtHandler jwtHandler,
             IEmailService emailService,
             IConfiguration configuration,
-            IFacebookAuthService facebookAuthService,
-            IRefreshTokenService refreshTokenService)
+            IRefreshTokenService refreshTokenService,
+            DatabaseContext context)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
             _emailService = emailService;
             _configuration = configuration;
-            _facebookAuthService = facebookAuthService;
             _refreshTokenService = refreshTokenService;
+            _context = context;
         }
 
-        /// <summary>
-        /// Register a new user
-        /// </summary>
+        #region Registration & Verification
+
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] UserForRegisterDto userForRegistration)
+        public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
-            // Check if user already exists
-            var existingUser = await _userManager.FindByEmailAsync(userForRegistration.Email!);
+            var existingUser = await _userManager.FindByEmailAsync(userDto.Email!);
             if (existingUser != null)
                 throw new ConflictException("A user with this email already exists");
 
             var user = new AppUser
             {
-                FirstName = userForRegistration.FirstName ?? string.Empty,
-                LastName = userForRegistration.LastName ?? string.Empty,
-                Email = userForRegistration.Email,
-                UserName = userForRegistration.Email,
+                FirstName = userDto.FirstName ?? string.Empty,
+                LastName = userDto.LastName ?? string.Empty,
+                Email = userDto.Email,
+                UserName = userDto.Email,
                 EmailConfirmed = false,
                 CreatedAt = DateTime.UtcNow
             };
 
-            var result = await _userManager.CreateAsync(user, userForRegistration.Password!);
-
+            var result = await _userManager.CreateAsync(user, userDto.Password!);
             if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                throw new BadRequestException(errors);
-            }
+                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            // Add default Customer role
             await _userManager.AddToRoleAsync(user, "Customer");
+            await SendVerificationEmail(user);
 
-            // Generate email verification token
-            var emailToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(emailToken));
-
-            // Build verification URL
-            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
-            var verificationUrl = $"{baseUrl}/api/account/verify-email?userId={user.Id}&token={encodedToken}";
-
-            // Send verification email
-            await _emailService.SendEmailVerificationAsync(user.Email!, user.FirstName, verificationUrl);
-
-            return StatusCode(201, new
-            {
-                success = true,
-                message = "Registration successful! Please check your email to verify your account.",
-                data = new
-                {
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    emailVerificationSent = true
-                }
-            });
+            return StatusCode(201, new { success = true, message = "Registration successful! Please verify your email." });
         }
 
-        /// <summary>
-        /// Verify email address
-        /// </summary>
         [HttpGet("verify-email")]
         public async Task<IActionResult> VerifyEmail([FromQuery] string userId, [FromQuery] string token)
         {
-            if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(token))
-                throw new BadRequestException("Invalid verification link");
-
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+            if (user == null) throw new NotFoundException("User not found");
 
-            if (user.EmailConfirmed)
-            {
-                return Ok(new
-                {
-                    success = true,
-                    message = "Email already verified. You can login now."
-                });
-            }
-
-            // Decode token
             var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
-
-            // Confirm email
             var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
 
             if (!result.Succeeded)
+                throw new BadRequestException("Email verification failed.");
+
+            return Ok(new { success = true, message = "Email verified successfully!" });
+        }
+
+        #endregion
+
+        #region Login & Token Management
+
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
+        {
+            var user = await _userManager.FindByEmailAsync(loginDto.Email!);
+            if (user == null) throw new UnauthorizedException("Invalid credentials");
+
+            // Check for Account Lockout (Brute Force Protection)
+            if (await _userManager.IsLockedOutAsync(user))
+                throw new BadRequestException("Account locked. Please try again later.");
+
+            if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
             {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                throw new BadRequestException($"Email verification failed: {errors}");
+                await _userManager.AccessFailedAsync(user);
+                throw new UnauthorizedException("Invalid credentials");
             }
 
-            return Ok(new
-            {
-                success = true,
-                message = "Email verified successfully! You can now login to your account.",
-                data = new
-                {
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    emailVerified = true
-                }
-            });
-        }
-
-        /// <summary>
-        /// Resend verification email
-        /// </summary>
-        [HttpPost("resend-verification")]
-        public async Task<IActionResult> ResendVerificationEmail([FromBody] ResendVerificationDto dto)
-        {
-            var user = await _userManager.FindByEmailAsync(dto.Email!);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            if (user.EmailConfirmed)
-                throw new BadRequestException("Email is already verified");
-
-            // Generate new token
-            var emailToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(emailToken));
-
-            // Build verification URL
-            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
-            var verificationUrl = $"{baseUrl}/api/account/verify-email?userId={user.Id}&token={encodedToken}";
-
-            // Send verification email
-            await _emailService.SendEmailVerificationAsync(user.Email!, user.FirstName, verificationUrl);
-
-            return Ok(new
-            {
-                success = true,
-                message = "Verification email sent! Please check your inbox."
-            });
-        }
-
-        /// <summary>
-        /// Login with email and password
-        /// </summary>
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] UserForLoginDto userForAuthentication)
-        {
-            var user = await _userManager.FindByEmailAsync(userForAuthentication.Email!);
-
-            if (user == null)
-                throw new UnauthorizedException("Invalid email or password");
-
-            if (!await _userManager.CheckPasswordAsync(user, userForAuthentication.Password!))
-                throw new UnauthorizedException("Invalid email or password");
-
-            // Check if email is verified
             if (!user.EmailConfirmed)
-                throw new UnauthorizedException("Please verify your email before logging in. Check your inbox for the verification link.");
+                throw new UnauthorizedException("Please verify your email first.");
 
-            var roles = await _userManager.GetRolesAsync(user);
-            var accessToken = _jwtHandler.CreateToken(user, roles);
+            await _userManager.ResetAccessFailedCountAsync(user);
 
-            // Generate refresh token
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
-
-            return Ok(new
-            {
-                success = true,
-                message = "Login successful",
-                data = new TokenResponseDto
-                {
-                    AccessToken = accessToken,
-                    RefreshToken = refreshToken.Token,
-                    ExpiresIn = 3600,
-                    TokenType = "Bearer"
-                },
-                user = new
-                {
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    roles = roles,
-                    emailVerified = user.EmailConfirmed
-                }
-            });
+            return await GenerateAuthResponse(user);
         }
 
-        /// <summary>
-        /// Refresh access token
-        /// </summary>
         [HttpPost("refresh-token")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var ipAddress = GetIpAddress();
+            var oldToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
 
-            // Get the refresh token without user validation first
-            var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
-            if (refreshToken == null)
-                throw new UnauthorizedException("Invalid refresh token");
+            if (oldToken == null || !oldToken.IsActive)
+                throw new UnauthorizedException("Invalid session");
 
-            // SECURITY FIX: Validate that the token is active and belongs to a valid user
-            if (!refreshToken.IsActive)
-                throw new UnauthorizedException("Invalid or expired refresh token");
+            var user = await _userManager.FindByIdAsync(oldToken.UserId);
+            if (user == null) throw new UnauthorizedException("User no longer exists");
 
-            var user = await _userManager.FindByIdAsync(refreshToken.UserId);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            // Generate new tokens
-            var roles = await _userManager.GetRolesAsync(user);
-            var newAccessToken = _jwtHandler.CreateToken(user, roles);
-            var newRefreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
-
-            // Revoke old refresh token
-            await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, ipAddress, newRefreshToken.Token);
-
-            return Ok(new
+            // Use Transaction to ensure rotation is Atomic
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                success = true,
-                message = "Token refreshed successfully",
-                data = new TokenResponseDto
-                {
-                    AccessToken = newAccessToken,
-                    RefreshToken = newRefreshToken.Token,
-                    ExpiresIn = 3600,
-                    TokenType = "Bearer"
-                }
-            });
+                var roles = await _userManager.GetRolesAsync(user);
+                var accessToken = _jwtHandler.CreateToken(user, roles);
+                var newToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
+
+                await _refreshTokenService.RevokeTokenAsync(oldToken.Token, ipAddress, newToken.Token);
+
+                await transaction.CommitAsync();
+
+                return Ok(new { success = true, data = CreateTokenResponse(accessToken, newToken.Token) });
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw new BadRequestException("Token refresh failed");
+            }
+        }
+        #region Password Recovery
+
+        [HttpPost("forgot-password")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            var user = await _userManager.FindByEmailAsync(dto.Email!);
+            if (user == null)
+                // For security, don't reveal if the user exists. Just return "Check your email".
+                return Ok(new { success = true, message = "If your email is in our system, you will receive a reset link." });
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            // Build the reset URL (pointing to your Frontend Reset Page)
+            var baseUrl = _configuration["AppSettings:ClientUrl"]; // e.g., http://localhost:4200/reset-password
+            var url = $"{baseUrl}?email={user.Email}&token={encodedToken}";
+
+            await _emailService.SendPasswordResetEmailAsync(user.Email!, user.FirstName, url);
+
+            return Ok(new { success = true, message = "Reset link sent to your email." });
+        }
+        #region Social & Utility
+
+        
+
+        [HttpPost("resend-verification-email")]
+        public async Task<IActionResult> ResendVerification([FromBody] string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null || user.EmailConfirmed)
+                return Ok(new { message = "Verification email sent if applicable." });
+
+            await SendVerificationEmail(user);
+            return Ok(new { success = true, message = "A new verification link has been sent." });
         }
 
-        /// <summary>
-        /// Revoke refresh token (logout)
-        /// </summary>
+        #endregion
+
+        [HttpPost("reset-password")]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+        {
+            var user = await _userManager.FindByEmailAsync(dto.Email!);
+            if (user == null) throw new BadRequestException("Invalid request");
+
+            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(dto.Token!));
+            var result = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword!);
+
+            if (!result.Succeeded)
+                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            return Ok(new { success = true, message = "Password has been reset successfully." });
+        }
+
+        #endregion
+
         [HttpPost("revoke-token")]
         [Authorize]
         public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var token = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
 
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (token == null || token.UserId != userId)
+                throw new UnauthorizedException("Unauthorized token revocation");
 
-            // SECURITY FIX: Validate token belongs to the authenticated user
-            var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
-            if (refreshToken == null)
-                throw new BadRequestException("Invalid token");
-
-            if (refreshToken.UserId != userId)
-                throw new UnauthorizedException("You can only revoke your own tokens");
-
-            try
-            {
-                await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, ipAddress);
-                return Ok(new { success = true, message = "Token revoked successfully" });
-            }
-            catch (BadRequestException)
-            {
-                throw new BadRequestException("Invalid token");
-            }
+            await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, GetIpAddress());
+            return Ok(new { success = true, message = "Logged out successfully" });
         }
 
-        /// <summary>
-        /// Login with Facebook
-        /// </summary>
-        [HttpPost("facebook-login")]
-        public async Task<IActionResult> FacebookLogin([FromBody] FacebookLoginDto dto)
-        {
-            // Validate Facebook access token
-            var isValid = await _facebookAuthService.ValidateAccessTokenAsync(dto.AccessToken);
-            if (!isValid)
-                throw new UnauthorizedException("Invalid Facebook access token");
+        #endregion
 
-            // Get user info from Facebook
-            var facebookUser = await _facebookAuthService.GetUserInfoAsync(dto.AccessToken);
-            if (facebookUser == null || string.IsNullOrEmpty(facebookUser.Email))
-                throw new BadRequestException("Unable to get user information from Facebook");
+        #region Profile & Security
 
-            // Check if user exists
-            var user = await _userManager.FindByEmailAsync(facebookUser.Email);
-
-            if (user == null)
-            {
-                // Create new user from Facebook data
-                var names = facebookUser.Name.Split(' ', 2);
-                var firstName = names.Length > 0 ? names[0] : facebookUser.Name;
-                var lastName = names.Length > 1 ? names[1] : "";
-
-                user = new AppUser
-                {
-                    UserName = facebookUser.Email,
-                    Email = facebookUser.Email,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    EmailConfirmed = true,
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                var result = await _userManager.CreateAsync(user);
-                if (!result.Succeeded)
-                {
-                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                    throw new BadRequestException($"Failed to create user: {errors}");
-                }
-
-                // Add Customer role
-                await _userManager.AddToRoleAsync(user, "Customer");
-            }
-
-            // Generate JWT token and refresh token
-            var roles = await _userManager.GetRolesAsync(user);
-            var accessToken = _jwtHandler.CreateToken(user, roles);
-
-            // Generate refresh token
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
-
-            return Ok(new
-            {
-                success = true,
-                message = "Facebook login successful",
-                data = new TokenResponseDto
-                {
-                    AccessToken = accessToken,
-                    RefreshToken = refreshToken.Token,
-                    ExpiresIn = 3600,
-                    TokenType = "Bearer"
-                },
-                user = new
-                {
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    roles = roles,
-                    isNewUser = user.CreatedAt > DateTime.UtcNow.AddMinutes(-1)
-                }
-            });
-        }
-
-        /// <summary>
-        /// Get current user profile
-        /// </summary>
         [HttpGet("profile")]
         [Authorize]
         public async Task<IActionResult> GetProfile()
         {
-            var userId = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
 
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            var roles = await _userManager.GetRolesAsync(user);
-
-            return Ok(new
-            {
-                success = true,
-                data = new
-                {
-                    id = user.Id,
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    emailVerified = user.EmailConfirmed,
-                    roles = roles
-                }
-            });
+            return Ok(new { success = true, data = user });
         }
 
-        /// <summary>
-        /// Request password reset email
-        /// </summary>
-        [HttpPost("forgot-password")]
-        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
-        {
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-
-            // Don't reveal if user exists or not (security best practice)
-            if (user == null)
-            {
-                return Ok(new
-                {
-                    success = true,
-                    message = "If an account exists with that email, a password reset link has been sent."
-                });
-            }
-
-            // Generate password reset token
-            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(resetToken));
-
-            // Build reset URL
-            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
-            var resetUrl = $"{baseUrl}/api/account/reset-password?email={user.Email}&token={encodedToken}";
-
-            // Send reset email
-            await _emailService.SendPasswordResetEmailAsync(user.Email!, user.FirstName, resetUrl);
-
-            return Ok(new
-            {
-                success = true,
-                message = "If an account exists with that email, a password reset link has been sent."
-            });
-        }
-
-        /// <summary>
-        /// Reset password with token
-        /// </summary>
-        [HttpPost("reset-password")]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
-        {
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            // Decode token
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(dto.Token));
-
-            // Reset password
-            var result = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword);
-
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                throw new BadRequestException($"Password reset failed: {errors}");
-            }
-
-            return Ok(new
-            {
-                success = true,
-                message = "Password reset successfully. You can now login with your new password."
-            });
-        }
-
-        /// <summary>
-        /// Change password (authenticated users)
-        /// </summary>
         [HttpPost("change-password")]
         [Authorize]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
 
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
-
+            var result = await _userManager.ChangePasswordAsync(user!, dto.CurrentPassword, dto.NewPassword);
             if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                throw new BadRequestException($"Password change failed: {errors}");
-            }
+                throw new BadRequestException("Failed to change password.");
+
+            // Force logout from all other devices for security
+            await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
+
+            return Ok(new { success = true, message = "Password updated. Other sessions revoked." });
+        }
+
+        #endregion
+
+        #region Helpers
+
+        private async Task<IActionResult> GenerateAuthResponse(AppUser user)
+        {
+            var roles = await _userManager.GetRolesAsync(user);
+            var accessToken = _jwtHandler.CreateToken(user, roles);
+            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, GetIpAddress());
 
             return Ok(new
             {
                 success = true,
-                message = "Password changed successfully"
+                data = CreateTokenResponse(accessToken, refreshToken.Token),
+                user = new { user.Email, user.FirstName, user.LastName, roles }
             });
         }
 
-        /// <summary>
-        /// Update user profile
-        /// </summary>
-        [HttpPut("profile")]
-        [Authorize]
-        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+        private TokenResponseDto CreateTokenResponse(string access, string refresh) => new()
         {
-            var userId = User.FindFirst("userId")?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+            AccessToken = access,
+            RefreshToken = refresh,
+            ExpiresIn = 3600,
+            TokenType = "Bearer"
+        };
 
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+        private string GetIpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-            user.FirstName = dto.FirstName;
-            user.LastName = dto.LastName;
-            user.PhoneNumber = dto.PhoneNumber;
-            user.ProfilePictureUrl = dto.ProfilePictureUrl;
+        private async Task SendVerificationEmail(AppUser user)
+        {
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
+            var url = $"{baseUrl}/api/account/verify-email?userId={user.Id}&token={encodedToken}";
 
-            var result = await _userManager.UpdateAsync(user);
-
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                throw new BadRequestException($"Profile update failed: {errors}");
-            }
-
-            return Ok(new
-            {
-                success = true,
-                message = "Profile updated successfully",
-                data = new
-                {
-                    id = user.Id,
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    phoneNumber = user.PhoneNumber,
-                    profilePictureUrl = user.ProfilePictureUrl
-                }
-            });
+            await _emailService.SendEmailVerificationAsync(user.Email!, user.FirstName, url);
         }
 
-        // DTO for UpdateProfile
-        public class UpdateProfileDto
-        {
-            [Required]
-            public string FirstName { get; set; } = string.Empty;
-
-            [Required]
-            public string LastName { get; set; } = string.Empty;
-
-            [Phone]
-            public string? PhoneNumber { get; set; }
-
-            public string? ProfilePictureUrl { get; set; }
-        }
-    }
-
-    // New DTO for resend verification
-    public class ResendVerificationDto
-    {
-        public string? Email { get; set; }
+        #endregion
     }
 }
