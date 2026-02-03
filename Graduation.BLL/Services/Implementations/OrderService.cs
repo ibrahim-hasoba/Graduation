@@ -5,9 +5,6 @@ using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs.Order;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -29,8 +26,9 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
-            // CRITICAL FIX: Added transaction for atomicity
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            // CRITICAL FIX: Added transaction for atomicity with proper isolation level
+            using var transaction = await _context.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.Serializable);
 
             try
             {
@@ -54,12 +52,14 @@ namespace Graduation.BLL.Services.Implementations
                     var vendorId = vendorGroup.Key;
                     var items = vendorGroup.ToList();
 
-                    // Validate stock for all items WITH ROW LOCKING
+                    // CRITICAL FIX: Validate stock for all items WITH ROW LOCKING to prevent race conditions
                     foreach (var item in items)
                     {
-                        // Reload product with lock to prevent race conditions
+                        // Use raw SQL with UPDLOCK and ROWLOCK to prevent concurrent modifications
                         var product = await _context.Products
-                            .Where(p => p.Id == item.ProductId)
+                            .FromSqlInterpolated($@"
+                                SELECT * FROM Products WITH (UPDLOCK, ROWLOCK) 
+                                WHERE Id = {item.ProductId}")
                             .FirstOrDefaultAsync();
 
                         if (product == null)
@@ -67,8 +67,14 @@ namespace Graduation.BLL.Services.Implementations
 
                         if (product.StockQuantity < item.Quantity)
                             throw new BadRequestException(
-                                $"Product '{item.Product.NameEn}' has insufficient stock. Only {product.StockQuantity} available");
+                                $"Product '{product.NameEn}' has insufficient stock. Only {product.StockQuantity} available");
+
+                        // Immediately decrement stock to reserve it
+                        product.StockQuantity -= item.Quantity;
                     }
+
+                    // Save stock changes immediately
+                    await _context.SaveChangesAsync();
 
                     // Calculate totals
                     var subTotal = items.Sum(i => (i.Product.DiscountPrice ?? i.Product.Price) * i.Quantity);
@@ -103,7 +109,7 @@ namespace Graduation.BLL.Services.Implementations
                     _context.Orders.Add(order);
                     await _context.SaveChangesAsync();
 
-                    // Create order items and update stock
+                    // Create order items
                     foreach (var cartItem in items)
                     {
                         var unitPrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
@@ -118,9 +124,6 @@ namespace Graduation.BLL.Services.Implementations
                         };
 
                         _context.OrderItems.Add(orderItem);
-
-                        // Update product stock
-                        cartItem.Product.StockQuantity -= cartItem.Quantity;
                     }
 
                     await _context.SaveChangesAsync();

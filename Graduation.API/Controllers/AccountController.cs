@@ -6,7 +6,6 @@ using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
@@ -31,7 +30,7 @@ namespace Graduation.API.Controllers
             JwtHandler jwtHandler,
             IEmailService emailService,
             IConfiguration configuration,
-            IFacebookAuthService facebookAuthService, 
+            IFacebookAuthService facebookAuthService,
             IRefreshTokenService refreshTokenService)
         {
             _userManager = userManager;
@@ -45,7 +44,6 @@ namespace Graduation.API.Controllers
         /// <summary>
         /// Register a new user
         /// </summary>
-        [EnableRateLimiting("auth")]
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userForRegistration)
         {
@@ -60,7 +58,8 @@ namespace Graduation.API.Controllers
                 LastName = userForRegistration.LastName ?? string.Empty,
                 Email = userForRegistration.Email,
                 UserName = userForRegistration.Email,
-                EmailConfirmed = false // Email not confirmed yet
+                EmailConfirmed = false,
+                CreatedAt = DateTime.UtcNow
             };
 
             var result = await _userManager.CreateAsync(user, userForRegistration.Password!);
@@ -149,7 +148,6 @@ namespace Graduation.API.Controllers
         /// <summary>
         /// Resend verification email
         /// </summary>
-        [EnableRateLimiting("auth")]
         [HttpPost("resend-verification")]
         public async Task<IActionResult> ResendVerificationEmail([FromBody] ResendVerificationDto dto)
         {
@@ -181,7 +179,6 @@ namespace Graduation.API.Controllers
         /// <summary>
         /// Login with email and password
         /// </summary>
-        [EnableRateLimiting("auth")]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] UserForLoginDto userForAuthentication)
         {
@@ -212,7 +209,7 @@ namespace Graduation.API.Controllers
                 {
                     AccessToken = accessToken,
                     RefreshToken = refreshToken.Token,
-                    ExpiresIn = 3600, // 1 hour in seconds
+                    ExpiresIn = 3600,
                     TokenType = "Bearer"
                 },
                 user = new
@@ -225,6 +222,7 @@ namespace Graduation.API.Controllers
                 }
             });
         }
+
         /// <summary>
         /// Refresh access token
         /// </summary>
@@ -233,13 +231,14 @@ namespace Graduation.API.Controllers
         {
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-            // Validate refresh token
-            if (!await _refreshTokenService.ValidateRefreshTokenAsync(dto.RefreshToken))
-                throw new UnauthorizedException("Invalid or expired refresh token");
-
+            // Get the refresh token without user validation first
             var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
             if (refreshToken == null)
                 throw new UnauthorizedException("Invalid refresh token");
+
+            // SECURITY FIX: Validate that the token is active and belongs to a valid user
+            if (!refreshToken.IsActive)
+                throw new UnauthorizedException("Invalid or expired refresh token");
 
             var user = await _userManager.FindByIdAsync(refreshToken.UserId);
             if (user == null)
@@ -266,6 +265,7 @@ namespace Graduation.API.Controllers
                 }
             });
         }
+
         /// <summary>
         /// Revoke refresh token (logout)
         /// </summary>
@@ -273,7 +273,19 @@ namespace Graduation.API.Controllers
         [Authorize]
         public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenDto dto)
         {
+            var userId = User.FindFirst("userId")?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            // SECURITY FIX: Validate token belongs to the authenticated user
+            var refreshToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
+            if (refreshToken == null)
+                throw new BadRequestException("Invalid token");
+
+            if (refreshToken.UserId != userId)
+                throw new UnauthorizedException("You can only revoke your own tokens");
 
             try
             {
@@ -285,10 +297,10 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException("Invalid token");
             }
         }
+
         /// <summary>
         /// Login with Facebook
         /// </summary>
-        [EnableRateLimiting("auth")]
         [HttpPost("facebook-login")]
         public async Task<IActionResult> FacebookLogin([FromBody] FacebookLoginDto dto)
         {
@@ -318,7 +330,8 @@ namespace Graduation.API.Controllers
                     Email = facebookUser.Email,
                     FirstName = firstName,
                     LastName = lastName,
-                    EmailConfirmed = true, // Facebook emails are verified
+                    EmailConfirmed = true,
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 var result = await _userManager.CreateAsync(user);
@@ -336,7 +349,7 @@ namespace Graduation.API.Controllers
             var roles = await _userManager.GetRolesAsync(user);
             var accessToken = _jwtHandler.CreateToken(user, roles);
 
-            // Generate refresh token (THIS WAS MISSING)
+            // Generate refresh token
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
             var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
 
@@ -344,7 +357,7 @@ namespace Graduation.API.Controllers
             {
                 success = true,
                 message = "Facebook login successful",
-                data = new TokenResponseDto  // Changed to use TokenResponseDto
+                data = new TokenResponseDto
                 {
                     AccessToken = accessToken,
                     RefreshToken = refreshToken.Token,
@@ -393,12 +406,10 @@ namespace Graduation.API.Controllers
                 }
             });
         }
-        // ADD THESE METHODS TO YOUR EXISTING AccountController.cs
 
         /// <summary>
         /// Request password reset email
         /// </summary>
-        [EnableRateLimiting("auth")]
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
