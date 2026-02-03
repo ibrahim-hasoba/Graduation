@@ -1,6 +1,7 @@
 ﻿using Auth.DTOs;
 using Graduation.API.Errors;
 using Graduation.BLL.JwtFeatures;
+using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
@@ -25,6 +26,7 @@ namespace Graduation.API.Controllers
         private readonly IConfiguration _configuration;
         private readonly IRefreshTokenService _refreshTokenService;
         private readonly DatabaseContext _context;
+        private readonly IGoogleAuthService _googleAuthService;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -32,7 +34,8 @@ namespace Graduation.API.Controllers
             IEmailService emailService,
             IConfiguration configuration,
             IRefreshTokenService refreshTokenService,
-            DatabaseContext context)
+            DatabaseContext context,
+            IGoogleAuthService googleAuthService)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -40,6 +43,7 @@ namespace Graduation.API.Controllers
             _configuration = configuration;
             _refreshTokenService = refreshTokenService;
             _context = context;
+            _googleAuthService = googleAuthService;
         }
 
         #region Registration & Verification
@@ -111,6 +115,44 @@ namespace Graduation.API.Controllers
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
+            return await GenerateAuthResponse(user);
+        }
+        public class GoogleLoginDto
+        {
+            public string IdToken { get; set; } = string.Empty;
+        }
+        [HttpPost("google-login")]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
+        {
+            // 1. Verify token with Google
+            var payload = await _googleAuthService.VerifyGoogleTokenAsync(dto.IdToken);
+            if (payload == null)
+                throw new UnauthorizedException("Invalid Google token.");
+
+            // 2. Check if user exists in our DB
+            var user = await _userManager.FindByEmailAsync(payload.Email);
+
+            if (user == null)
+            {
+                // 3. Register user if they don't exist
+                user = new AppUser
+                {
+                    Email = payload.Email,
+                    UserName = payload.Email,
+                    FirstName = payload.GivenName,
+                    LastName = payload.FamilyName,
+                    EmailConfirmed = true, // Google already verified this email
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var result = await _userManager.CreateAsync(user);
+                if (!result.Succeeded)
+                    throw new BadRequestException("Failed to create user from Google account.");
+
+                await _userManager.AddToRoleAsync(user, "Customer");
+            }
+
+            // 4. Generate our local JWT and Refresh Token
             return await GenerateAuthResponse(user);
         }
 

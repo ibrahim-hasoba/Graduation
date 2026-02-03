@@ -160,6 +160,7 @@ namespace Graduation.API
                 builder.Services.AddScoped<IAdminService, AdminService>();
                 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
                 builder.Services.AddScoped<IImageService, ImageService>();
+                builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
                 builder.Services.AddRateLimiter(options => {
                     options.AddFixedWindowLimiter("fixed", opt => {
                         opt.Window = TimeSpan.FromSeconds(10);
