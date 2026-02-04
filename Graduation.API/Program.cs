@@ -61,6 +61,7 @@ namespace Graduation.API
                 {
                     options.SwaggerDoc("v1", new OpenApiInfo
                     {
+
                         Title = "Egyptian Marketplace API",
                         Version = "v1",
                         Description = "E-commerce API for Egyptian marketplace with vendor support (.NET 8)"
