@@ -52,29 +52,38 @@ namespace Graduation.BLL.Services.Implementations
                     var vendorId = vendorGroup.Key;
                     var items = vendorGroup.ToList();
 
-                    // CRITICAL FIX: Validate stock for all items WITH ROW LOCKING to prevent race conditions
+                    // IMPROVED FIX: Use atomic SQL updates to prevent race conditions
                     foreach (var item in items)
                     {
-                        // Use raw SQL with UPDLOCK and ROWLOCK to prevent concurrent modifications
-                        var product = await _context.Products
-                            .FromSqlInterpolated($@"
-                                SELECT * FROM Products WITH (UPDLOCK, ROWLOCK) 
-                                WHERE Id = {item.ProductId}")
-                            .FirstOrDefaultAsync();
+                        // Atomic decrement with stock validation in a single SQL statement
+                        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE Products 
+                            SET StockQuantity = StockQuantity - {item.Quantity}
+                            WHERE Id = {item.ProductId} 
+                            AND StockQuantity >= {item.Quantity}
+                            AND IsActive = 1");
 
-                        if (product == null)
-                            throw new NotFoundException($"Product {item.Product.NameEn} not found");
+                        if (rowsAffected == 0)
+                        {
+                            // Check why the update failed
+                            var product = await _context.Products
+                                .AsNoTracking()
+                                .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
-                        if (product.StockQuantity < item.Quantity)
-                            throw new BadRequestException(
-                                $"Product '{product.NameEn}' has insufficient stock. Only {product.StockQuantity} available");
+                            if (product == null)
+                                throw new NotFoundException($"Product with ID {item.ProductId} not found");
 
-                        // Immediately decrement stock to reserve it
-                        product.StockQuantity -= item.Quantity;
+                            if (!product.IsActive)
+                                throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
+
+                            if (product.StockQuantity < item.Quantity)
+                                throw new BadRequestException(
+                                    $"Product '{product.NameEn}' has insufficient stock. Only {product.StockQuantity} available");
+
+                            // If we get here, something unexpected happened
+                            throw new BadRequestException($"Failed to reserve stock for '{product.NameEn}'");
+                        }
                     }
-
-                    // Save stock changes immediately
-                    await _context.SaveChangesAsync();
 
                     // Calculate totals
                     var subTotal = items.Sum(i => (i.Product.DiscountPrice ?? i.Product.Price) * i.Quantity);
@@ -248,10 +257,13 @@ namespace Graduation.BLL.Services.Implementations
                 case OrderStatus.Cancelled:
                     order.CancelledAt = DateTime.UtcNow;
                     order.CancellationReason = dto.CancellationReason;
-                    // Restore stock
+                    // Restore stock using atomic update
                     foreach (var item in order.OrderItems)
                     {
-                        item.Product.StockQuantity += item.Quantity;
+                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE Products 
+                            SET StockQuantity = StockQuantity + {item.Quantity}
+                            WHERE Id = {item.ProductId}");
                     }
                     break;
             }
@@ -281,10 +293,13 @@ namespace Graduation.BLL.Services.Implementations
             order.CancelledAt = DateTime.UtcNow;
             order.CancellationReason = reason;
 
-            // Restore stock
+            // Restore stock using atomic update
             foreach (var item in order.OrderItems)
             {
-                item.Product.StockQuantity += item.Quantity;
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    UPDATE Products 
+                    SET StockQuantity = StockQuantity + {item.Quantity}
+                    WHERE Id = {item.ProductId}");
             }
 
             await _context.SaveChangesAsync();

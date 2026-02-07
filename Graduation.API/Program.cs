@@ -229,7 +229,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -238,7 +238,7 @@ namespace Graduation.API
                     });
                 }
                 app.UseDeveloperExceptionPage();
-                //app.UseHttpsRedirection();
+                app.UseHttpsRedirection();
 
                 // Enable static files for image uploads
                 app.UseStaticFiles();

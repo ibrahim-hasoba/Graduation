@@ -157,12 +157,22 @@ namespace Graduation.API.Controllers
         }
 
         [HttpPost("refresh-token")]
+        [Authorize]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
             var ipAddress = GetIpAddress();
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("userId");
+
+            if (string.IsNullOrEmpty(currentUserId))
+                throw new UnauthorizedException("User not authenticated");
+
             var oldToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
 
             if (oldToken == null || !oldToken.IsActive)
+                throw new UnauthorizedException("Invalid session");
+
+            if (oldToken.UserId != currentUserId)
                 throw new UnauthorizedException("Invalid session");
 
             var user = await _userManager.FindByIdAsync(oldToken.UserId);
