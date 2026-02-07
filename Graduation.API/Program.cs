@@ -171,18 +171,18 @@ namespace Graduation.API
                 });
                 builder.Services.AddHostedService<TokenCleanupService>();
                 // CORS Configuration
-                var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-                    ?? new[] { "http://localhost:3000", "http://localhost:4200" };
+                //var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
+                //    ?? new[] { "http://localhost:3000", "http://localhost:4200" };
 
                 builder.Services.AddCors(options =>
                 {
-                    options.AddPolicy("AllowSpecificOrigins", policy =>
+                    options.AddPolicy("AllowAll", policy =>
                     {
-                        policy.WithOrigins(allowedOrigins)
+                        policy
                               .AllowAnyMethod()
                               .AllowAnyHeader()
-                              .AllowCredentials()
-                              .SetIsOriginAllowedToAllowWildcardSubdomains();
+                              .AllowAnyOrigin()
+                              ;
                     });
                 });
 
@@ -229,7 +229,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -237,13 +237,13 @@ namespace Graduation.API
                         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Graduation.API v1");
                     });
                 }
-
-                app.UseHttpsRedirection();
+                app.UseDeveloperExceptionPage();
+                //app.UseHttpsRedirection();
 
                 // Enable static files for image uploads
                 app.UseStaticFiles();
 
-                app.UseCors("AllowSpecificOrigins");
+                app.UseCors("AllowAll");
                 app.UseRateLimiter();
                 app.UseAuthentication();
                 app.UseAuthorization();
