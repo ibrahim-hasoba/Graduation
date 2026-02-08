@@ -27,8 +27,6 @@
 
         public string UserId { get; set; } = string.Empty;
         public AppUser User { get; set; } = null!;
-        public int VendorId { get; set; }
-        public Vendor Vendor { get; set; } = null!;
 
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
     }

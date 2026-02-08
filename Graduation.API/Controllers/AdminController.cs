@@ -198,8 +198,9 @@ namespace Graduation.API.Controllers
         {
             var query = _context.Orders
                 .Include(o => o.User)
-                .Include(o => o.Vendor)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
                 .AsQueryable();
 
             if (status.HasValue)
@@ -217,7 +218,7 @@ namespace Graduation.API.Controllers
                     orderNumber = o.OrderNumber,
                     customerName = $"{o.User.FirstName} {o.User.LastName}",
                     customerEmail = o.User.Email,
-                    vendorName = o.Vendor.StoreName,
+                    vendorName = o.OrderItems.FirstOrDefault().Product.Vendor.StoreName,
                     totalAmount = o.TotalAmount,
                     status = o.Status.ToString(),
                     paymentStatus = o.PaymentStatus.ToString(),

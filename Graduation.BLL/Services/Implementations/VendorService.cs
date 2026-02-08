@@ -80,7 +80,6 @@ namespace Graduation.BLL.Services.Implementations
             var vendor = await _context.Vendors
                 .Include(v => v.User)
                 .Include(v => v.Products)
-                .Include(v => v.Orders)
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
@@ -94,7 +93,6 @@ namespace Graduation.BLL.Services.Implementations
             var vendor = await _context.Vendors
                 .Include(v => v.User)
                 .Include(v => v.Products)
-                .Include(v => v.Orders)
                 .FirstOrDefaultAsync(v => v.UserId == userId);
 
             if (vendor == null)
@@ -262,7 +260,7 @@ namespace Graduation.BLL.Services.Implementations
                 IsApproved = vendor.IsApproved,
                 IsActive = vendor.IsActive,
                 TotalProducts = vendor.Products?.Count ?? 0,
-                TotalOrders = vendor.Orders?.Count ?? 0,
+                TotalOrders = 0,
                 CreatedAt = vendor.CreatedAt,
                 UpdatedAt = vendor.UpdatedAt
             };

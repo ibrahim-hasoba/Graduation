@@ -14,7 +14,7 @@ namespace Graduation.BLL.Services.Interfaces
         Task<List<ProductListDto>> GetFeaturedProductsAsync(int count = 10);
         Task<ProductDto> UpdateProductAsync(int id, int vendorId, ProductUpdateDto dto);
         Task DeleteProductAsync(int id, int vendorId);
-        Task<bool> UpdateStockAsync(int id, int quantity);
+        Task<bool> UpdateStockAsync(int id, int quantity, int? vendorId = null);
         Task IncrementViewCountAsync(int id);
     }
 }

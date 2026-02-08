@@ -98,7 +98,6 @@ namespace Graduation.BLL.Services.Implementations
                     {
                         OrderNumber = orderNumber,
                         UserId = userId,
-                        VendorId = vendorId,
                         SubTotal = subTotal,
                         ShippingCost = shippingCost,
                         TotalAmount = totalAmount,
@@ -187,7 +186,9 @@ namespace Graduation.BLL.Services.Implementations
         {
             var order = await _context.Orders
                 .Include(o => o.User)
-                .Include(o => o.Vendor)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
@@ -202,36 +203,37 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<OrderListDto>> GetUserOrdersAsync(string userId)
         {
             var orders = await _context.Orders
-                .Include(o => o.Vendor)
                 .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
                 .Where(o => o.UserId == userId)
                 .OrderByDescending(o => o.OrderDate)
                 .ToListAsync();
 
-            return orders.Select(MapToListDto).ToList();
+            return orders.Select(o => MapToListDto(o, null)).ToList();
         }
 
         public async Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId)
         {
             var orders = await _context.Orders
-                .Include(o => o.Vendor)
                 .Include(o => o.OrderItems)
-                .Where(o => o.VendorId == vendorId)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
+                .Where(o => o.OrderItems.Any(oi => oi.Product.VendorId == vendorId))
                 .OrderByDescending(o => o.OrderDate)
                 .ToListAsync();
 
-            return orders.Select(MapToListDto).ToList();
+            return orders.Select(o => MapToListDto(o, vendorId)).ToList();
         }
 
         public async Task<OrderDto> UpdateOrderStatusAsync(int id, int vendorId, UpdateOrderStatusDto dto)
         {
             var order = await _context.Orders
                 .Include(o => o.User)
-                .Include(o => o.Vendor)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
-                .FirstOrDefaultAsync(o => o.Id == id && o.VendorId == vendorId);
+                .FirstOrDefaultAsync(o => o.Id == id && o.OrderItems.Any(oi => oi.Product.VendorId == vendorId));
 
             if (order == null)
                 throw new NotFoundException("Order", id);
@@ -277,7 +279,6 @@ namespace Graduation.BLL.Services.Implementations
         {
             var order = await _context.Orders
                 .Include(o => o.User)
-                .Include(o => o.Vendor)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
@@ -353,8 +354,8 @@ namespace Graduation.BLL.Services.Implementations
                 ShippingGovernorate = order.ShippingGovernorate.ToString(),
                 ShippingPhone = order.ShippingPhone,
                 Notes = order.Notes,
-                VendorId = order.VendorId,
-                VendorName = order.Vendor.StoreName,
+                VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
+                VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
                 Items = order.OrderItems.Select(oi => new OrderItemDto
                 {
                     Id = oi.Id,
@@ -370,8 +371,12 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        private OrderListDto MapToListDto(Order order)
+        private OrderListDto MapToListDto(Order order, int? vendorId = null)
         {
+            var vendorItems = vendorId.HasValue 
+                ? order.OrderItems.Where(oi => oi.Product.VendorId == vendorId.Value).ToList()
+                : order.OrderItems.ToList();
+
             return new OrderListDto
             {
                 Id = order.Id,
@@ -380,8 +385,8 @@ namespace Graduation.BLL.Services.Implementations
                 Status = order.Status.ToString(),
                 StatusId = (int)order.Status,
                 OrderDate = order.OrderDate,
-                ItemsCount = order.OrderItems.Count,
-                VendorName = order.Vendor.StoreName
+                ItemsCount = vendorItems.Count,
+                VendorName = vendorItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown"
             };
         }
     }

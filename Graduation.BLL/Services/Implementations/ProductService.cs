@@ -279,12 +279,18 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
         }
 
-        public async Task<bool> UpdateStockAsync(int id, int quantity)
+        public async Task<bool> UpdateStockAsync(int id, int quantity, int? vendorId = null)
         {
-            var product = await _context.Products.FindAsync(id);
+            var product = await _context.Products
+                .Include(p => p.Vendor)
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
                 throw new NotFoundException("Product", id);
+
+            // Verify vendor ownership if vendorId is provided
+            if (vendorId.HasValue && product.VendorId != vendorId.Value)
+                throw new UnauthorizedException("You can only update stock for your own products");
 
             if (quantity < 0)
                 throw new BadRequestException("Stock quantity cannot be negative");

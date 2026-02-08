@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Product;
+using Shared.DTOs.Category;
 
 namespace Graduation.API.Controllers
 {
@@ -141,6 +142,59 @@ namespace Graduation.API.Controllers
                     totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
                 }
             });
+        }
+
+        /// <summary>
+        /// Get all leaf categories (only subcategories where products can be added)
+        /// Returns hierarchy path like "Electronics → Mobile → iPhone"
+        /// </summary>
+        [HttpGet("leaf-categories")]
+        public async Task<IActionResult> GetLeafCategories()
+        {
+            var leafCategories = await _context.Categories
+                .Where(c => c.IsActive && !c.SubCategories.Any())
+                .AsNoTracking()
+                .ToListAsync();
+
+            var leafDtos = leafCategories.Select(c =>
+            {
+                var pathEn = BuildCategoryPathString(c);
+                return new
+                {
+                    id = c.Id,
+                    nameEn = c.NameEn,
+                    nameAr = c.NameAr,
+                    description = c.Description,
+                    pathEn = pathEn,
+                    canAddProducts = true
+                };
+            }).OrderBy(x => x.pathEn).ToList();
+
+            return Ok(new
+            {
+                success = true,
+                message = "All leaf categories where products can be added",
+                totalCount = leafDtos.Count,
+                data = leafDtos
+            });
+        }
+
+        private string BuildCategoryPathString(Graduation.DAL.Entities.Category category)
+        {
+            var path = new List<string> { category.NameEn };
+            var current = category;
+            var visited = new HashSet<int>();
+
+            while (current.ParentCategoryId != null && !visited.Contains(current.Id))
+            {
+                visited.Add(current.Id);
+                var parent = _context.Categories.FirstOrDefault(c => c.Id == current.ParentCategoryId);
+                if (parent == null) break;
+                path.Insert(0, parent.NameEn);
+                current = parent;
+            }
+
+            return string.Join(" → ", path);
         }
     }
 

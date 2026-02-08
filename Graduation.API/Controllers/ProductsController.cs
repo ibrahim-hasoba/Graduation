@@ -197,7 +197,12 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            await _productService.UpdateStockAsync(id, dto.Quantity);
+            // Get vendor profile
+            var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
+            if (vendor == null)
+                throw new UnauthorizedException("You must be a vendor to update product stock");
+
+            await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
 
             return Ok(new
             {

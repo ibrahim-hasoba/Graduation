@@ -213,16 +213,10 @@ namespace Graduation.DAL.Data
                     .HasForeignKey(o => o.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasOne(o => o.Vendor)
-                    .WithMany(v => v.Orders)
-                    .HasForeignKey(o => o.VendorId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
                 entity.HasIndex(o => o.OrderNumber).IsUnique();
 
                 // Performance Indexes
                 entity.HasIndex(o => o.UserId);
-                entity.HasIndex(o => o.VendorId);
                 entity.HasIndex(o => o.Status);
                 entity.HasIndex(o => o.PaymentStatus);
                 entity.HasIndex(o => o.OrderDate);
@@ -230,10 +224,8 @@ namespace Graduation.DAL.Data
 
                 // Composite Indexes for Common Queries
                 entity.HasIndex(o => new { o.UserId, o.OrderDate });
-                entity.HasIndex(o => new { o.VendorId, o.Status });
                 entity.HasIndex(o => new { o.Status, o.OrderDate });
                 entity.HasIndex(o => new { o.UserId, o.Status, o.OrderDate });
-                entity.HasIndex(o => new { o.VendorId, o.Status, o.OrderDate });
             });
 
             // Order Item Configuration

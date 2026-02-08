@@ -125,7 +125,6 @@ namespace Graduation.BLL.Services.Implementations
             var topVendors = await _context.Vendors
                 .Include(v => v.Products)
                     .ThenInclude(p => p.Reviews.Where(r => r.IsApproved))
-                .Include(v => v.Orders.Where(o => o.Status == OrderStatus.Delivered))
                 .Where(v => v.IsApproved)
                 .Select(v => new TopVendorDto
                 {
@@ -133,8 +132,8 @@ namespace Graduation.BLL.Services.Implementations
                     StoreName = v.StoreName,
                     StoreNameAr = v.StoreNameAr,
                     TotalProducts = v.Products.Count(p => p.IsActive),
-                    TotalOrders = v.Orders.Count,
-                    TotalRevenue = v.Orders.Sum(o => o.TotalAmount),
+                    TotalOrders = _context.OrderItems.Count(oi => oi.Product.VendorId == v.Id),
+                    TotalRevenue = _context.OrderItems.Where(oi => oi.Product.VendorId == v.Id).Sum(oi => oi.TotalPrice),
                     AverageRating = v.Products
                         .SelectMany(p => p.Reviews)
                         .Any()
