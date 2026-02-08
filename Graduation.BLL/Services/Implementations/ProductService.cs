@@ -35,9 +35,15 @@ namespace Graduation.BLL.Services.Implementations
                 throw new ConflictException($"Product with SKU '{dto.SKU}' already exists");
 
             // Verify category exists
-            var category = await _context.Categories.FindAsync(dto.CategoryId);
+            var category = await _context.Categories
+                            .Include(c => c.SubCategories)
+                            .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
+
+            if (category.SubCategories.Any())
+                throw new BadRequestException("Products must be added to a subcategory, not a parent category");
 
             // Validate Egyptian product requirements
             if (dto.IsEgyptianMade && string.IsNullOrEmpty(dto.MadeInCity))
@@ -226,9 +232,15 @@ namespace Graduation.BLL.Services.Implementations
                 throw new UnauthorizedException("You can only update your own products");
 
             // Verify category exists
-            var category = await _context.Categories.FindAsync(dto.CategoryId);
+            var category = await _context.Categories
+                                .Include(c => c.SubCategories)
+                                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
+
+            if (category.SubCategories.Any())
+                throw new BadRequestException("Products must be added to a subcategory, not a parent category");
 
             // Validate discount price
             if (dto.DiscountPrice.HasValue && dto.DiscountPrice >= dto.Price)

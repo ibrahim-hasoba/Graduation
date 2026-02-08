@@ -4,6 +4,7 @@ using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Product;
 
 namespace Graduation.API.Controllers
