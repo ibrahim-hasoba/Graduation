@@ -212,16 +212,29 @@ namespace Graduation.API.Controllers
             var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
             // Build the reset URL (pointing to your Frontend Reset Page)
-            var baseUrl = _configuration["AppSettings:ClientUrl"]; // e.g., http://localhost:4200/reset-password
+            var baseUrl = _configuration["AppSettings:ClientUrl"];
             var url = $"{baseUrl}?email={user.Email}&token={encodedToken}";
 
             await _emailService.SendPasswordResetEmailAsync(user.Email!, user.FirstName, url);
 
             return Ok(new { success = true, message = "Reset link sent to your email." });
         }
-        #region Social & Utility
 
-        
+        /*
+        [HttpGet("reset-password-test")]
+        public IActionResult ResetPasswordTest(
+                    [FromQuery] string email,
+                    [FromQuery] string token)
+        {
+            return Ok(new
+            {
+                Email = email,
+                Token = token,
+                Message = "Reset link opened successfully"
+            });
+        }
+        */
+        #region Social & Utility
 
         [HttpPost("resend-verification-email")]
         public async Task<IActionResult> ResendVerification([FromBody] string email)

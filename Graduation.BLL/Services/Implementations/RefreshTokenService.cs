@@ -79,8 +79,10 @@ namespace Graduation.BLL.Services.Implementations
         public async Task RevokeUserTokensAsync(string userId, string ipAddress)
         {
             var userTokens = await _context.RefreshTokens
-                .Where(rt => rt.UserId == userId && rt.IsActive)
-                .ToListAsync();
+                    .Where(rt => rt.UserId == userId
+                                    && rt.RevokedAt == null
+                                    && rt.ExpiresAt > DateTime.UtcNow)
+                    .ToListAsync();
 
             foreach (var token in userTokens)
             {

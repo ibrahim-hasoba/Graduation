@@ -237,7 +237,6 @@ namespace Graduation.API
                         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Graduation.API v1");
                     });
                 }
-                app.UseDeveloperExceptionPage();
                 app.UseHttpsRedirection();
 
                 // Enable static files for image uploads
