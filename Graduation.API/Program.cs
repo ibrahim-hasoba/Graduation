@@ -1,4 +1,4 @@
-using Graduation.API.Errors;
+using Shared;
 using Graduation.API.Middlewares;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
@@ -17,6 +17,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Graduation.API.Errors;
 
 namespace Graduation.API
 {
