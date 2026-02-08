@@ -63,9 +63,9 @@ namespace Graduation.API
                     options.SwaggerDoc("v1", new OpenApiInfo
                     {
 
-                        Title = "Egyptian Marketplace API",
+                        Title = "Heka",
                         Version = "v1",
-                        Description = "E-commerce API for Egyptian marketplace with vendor support (.NET 8)"
+                        Description = "E-commerce API for Egyptian marketplace with vendor support"
                     });
 
                     // Add JWT Authentication to Swagger
