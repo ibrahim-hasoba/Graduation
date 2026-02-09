@@ -149,7 +149,7 @@ namespace Graduation.API
                             Encoding.UTF8.GetBytes(jwtSettings["securityKey"]!))
                     };
                 });
-                
+
 
                 // Register Services
                 builder.Services.AddScoped<JwtHandler>();
@@ -163,8 +163,14 @@ namespace Graduation.API
                 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
                 builder.Services.AddScoped<IImageService, ImageService>();
                 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
-                builder.Services.AddRateLimiter(options => {
-                    options.AddFixedWindowLimiter("fixed", opt => {
+                builder.Services.AddScoped<ICategoryService, CategoryService>();
+                builder.Services.AddScoped<IWishlistService, WishlistService>();
+                builder.Services.AddScoped<INotificationService, NotificationService>();
+                builder.Services.AddScoped<IReportService, ReportService>();
+                builder.Services.AddRateLimiter(options =>
+                {
+                    options.AddFixedWindowLimiter("fixed", opt =>
+                    {
                         opt.Window = TimeSpan.FromSeconds(10);
                         opt.PermitLimit = 5; // 5 requests per 10 seconds
                         opt.QueueLimit = 2;

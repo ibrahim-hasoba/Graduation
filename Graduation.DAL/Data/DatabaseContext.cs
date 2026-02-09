@@ -19,6 +19,8 @@ namespace Graduation.DAL.Data
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<Wishlist> Wishlists { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -271,24 +273,51 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(rt => new { rt.UserId, rt.IsRevoked, rt.ExpiresAt });
             });
 
-            // Seed Egyptian Categories
-            SeedEgyptianCategories(builder);
-        }
+            // Wishlist Configuration
+            builder.Entity<Wishlist>(entity =>
+            {
+                entity.HasKey(w => w.Id);
 
-        private void SeedEgyptianCategories(ModelBuilder builder)
-        {
-            builder.Entity<Category>().HasData(
-                new Category { Id = 1, NameAr = "منتجات غذائية", NameEn = "Food Products", Description = "Traditional Egyptian food products" },
-                new Category { Id = 2, NameAr = "الحرف اليدوية", NameEn = "Handicrafts", Description = "Egyptian handicrafts and traditional arts" },
-                new Category { Id = 3, NameAr = "المنسوجات", NameEn = "Textiles", Description = "Egyptian cotton and traditional fabrics" },
-                new Category { Id = 4, NameAr = "المجوهرات", NameEn = "Jewelry", Description = "Egyptian jewelry and accessories" },
-                new Category { Id = 5, NameAr = "الأثاث والديكور", NameEn = "Furniture & Decor", Description = "Egyptian furniture and home decor" },
-                new Category { Id = 6, NameAr = "العطور والزيوت", NameEn = "Perfumes & Oils", Description = "Egyptian essential oils and perfumes" },
-                new Category { Id = 7, NameAr = "السجاد والكليم", NameEn = "Carpets & Rugs", Description = "Egyptian carpets and traditional rugs" },
-                new Category { Id = 8, NameAr = "البردي والورق", NameEn = "Papyrus & Paper", Description = "Papyrus art and handmade paper" },
-                new Category { Id = 9, NameAr = "الفخار والخزف", NameEn = "Pottery & Ceramics", Description = "Egyptian pottery and ceramics" },
-                new Category { Id = 10, NameAr = "النحاس والمعادن", NameEn = "Copper & Metals", Description = "Copper crafts and metalwork" }
-            );
+                entity.HasOne(w => w.User)
+                    .WithMany()
+                    .HasForeignKey(w => w.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(w => w.Product)
+                    .WithMany()
+                    .HasForeignKey(w => w.ProductId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Unique constraint: one product per user in wishlist
+                entity.HasIndex(w => new { w.UserId, w.ProductId }).IsUnique();
+
+                // Performance Indexes
+                entity.HasIndex(w => w.UserId);
+                entity.HasIndex(w => w.ProductId);
+                entity.HasIndex(w => w.CreatedAt);
+            });
+
+            // Notification Configuration
+            builder.Entity<Notification>(entity =>
+            {
+                entity.HasKey(n => n.Id);
+
+                entity.HasOne(n => n.User)
+                    .WithMany()
+                    .HasForeignKey(n => n.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(n => n.Title).IsRequired().HasMaxLength(200);
+                entity.Property(n => n.Message).IsRequired().HasMaxLength(1000);
+                entity.Property(n => n.Type).IsRequired().HasMaxLength(50);
+
+                // Performance Indexes
+                entity.HasIndex(n => n.UserId);
+                entity.HasIndex(n => n.IsRead);
+                entity.HasIndex(n => n.CreatedAt);
+                entity.HasIndex(n => new { n.UserId, n.IsRead });
+                entity.HasIndex(n => new { n.UserId, n.CreatedAt });
+            });
         }
     }
 }

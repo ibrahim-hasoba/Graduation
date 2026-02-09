@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Shared.DTOs.Category;
 
 namespace Graduation.API.Controllers
 {
@@ -16,15 +17,21 @@ namespace Graduation.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
+        private readonly ICategoryService _categoryService;
+        private readonly IReportService _reportService;
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
 
         public AdminController(
             IAdminService adminService,
+            ICategoryService categoryService,
+            IReportService reportService,
             DatabaseContext context,
             UserManager<AppUser> userManager)
         {
             _adminService = adminService;
+            _categoryService = categoryService;
+            _reportService = reportService;
             _context = context;
             _userManager = userManager;
         }
@@ -277,5 +284,225 @@ namespace Graduation.API.Controllers
                 }
             });
         }
+
+        #region Category Management
+
+        /// <summary>
+        /// Create a new category
+        /// </summary>
+        [HttpPost("categories")]
+        public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
+        {
+            try
+            {
+                var category = await _categoryService.CreateCategoryAsync(dto);
+                return CreatedAtAction(nameof(GetCategoryById), new { id = category.Id },
+                    new { success = true, data = category });
+            }
+            catch (BadRequestException ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (ConflictException ex)
+            {
+                return Conflict(new { success = false, message = ex.Message });
+            }
+            catch (NotFoundException ex)
+            {
+                return NotFound(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get all categories with hierarchy
+        /// </summary>
+        [HttpGet("categories")]
+        public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
+        {
+            var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
+            return Ok(new { success = true, data = categories });
+        }
+
+        /// <summary>
+        /// Get category by ID
+        /// </summary>
+        [HttpGet("categories/{id}")]
+        public async Task<IActionResult> GetCategoryById(int id)
+        {
+            try
+            {
+                var category = await _categoryService.GetCategoryByIdAsync(id);
+                return Ok(new { success = true, data = category });
+            }
+            catch (NotFoundException ex)
+            {
+                return NotFound(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Update category
+        /// </summary>
+        [HttpPut("categories/{id}")]
+        public async Task<IActionResult> UpdateCategory(int id, [FromBody] UpdateCategoryDto dto)
+        {
+            try
+            {
+                var category = await _categoryService.UpdateCategoryAsync(id, dto);
+                return Ok(new { success = true, data = category });
+            }
+            catch (NotFoundException ex)
+            {
+                return NotFound(new { success = false, message = ex.Message });
+            }
+            catch (BadRequestException ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+            catch (ConflictException ex)
+            {
+                return Conflict(new { success = false, message = ex.Message });
+            }
+            catch (BusinessException ex)
+            {
+                return BadRequest(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Delete category (soft delete)
+        /// </summary>
+        [HttpDelete("categories/{id}")]
+        public async Task<IActionResult> DeleteCategory(int id)
+        {
+            try
+            {
+                await _categoryService.DeleteCategoryAsync(id);
+                return Ok(new { success = true, message = "Category deleted successfully" });
+            }
+            catch (NotFoundException ex)
+            {
+                return NotFound(new { success = false, message = ex.Message });
+            }
+        }
+
+        #endregion
+
+        #region Reports
+
+        /// <summary>
+        /// Get sales report for date range
+        /// </summary>
+        [HttpGet("reports/sales")]
+        public async Task<IActionResult> GetSalesReport(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate,
+            [FromQuery] int? vendorId = null)
+        {
+            if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
+                return BadRequest(new { success = false, message = "Start date and end date are required" });
+
+            var report = await _reportService.GetSalesReportAsync(startDate, endDate, vendorId);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get sales breakdown by category
+        /// </summary>
+        [HttpGet("reports/sales-by-category")]
+        public async Task<IActionResult> GetSalesByCategory(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate)
+        {
+            if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
+                return BadRequest(new { success = false, message = "Start date and end date are required" });
+
+            var report = await _reportService.GetSalesByCategoryAsync(startDate, endDate);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get vendor performance metrics
+        /// </summary>
+        [HttpGet("reports/vendor-performance/{vendorId}")]
+        public async Task<IActionResult> GetVendorPerformance(int vendorId)
+        {
+            var report = await _reportService.GetVendorPerformanceAsync(vendorId);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get customer insights and analytics
+        /// </summary>
+        [HttpGet("reports/customer-insights")]
+        public async Task<IActionResult> GetCustomerInsights()
+        {
+            var report = await _reportService.GetCustomerInsightsAsync();
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get low stock products
+        /// </summary>
+        [HttpGet("reports/low-stock")]
+        public async Task<IActionResult> GetLowStockProducts([FromQuery] int threshold = 10)
+        {
+            var report = await _reportService.GetLowStockProductsAsync(threshold);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get revenue by vendor for date range
+        /// </summary>
+        [HttpGet("reports/revenue-by-vendor")]
+        public async Task<IActionResult> GetRevenueByVendor(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate,
+            [FromQuery] int take = 10)
+        {
+            if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
+                return BadRequest(new { success = false, message = "Start date and end date are required" });
+
+            var report = await _reportService.GetRevenueByVendorAsync(startDate, endDate, take);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get top selling products
+        /// </summary>
+        [HttpGet("reports/top-products")]
+        public async Task<IActionResult> GetTopProducts(
+            [FromQuery] DateTime startDate,
+            [FromQuery] DateTime endDate,
+            [FromQuery] int take = 10)
+        {
+            if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
+                return BadRequest(new { success = false, message = "Start date and end date are required" });
+
+            var report = await _reportService.GetTopProductsAsync(startDate, endDate, take);
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get order status summary
+        /// </summary>
+        [HttpGet("reports/order-status-summary")]
+        public async Task<IActionResult> GetOrderStatusSummary()
+        {
+            var report = await _reportService.GetOrderStatusSummaryAsync();
+            return Ok(new { success = true, data = report });
+        }
+
+        /// <summary>
+        /// Get user trends and engagement metrics
+        /// </summary>
+        [HttpGet("reports/user-trends")]
+        public async Task<IActionResult> GetUserTrends()
+        {
+            var report = await _reportService.GetUserTrendsAsync();
+            return Ok(new { success = true, data = report });
+        }
+
+        #endregion
     }
 }
