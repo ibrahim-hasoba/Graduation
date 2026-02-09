@@ -25,6 +25,9 @@ namespace Graduation.API.Controllers
         /// Create new order from cart
         /// </summary>
         [HttpPost]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -45,6 +48,8 @@ namespace Graduation.API.Controllers
         /// Get user's orders
         /// </summary>
         [HttpGet("my-orders")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetMyOrders()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -59,6 +64,9 @@ namespace Graduation.API.Controllers
         /// Get order details by ID
         /// </summary>
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetOrderById(int id)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -73,6 +81,9 @@ namespace Graduation.API.Controllers
         /// Get vendor's orders
         /// </summary>
         [HttpGet("vendor")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetVendorOrders()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -91,6 +102,10 @@ namespace Graduation.API.Controllers
         /// Update order status (vendor only)
         /// </summary>
         [HttpPatch("{id}/status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -115,6 +130,10 @@ namespace Graduation.API.Controllers
         /// Cancel order (customer only)
         /// </summary>
         [HttpPost("{id}/cancel")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CancelOrder(int id, [FromBody] CancelOrderDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;

@@ -68,6 +68,28 @@ namespace Graduation.BLL.Services.Implementations
             await SendEmailAsync(email, subject, body);
         }
 
+        public async Task SendEmailOtpAsync(string email, string firstName, string code)
+        {
+            var subject = "Your verification code - Heka";
+
+            var body = $@"
+                <html>
+                <body style='font-family: Arial, sans-serif;'>
+                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                        <h2>Your verification code</h2>
+                        <p>Hello {firstName},</p>
+                        <p>Use the following one-time verification code to confirm your email address for Heka:</p>
+                        <div style='font-size: 24px; font-weight: bold; margin: 20px 0;'>{code}</div>
+                        <p>This code will expire in 10 minutes. Do not share it with anyone.</p>
+                        <p>If you didn't request this, please ignore this email.</p>
+                    </div>
+                </body>
+                </html>
+            ";
+
+            await SendEmailAsync(email, subject, body);
+        }
+
         public async Task SendVendorApprovalEmailAsync(string email, string storeName, bool isApproved, string? reason = null)
         {
             var subject = isApproved

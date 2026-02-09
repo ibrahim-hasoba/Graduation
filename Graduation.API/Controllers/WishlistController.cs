@@ -23,6 +23,9 @@ namespace Graduation.API.Controllers
     /// Get user's wishlist
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetWishlist()
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -44,6 +47,10 @@ namespace Graduation.API.Controllers
     /// Add product to wishlist
     /// </summary>
     [HttpPost]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> AddToWishlist([FromBody] AddToWishlistDto dto)
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -73,6 +80,9 @@ namespace Graduation.API.Controllers
     /// Remove product from wishlist
     /// </summary>
     [HttpDelete("{productId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RemoveFromWishlist(int productId)
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -98,6 +108,9 @@ namespace Graduation.API.Controllers
     /// Check if product is in wishlist
     /// </summary>
     [HttpGet("{productId}/check")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CheckWishlist(int productId)
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -119,6 +132,9 @@ namespace Graduation.API.Controllers
     /// Clear user's entire wishlist
     /// </summary>
     [HttpDelete]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ClearWishlist()
     {
       var userId = User.FindFirst("userId")?.Value;

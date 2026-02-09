@@ -6,6 +6,8 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -13,6 +15,7 @@ using Shared.DTOs;
 using Shared.DTOs.Auth;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 
 namespace Graduation.API.Controllers
 {
@@ -27,6 +30,7 @@ namespace Graduation.API.Controllers
         private readonly IRefreshTokenService _refreshTokenService;
         private readonly DatabaseContext _context;
         private readonly IGoogleAuthService _googleAuthService;
+        private readonly IOtpService _otpService;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -35,7 +39,8 @@ namespace Graduation.API.Controllers
             IConfiguration configuration,
             IRefreshTokenService refreshTokenService,
             DatabaseContext context,
-            IGoogleAuthService googleAuthService)
+            IGoogleAuthService googleAuthService,
+            IOtpService otpService)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -44,11 +49,16 @@ namespace Graduation.API.Controllers
             _refreshTokenService = refreshTokenService;
             _context = context;
             _googleAuthService = googleAuthService;
+            _otpService = otpService;
         }
 
         #region Registration & Verification
 
         [HttpPost("register")]
+        [EnableRateLimiting("otp")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
             var existingUser = await _userManager.FindByEmailAsync(userDto.Email!);
@@ -70,12 +80,30 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.AddToRoleAsync(user, "Customer");
+
+            // Per-email throttle: prevent frequent OTPs for same email
+            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+            var recent = await _context.EmailOtps
+                .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
+
+            if (recent)
+                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
+
+            var lastHourCount = await _context.EmailOtps
+                .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
+
+            if (lastHourCount >= 5)
+                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
+
             await SendVerificationEmail(user);
 
             return StatusCode(201, new { success = true, message = "Registration successful! Please verify your email." });
         }
 
         [HttpGet("verify-email")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> VerifyEmail([FromQuery] string userId, [FromQuery] string token)
         {
             var user = await _userManager.FindByIdAsync(userId);
@@ -95,6 +123,9 @@ namespace Graduation.API.Controllers
         #region Login & Token Management
 
         [HttpPost("login")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
@@ -122,6 +153,9 @@ namespace Graduation.API.Controllers
             public string IdToken { get; set; } = string.Empty;
         }
         [HttpPost("google-login")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
             // 1. Verify token with Google
@@ -158,6 +192,9 @@ namespace Graduation.API.Controllers
 
         [HttpPost("refresh-token")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
             var ipAddress = GetIpAddress();
@@ -201,6 +238,7 @@ namespace Graduation.API.Controllers
         #region Password Recovery
 
         [HttpPost("forgot-password")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
@@ -237,19 +275,40 @@ namespace Graduation.API.Controllers
         #region Social & Utility
 
         [HttpPost("resend-verification-email")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [EnableRateLimiting("otp")]
         public async Task<IActionResult> ResendVerification([FromBody] string email)
         {
             var user = await _userManager.FindByEmailAsync(email);
             if (user == null || user.EmailConfirmed)
                 return Ok(new { message = "Verification email sent if applicable." });
 
-            await SendVerificationEmail(user);
-            return Ok(new { success = true, message = "A new verification link has been sent." });
+            // Per-email throttle (same checks as registration)
+            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+            var recent = await _context.EmailOtps
+                .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
+
+            if (recent)
+                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
+
+            var lastHourCount = await _context.EmailOtps
+                .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
+
+            if (lastHourCount >= 5)
+                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
+
+            // Generate OTP and send
+            var code = await _otpService.GenerateOtpAsync(user.Email);
+            await _emailService.SendEmailOtpAsync(user.Email, user.FirstName, code);
+
+            return Ok(new { success = true, message = "A new verification code has been sent." });
         }
 
         #endregion
 
         [HttpPost("reset-password")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
@@ -268,6 +327,8 @@ namespace Graduation.API.Controllers
 
         [HttpPost("revoke-token")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenDto dto)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
@@ -286,6 +347,8 @@ namespace Graduation.API.Controllers
 
         [HttpGet("profile")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetProfile()
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
@@ -296,6 +359,9 @@ namespace Graduation.API.Controllers
 
         [HttpPost("change-password")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
@@ -341,12 +407,34 @@ namespace Graduation.API.Controllers
 
         private async Task SendVerificationEmail(AppUser user)
         {
-            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
-            var url = $"{baseUrl}/api/account/verify-email?userId={user.Id}&token={encodedToken}";
+            // Generate OTP and send via email
+            var code = await _otpService.GenerateOtpAsync(user.Email!);
+            await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
+        }
 
-            await _emailService.SendEmailVerificationAsync(user.Email!, user.FirstName, url);
+        [HttpPost("verify-email-otp")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> VerifyEmailOtp([FromBody] Auth.DTOs.VerifyEmailOtpDto dto)
+        {
+            if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Code))
+                throw new BadRequestException("Email and code are required");
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            var valid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
+            if (!valid)
+                throw new BadRequestException("Invalid or expired verification code");
+
+            user.EmailConfirmed = true;
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                throw new BadRequestException("Failed to confirm email");
+
+            return Ok(new { success = true, message = "Email verified successfully" });
         }
 
         #endregion

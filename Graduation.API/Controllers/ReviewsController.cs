@@ -22,6 +22,7 @@ namespace Graduation.API.Controllers
         /// Get product reviews (public)
         /// </summary>
         [HttpGet("product/{productId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetProductReviews(int productId)
         {
             var reviews = await _reviewService.GetProductReviewsAsync(productId, approvedOnly: true);
@@ -33,6 +34,8 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("my-reviews")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetMyReviews()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -48,6 +51,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPost]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateReview([FromBody] CreateReviewDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -69,6 +75,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpDelete("{reviewId}")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteReview(int reviewId)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -88,6 +97,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPost("{reviewId}/approve")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ApproveReview(int reviewId)
         {
             var approved = await _reviewService.ApproveReviewAsync(reviewId);
@@ -103,6 +115,8 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("pending")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPendingReviews()
         {
             // This would need to be implemented in the service

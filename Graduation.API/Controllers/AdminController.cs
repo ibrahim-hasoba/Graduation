@@ -291,6 +291,11 @@ namespace Graduation.API.Controllers
         /// Create a new category
         /// </summary>
         [HttpPost("categories")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             try
@@ -317,6 +322,8 @@ namespace Graduation.API.Controllers
         /// Get all categories with hierarchy
         /// </summary>
         [HttpGet("categories")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
         {
             var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
@@ -327,6 +334,9 @@ namespace Graduation.API.Controllers
         /// Get category by ID
         /// </summary>
         [HttpGet("categories/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetCategoryById(int id)
         {
             try
@@ -344,6 +354,11 @@ namespace Graduation.API.Controllers
         /// Update category
         /// </summary>
         [HttpPut("categories/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] UpdateCategoryDto dto)
         {
             try
@@ -373,6 +388,9 @@ namespace Graduation.API.Controllers
         /// Delete category (soft delete)
         /// </summary>
         [HttpDelete("categories/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> DeleteCategory(int id)
         {
             try

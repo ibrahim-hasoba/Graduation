@@ -22,6 +22,9 @@ namespace Graduation.API.Controllers
         /// Upload a single image
         /// </summary>
         [HttpPost("upload")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadImage([FromForm] ImageUploadRequest request)
         {
@@ -42,6 +45,9 @@ namespace Graduation.API.Controllers
         /// Upload multiple images
         /// </summary>
         [HttpPost("upload-multiple")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadMultipleImages([FromForm] MultipleImagesUploadRequest request)
         {
@@ -62,6 +68,9 @@ namespace Graduation.API.Controllers
         /// Upload product images
         /// </summary>
         [HttpPost("upload-product")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadProductImages([FromForm] ProductImagesUploadRequest request)
         {
@@ -85,6 +94,9 @@ namespace Graduation.API.Controllers
         /// Upload vendor logo
         /// </summary>
         [HttpPost("upload-logo")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadVendorLogo([FromForm] SingleFileUploadRequest request)
         {
@@ -105,6 +117,9 @@ namespace Graduation.API.Controllers
         /// Upload vendor banner
         /// </summary>
         [HttpPost("upload-banner")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Consumes("multipart/form-data")]
         public async Task<IActionResult> UploadVendorBanner([FromForm] SingleFileUploadRequest request)
         {
@@ -125,6 +140,10 @@ namespace Graduation.API.Controllers
         /// Delete an image
         /// </summary>
         [HttpDelete]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> DeleteImage([FromQuery] string imageUrl)
         {
             if (string.IsNullOrEmpty(imageUrl))

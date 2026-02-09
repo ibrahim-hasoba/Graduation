@@ -31,6 +31,7 @@ namespace Graduation.API.Controllers
         /// Search and filter products (public)
         /// </summary>
         [HttpGet("search")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> SearchProducts([FromQuery] ProductSearchDto searchDto)
         {
             var result = await _productService.SearchProductsAsync(searchDto);
@@ -41,6 +42,7 @@ namespace Graduation.API.Controllers
         /// Get all products (public)
         /// </summary>
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllProducts(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20)
@@ -59,6 +61,7 @@ namespace Graduation.API.Controllers
         /// Get featured products (public)
         /// </summary>
         [HttpGet("featured")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetFeaturedProducts([FromQuery] int count = 10)
         {
             var products = await _productService.GetFeaturedProductsAsync(count);
@@ -69,6 +72,8 @@ namespace Graduation.API.Controllers
         /// Get product by ID (public)
         /// </summary>
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetProductById(int id)
         {
             // Increment view count
@@ -82,6 +87,7 @@ namespace Graduation.API.Controllers
         /// Get products by vendor (public)
         /// </summary>
         [HttpGet("vendor/{vendorId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetVendorProducts(int vendorId)
         {
             var products = await _productService.GetVendorProductsAsync(vendorId);
@@ -93,6 +99,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("my-products")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMyProducts()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -113,6 +122,10 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPost]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -142,6 +155,11 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPut("{id}")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -167,6 +185,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteProduct(int id)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -191,6 +212,10 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPatch("{id}/stock")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateStock(int id, [FromBody] UpdateStockDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;

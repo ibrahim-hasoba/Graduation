@@ -23,6 +23,8 @@ namespace Graduation.API.Controllers
         /// Get user's shopping cart
         /// </summary>
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetCart()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -37,6 +39,8 @@ namespace Graduation.API.Controllers
         /// Get cart items count
         /// </summary>
         [HttpGet("count")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetCartCount()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -51,6 +55,9 @@ namespace Graduation.API.Controllers
         /// Add item to cart
         /// </summary>
         [HttpPost("items")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> AddToCart([FromBody] AddToCartDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -70,6 +77,10 @@ namespace Graduation.API.Controllers
         /// Update cart item quantity
         /// </summary>
         [HttpPut("items/{cartItemId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateCartItem(int cartItemId, [FromBody] UpdateCartItemDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -89,6 +100,9 @@ namespace Graduation.API.Controllers
         /// Remove item from cart
         /// </summary>
         [HttpDelete("items/{cartItemId}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RemoveFromCart(int cartItemId)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -107,6 +121,8 @@ namespace Graduation.API.Controllers
         /// Clear entire cart
         /// </summary>
         [HttpDelete]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ClearCart()
         {
             var userId = User.FindFirst("userId")?.Value;

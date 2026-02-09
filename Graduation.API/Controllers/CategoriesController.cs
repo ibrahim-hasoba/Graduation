@@ -22,6 +22,7 @@ namespace Graduation.API.Controllers
         /// Get all categories (public)
         /// </summary>
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllCategories()
         {
             var categories = await _context.Categories
@@ -54,6 +55,8 @@ namespace Graduation.API.Controllers
         /// Get category by ID with products (public)
         /// </summary>
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetCategoryById(int id)
         {
             var category = await _context.Categories
@@ -89,6 +92,7 @@ namespace Graduation.API.Controllers
         /// Get products by category (public)
         /// </summary>
         [HttpGet("{id}/products")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetCategoryProducts(
             int id,
             [FromQuery] int pageNumber = 1,
@@ -149,6 +153,7 @@ namespace Graduation.API.Controllers
         /// Returns hierarchy path like "Electronics → Mobile → iPhone"
         /// </summary>
         [HttpGet("leaf-categories")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetLeafCategories()
         {
             var leafCategories = await _context.Categories

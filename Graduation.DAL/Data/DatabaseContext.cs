@@ -21,6 +21,7 @@ namespace Graduation.DAL.Data
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Wishlist> Wishlists { get; set; }
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<EmailOtp> EmailOtps { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -317,6 +318,16 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(n => n.CreatedAt);
                 entity.HasIndex(n => new { n.UserId, n.IsRead });
                 entity.HasIndex(n => new { n.UserId, n.CreatedAt });
+            });
+
+            // Email OTP Configuration
+            builder.Entity<EmailOtp>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(256);
+                entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
+                entity.HasIndex(e => new { e.Email, e.Purpose });
+                entity.HasIndex(e => e.ExpiresAt);
             });
         }
     }

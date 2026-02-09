@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Reflection;
+using System.IO;
 using Serilog;
 using System.Text;
 using System.Text.Json;
@@ -100,6 +102,18 @@ namespace Graduation.API
                         Type = "string",
                         Format = "binary"
                     });
+
+                    // Include XML comments (if generated)
+                    try
+                    {
+                        var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+                        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+                        if (File.Exists(xmlPath))
+                        {
+                            options.IncludeXmlComments(xmlPath);
+                        }
+                    }
+                    catch { }
                 });
 
                 // Database Configuration
@@ -164,6 +178,7 @@ namespace Graduation.API
                 builder.Services.AddScoped<IImageService, ImageService>();
                 builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
                 builder.Services.AddScoped<ICategoryService, CategoryService>();
+                builder.Services.AddScoped<IOtpService, OtpService>();
                 builder.Services.AddScoped<IWishlistService, WishlistService>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
@@ -174,6 +189,13 @@ namespace Graduation.API
                         opt.Window = TimeSpan.FromSeconds(10);
                         opt.PermitLimit = 5; // 5 requests per 10 seconds
                         opt.QueueLimit = 2;
+                    });
+                    // OTP-specific limiter (coarse IP-level protection)
+                    options.AddFixedWindowLimiter("otp", opt =>
+                    {
+                        opt.Window = TimeSpan.FromMinutes(60);
+                        opt.PermitLimit = 30; // allow some traffic but rely on per-email checks too
+                        opt.QueueLimit = 0;
                     });
                 });
                 builder.Services.AddHostedService<TokenCleanupService>();
@@ -241,7 +263,7 @@ namespace Graduation.API
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
                     {
-                        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Graduation.API v1");
+                        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
                     });
                 }
                 app.UseHttpsRedirection();

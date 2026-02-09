@@ -3,6 +3,7 @@ using Graduation.API.DTOs.Vendor;
 using Graduation.API.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -23,6 +24,7 @@ namespace Graduation.API.Controllers
         /// Get all vendors (public access)
         /// </summary>
         [HttpGet]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllVendors([FromQuery] bool? isApproved = true)
         {
             var vendors = await _vendorService.GetAllVendorsAsync(isApproved);
@@ -33,6 +35,8 @@ namespace Graduation.API.Controllers
         /// Get vendor by ID (public access)
         /// </summary>
         [HttpGet("{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetVendorById(int id)
         {
             var vendor = await _vendorService.GetVendorByIdAsync(id);
@@ -44,6 +48,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("my-store")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMyVendorProfile()
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -63,6 +70,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPost("register")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RegisterVendor([FromBody] VendorRegisterDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -84,6 +94,10 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPut("{id}")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateVendor(int id, [FromBody] VendorUpdateDto dto)
         {
             var userId = User.FindFirst("userId")?.Value;
@@ -99,6 +113,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPost("{id}/approve")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ApproveVendor(int id, [FromBody] VendorApprovalDto dto)
         {
             var vendor = await _vendorService.ApproveVendorAsync(id, dto.IsApproved, dto.RejectionReason);
@@ -112,6 +129,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpPatch("{id}/toggle-status")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ToggleVendorStatus(int id)
         {
             var vendor = await _vendorService.ToggleVendorStatusAsync(id);
@@ -123,6 +143,9 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteVendor(int id)
         {
             await _vendorService.DeleteVendorAsync(id);
@@ -134,6 +157,8 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("pending")]
         [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPendingVendors()
         {
             var vendors = await _vendorService.GetAllVendorsAsync(isApproved: false);

@@ -27,14 +27,21 @@ namespace Graduation.BLL.Services.Implementations
       if (string.IsNullOrWhiteSpace(dto.NameEn) || string.IsNullOrWhiteSpace(dto.NameAr))
         throw new BadRequestException("Category names in both English and Arabic are required");
 
-      // Check if parent category exists (if provided)
+      // Check if parent category exists (if provided). Treat non-positive values as "no parent".
       if (dto.ParentCategoryId.HasValue)
       {
-        var parentExists = await _context.Categories
-            .AnyAsync(c => c.Id == dto.ParentCategoryId && c.IsActive);
+        if (dto.ParentCategoryId.Value <= 0)
+        {
+          dto.ParentCategoryId = null;
+        }
+        else
+        {
+          var parentExists = await _context.Categories
+              .AnyAsync(c => c.Id == dto.ParentCategoryId && c.IsActive);
 
-        if (!parentExists)
-          throw new NotFoundException("Parent category not found");
+          if (!parentExists)
+            throw new NotFoundException("Parent category not found");
+        }
       }
 
       // Check for duplicate name
@@ -111,21 +118,27 @@ namespace Graduation.BLL.Services.Implementations
       if (dto.ImageUrl != null)
         category.ImageUrl = dto.ImageUrl;
 
-      // Handle parent category change
-      if (dto.ParentCategoryId.HasValue && dto.ParentCategoryId != category.ParentCategoryId)
+      // Handle parent category change. Treat non-positive values as null (unset parent).
+      int? newParentId = dto.ParentCategoryId.HasValue && dto.ParentCategoryId.Value > 0
+          ? dto.ParentCategoryId
+          : null;
+
+      if (newParentId != category.ParentCategoryId)
       {
-        // Validate parent category exists
-        var parentExists = await _context.Categories
-            .AnyAsync(c => c.Id == dto.ParentCategoryId && c.IsActive);
+        if (newParentId.HasValue)
+        {
+          var parentExists = await _context.Categories
+              .AnyAsync(c => c.Id == newParentId && c.IsActive);
 
-        if (!parentExists)
-          throw new NotFoundException("Parent category not found");
+          if (!parentExists)
+            throw new NotFoundException("Parent category not found");
 
-        // Prevent circular reference
-        if (await HasCircularReference(id, dto.ParentCategoryId.Value))
-          throw new BusinessException("Cannot set this as parent category - it would create a circular reference");
+          // Prevent circular reference
+          if (await HasCircularReference(id, newParentId.Value))
+            throw new BusinessException("Cannot set this as parent category - it would create a circular reference");
+        }
 
-        category.ParentCategoryId = dto.ParentCategoryId;
+        category.ParentCategoryId = newParentId;
       }
 
       await _context.SaveChangesAsync();
@@ -193,7 +206,7 @@ namespace Graduation.BLL.Services.Implementations
 
     public async Task<bool> ValidateParentCategoryAsync(int? parentCategoryId)
     {
-      if (!parentCategoryId.HasValue)
+      if (!parentCategoryId.HasValue || parentCategoryId.Value <= 0)
         return true;
 
       return await _context.Categories

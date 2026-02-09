@@ -23,6 +23,9 @@ namespace Graduation.API.Controllers
     /// Get user's notifications
     /// </summary>
     [HttpGet]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetNotifications([FromQuery] bool unreadOnly = false)
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -44,6 +47,9 @@ namespace Graduation.API.Controllers
     /// Get unread notification count
     /// </summary>
     [HttpGet("unread/count")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetUnreadCount()
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -65,6 +71,10 @@ namespace Graduation.API.Controllers
     /// Mark notification as read
     /// </summary>
     [HttpPatch("{notificationId}/read")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MarkAsRead(int notificationId)
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -90,6 +100,9 @@ namespace Graduation.API.Controllers
     /// Mark all notifications as read
     /// </summary>
     [HttpPatch("read-all")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MarkAllAsRead()
     {
       var userId = User.FindFirst("userId")?.Value;
@@ -111,6 +124,10 @@ namespace Graduation.API.Controllers
     /// Delete notification
     /// </summary>
     [HttpDelete("{notificationId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> DeleteNotification(int notificationId)
     {
       var userId = User.FindFirst("userId")?.Value;

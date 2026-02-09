@@ -3,6 +3,7 @@
     public interface IEmailService
     {
         Task SendEmailVerificationAsync(string email, string firstName, string verificationUrl);
+        Task SendEmailOtpAsync(string email, string firstName, string code);
         Task SendVendorApprovalEmailAsync(string email, string storeName, bool isApproved, string? reason = null);
         Task SendPasswordResetEmailAsync(string email, string firstName, string resetUrl);
         Task SendOrderConfirmationEmailAsync(string email, string orderNumber, decimal total);
