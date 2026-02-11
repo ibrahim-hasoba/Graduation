@@ -67,7 +67,7 @@ namespace Graduation.API
 
                         Title = "Heka",
                         Version = "v1",
-                        Description = "E-commerce API for Egyptian marketplace with vendor support"
+                        Description = "Heka API"
                     });
 
                     // Add JWT Authentication to Swagger
@@ -258,7 +258,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
