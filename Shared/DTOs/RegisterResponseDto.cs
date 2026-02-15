@@ -1,4 +1,4 @@
-﻿namespace Auth.DTOs
+﻿namespace Shared.DTOs
 {
     public class RegisterResponseDto
     {

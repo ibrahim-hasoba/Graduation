@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Graduation.API.Errors
+namespace Shared.Errors
 {
     public class ApiResponse
     {

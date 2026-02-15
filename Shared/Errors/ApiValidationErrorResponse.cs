@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 
-namespace Graduation.API.Errors
-{
+namespace Shared.Errors 
+{ 
     public class ApiValidationErrorResponse:ApiResponse
     {
         public IEnumerable<string> Errors { get; set; }

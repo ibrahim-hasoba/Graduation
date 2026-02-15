@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace Auth.DTOs
+namespace Shared.DTOs
 {
     public class UserForRegisterDto
     {

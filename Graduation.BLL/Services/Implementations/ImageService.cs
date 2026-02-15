@@ -1,4 +1,4 @@
-﻿using Graduation.API.Errors;
+﻿using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;

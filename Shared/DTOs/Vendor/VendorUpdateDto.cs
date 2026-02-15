@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using Graduation.DAL.Entities;
 
-namespace Graduation.API.DTOs.Vendor
+namespace Shared.DTOs.Vendor
 {
     public class VendorUpdateDto
     {

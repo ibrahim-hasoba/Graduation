@@ -1,4 +1,4 @@
-﻿namespace Graduation.API.DTOs.Vendor
+﻿namespace Shared.DTOs.Vendor
 {
     public class VendorApprovalDto
     {

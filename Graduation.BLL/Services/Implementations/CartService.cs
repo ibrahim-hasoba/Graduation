@@ -1,4 +1,4 @@
-﻿using Graduation.API.Errors;
+﻿using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;

@@ -27,9 +27,6 @@
 		<PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
 		<PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
-
-		<!-- Security -->
-		<PackageReference Include="HtmlSanitizer" Version="8.1.870" />
 		
 	</ItemGroup>
 

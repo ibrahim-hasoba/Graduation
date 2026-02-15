@@ -1,4 +1,4 @@
-﻿using Graduation.API.DTOs.Vendor;
+﻿using Shared.DTOs.Vendor;
 
 namespace Graduation.BLL.Services.Interfaces
 {

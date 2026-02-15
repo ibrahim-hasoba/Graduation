@@ -1,5 +1,5 @@
-﻿using Graduation.API.DTOs.Vendor;
-using Graduation.API.Errors;
+﻿using Shared.DTOs.Vendor;
+using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;

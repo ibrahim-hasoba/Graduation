@@ -1,4 +1,4 @@
-﻿namespace Graduation.API.Errors
+﻿namespace Shared.Errors
 {
     public class BadRequestException : BusinessException
     {
