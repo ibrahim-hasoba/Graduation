@@ -65,6 +65,23 @@ namespace Graduation.API.Controllers
             if (existingUser != null)
                 throw new ConflictException("A user with this email already exists");
 
+            // FIXED BUG: OTP throttle checks must happen BEFORE user creation.
+            // Previously the user was saved to the DB and then a 429 was returned,
+            // leaving an orphaned unverified account that could never be re-registered.
+            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+            var recent = await _context.EmailOtps
+                .AnyAsync(e => e.Email == userDto.Email && e.CreatedAt >= oneMinuteAgo);
+
+            if (recent)
+                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
+
+            var lastHourCount = await _context.EmailOtps
+                .CountAsync(e => e.Email == userDto.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
+
+            if (lastHourCount >= 5)
+                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
+
+            // Only create the user after throttle checks pass
             var user = new AppUser
             {
                 FirstName = userDto.FirstName ?? string.Empty,
@@ -80,20 +97,6 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.AddToRoleAsync(user, "Customer");
-
-            // Per-email throttle: prevent frequent OTPs for same email
-            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
-            var recent = await _context.EmailOtps
-                .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
-
-            if (recent)
-                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
-
-            var lastHourCount = await _context.EmailOtps
-                .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
-
-            if (lastHourCount >= 5)
-                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
 
             await SendVerificationEmail(user);
 
@@ -131,7 +134,6 @@ namespace Graduation.API.Controllers
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
             if (user == null) throw new UnauthorizedException("Invalid credentials");
 
-            // Check for Account Lockout (Brute Force Protection)
             if (await _userManager.IsLockedOutAsync(user))
                 throw new BadRequestException("Account locked. Please try again later.");
 
@@ -148,34 +150,33 @@ namespace Graduation.API.Controllers
 
             return await GenerateAuthResponse(user);
         }
+
         public class GoogleLoginDto
         {
             public string IdToken { get; set; } = string.Empty;
         }
+
         [HttpPost("google-login")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
-            // 1. Verify token with Google
             var payload = await _googleAuthService.VerifyGoogleTokenAsync(dto.IdToken);
             if (payload == null)
                 throw new UnauthorizedException("Invalid Google token.");
 
-            // 2. Check if user exists in our DB
             var user = await _userManager.FindByEmailAsync(payload.Email);
 
             if (user == null)
             {
-                // 3. Register user if they don't exist
                 user = new AppUser
                 {
                     Email = payload.Email,
                     UserName = payload.Email,
                     FirstName = payload.GivenName,
                     LastName = payload.FamilyName,
-                    EmailConfirmed = true, // Google already verified this email
+                    EmailConfirmed = true,
                     CreatedAt = DateTime.UtcNow
                 };
 
@@ -186,7 +187,6 @@ namespace Graduation.API.Controllers
                 await _userManager.AddToRoleAsync(user, "Customer");
             }
 
-            // 4. Generate our local JWT and Refresh Token
             return await GenerateAuthResponse(user);
         }
 
@@ -215,7 +215,6 @@ namespace Graduation.API.Controllers
             var user = await _userManager.FindByIdAsync(oldToken.UserId);
             if (user == null) throw new UnauthorizedException("User no longer exists");
 
-            // Use Transaction to ensure rotation is Atomic
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -235,6 +234,7 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException("Token refresh failed");
             }
         }
+
         #region Password Recovery
 
         [HttpPost("forgot-password")]
@@ -243,13 +243,11 @@ namespace Graduation.API.Controllers
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null)
-                // For security, don't reveal if the user exists. Just return "Check your email".
                 return Ok(new { success = true, message = "If your email is in our system, you will receive a reset link." });
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
-            // Build the reset URL (pointing to your Frontend Reset Page)
             var baseUrl = _configuration["AppSettings:ClientUrl"];
             var url = $"{baseUrl}?email={user.Email}&token={encodedToken}";
 
@@ -258,20 +256,6 @@ namespace Graduation.API.Controllers
             return Ok(new { success = true, message = "Reset link sent to your email." });
         }
 
-        /*
-        [HttpGet("reset-password-test")]
-        public IActionResult ResetPasswordTest(
-                    [FromQuery] string email,
-                    [FromQuery] string token)
-        {
-            return Ok(new
-            {
-                Email = email,
-                Token = token,
-                Message = "Reset link opened successfully"
-            });
-        }
-        */
         #region Social & Utility
 
         [HttpPost("resend-verification-email")]
@@ -283,7 +267,6 @@ namespace Graduation.API.Controllers
             if (user == null || user.EmailConfirmed)
                 return Ok(new { message = "Verification email sent if applicable." });
 
-            // Per-email throttle (same checks as registration)
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
@@ -297,9 +280,8 @@ namespace Graduation.API.Controllers
             if (lastHourCount >= 5)
                 return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
 
-            // Generate OTP and send
-            var code = await _otpService.GenerateOtpAsync(user.Email);
-            await _emailService.SendEmailOtpAsync(user.Email, user.FirstName, code);
+            var code = await _otpService.GenerateOtpAsync(user.Email!);
+            await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
 
             return Ok(new { success = true, message = "A new verification code has been sent." });
         }
@@ -354,7 +336,26 @@ namespace Graduation.API.Controllers
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
             var user = await _userManager.FindByIdAsync(userId!);
 
-            return Ok(new { success = true, data = user });
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            // FIXED BUG: Previously returned the raw AppUser entity which exposes
+            // PasswordHash, SecurityStamp, ConcurrencyStamp, LockoutInfo etc.
+            // Now returns only safe, non-sensitive profile fields.
+            return Ok(new
+            {
+                success = true,
+                data = new
+                {
+                    id = user.Id,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    email = user.Email,
+                    emailConfirmed = user.EmailConfirmed,
+                    phoneNumber = user.PhoneNumber,
+                    createdAt = user.CreatedAt
+                }
+            });
         }
 
         [HttpPost("change-password")]
@@ -371,7 +372,6 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to change password.");
 
-            // Force logout from all other devices for security
             await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
 
             return Ok(new { success = true, message = "Password updated. Other sessions revoked." });
@@ -407,7 +407,6 @@ namespace Graduation.API.Controllers
 
         private async Task SendVerificationEmail(AppUser user)
         {
-            // Generate OTP and send via email
             var code = await _otpService.GenerateOtpAsync(user.Email!);
             await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
         }
@@ -416,7 +415,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> VerifyEmailOtp([FromBody] Auth.DTOs.VerifyEmailOtpDto dto)
+        public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
         {
             if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Code))
                 throw new BadRequestException("Email and code are required");

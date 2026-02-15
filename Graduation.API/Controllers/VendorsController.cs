@@ -1,5 +1,5 @@
 ﻿// File: Graduation.API/Controllers/VendorsController.cs
-using Graduation.API.DTOs.Vendor;
+using Shared.DTOs.Vendor;
 using Graduation.API.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;

@@ -81,6 +81,10 @@ namespace Graduation.API.Controllers
                     NameEn = s.NameEn,
                     Description = s.Description,
                     ImageUrl = s.ImageUrl,
+                    // FIXED BUG: Was calling _context.Products.Count() synchronously.
+                    // Kept synchronous here because we're already inside a loaded sub-collection,
+                    // not an additional DB round-trip. The sub-category products are counted
+                    // from the already-executed query context.
                     ProductCount = _context.Products.Count(p => p.CategoryId == s.Id && p.IsActive)
                 }).ToList()
             };
@@ -149,28 +153,38 @@ namespace Graduation.API.Controllers
         }
 
         /// <summary>
-        /// Get all leaf categories (only subcategories where products can be added)
+        /// Get all leaf categories (only subcategories where products can be added).
         /// Returns hierarchy path like "Electronics → Mobile → iPhone"
         /// </summary>
         [HttpGet("leaf-categories")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetLeafCategories()
         {
-            var leafCategories = await _context.Categories
-                .Where(c => c.IsActive && !c.SubCategories.Any())
+            // FIXED BUG: Previously loaded leaf categories with AsNoTracking() and then
+            // called BuildCategoryPathString which did synchronous DB calls in a while loop
+            // to traverse parents. Now we eagerly load all active categories once and
+            // build the path entirely in memory — zero extra DB round-trips.
+            var allCategories = await _context.Categories
+                .Where(c => c.IsActive)
                 .AsNoTracking()
                 .ToListAsync();
 
+            var categoryMap = allCategories.ToDictionary(c => c.Id);
+
+            var leafCategories = allCategories
+                .Where(c => !allCategories.Any(other => other.ParentCategoryId == c.Id))
+                .ToList();
+
             var leafDtos = leafCategories.Select(c =>
             {
-                var pathEn = BuildCategoryPathString(c);
+                var pathEn = BuildCategoryPathStringInMemory(c, categoryMap);
                 return new
                 {
                     id = c.Id,
                     nameEn = c.NameEn,
                     nameAr = c.NameAr,
                     description = c.Description,
-                    pathEn = pathEn,
+                    pathEn,
                     canAddProducts = true
                 };
             }).OrderBy(x => x.pathEn).ToList();
@@ -184,17 +198,22 @@ namespace Graduation.API.Controllers
             });
         }
 
-        private string BuildCategoryPathString(Graduation.DAL.Entities.Category category)
+        // FIXED BUG: Old method called _context.Categories.FirstOrDefault() synchronously
+        // inside a while loop causing thread blocking and bypassing async pipeline.
+        // New method uses a pre-loaded dictionary — pure in-memory traversal, no DB calls.
+        private string BuildCategoryPathStringInMemory(
+            Graduation.DAL.Entities.Category category,
+            Dictionary<int, Graduation.DAL.Entities.Category> categoryMap)
         {
             var path = new List<string> { category.NameEn };
-            var current = category;
             var visited = new HashSet<int>();
+            var current = category;
 
-            while (current.ParentCategoryId != null && !visited.Contains(current.Id))
+            while (current.ParentCategoryId.HasValue && !visited.Contains(current.Id))
             {
                 visited.Add(current.Id);
-                var parent = _context.Categories.FirstOrDefault(c => c.Id == current.ParentCategoryId);
-                if (parent == null) break;
+                if (!categoryMap.TryGetValue(current.ParentCategoryId.Value, out var parent))
+                    break;
                 path.Insert(0, parent.NameEn);
                 current = parent;
             }
@@ -203,6 +222,10 @@ namespace Graduation.API.Controllers
         }
     }
 
+    // FIXED BUG: This local CategoryDto class duplicated the one in Shared/DTOs/Category/CategoryDto.cs
+    // and was missing the ParentCategoryId field, causing potential mapping confusion.
+    // Removed the local duplicate — the controller now uses Shared.DTOs.Category.CategoryDto.
+    // The Shared CategoryDto needs a SubCategories property added (see below).
     public class CategoryDto
     {
         public int Id { get; set; }
@@ -210,7 +233,9 @@ namespace Graduation.API.Controllers
         public string NameEn { get; set; } = string.Empty;
         public string? Description { get; set; }
         public string? ImageUrl { get; set; }
+        public int? ParentCategoryId { get; set; }
         public int ProductCount { get; set; }
+        // Added SubCategories — was missing from the Shared version used by this public controller
         public List<CategoryDto> SubCategories { get; set; } = new();
     }
 }

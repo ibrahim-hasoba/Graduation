@@ -112,6 +112,8 @@ namespace Graduation.API.Controllers
 
         /// <summary>
         /// Get pending reviews (admin only)
+        /// FIXED BUG: Was always returning an empty list unconditionally.
+        /// Now calls the service to fetch unapproved reviews from the database.
         /// </summary>
         [HttpGet("pending")]
         [Authorize(Roles = "Admin")]
@@ -119,9 +121,11 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPendingReviews()
         {
-            // This would need to be implemented in the service
-            // For now, return empty list or implement later
-            return Ok(new { success = true, data = new List<ReviewDto>() });
+            var reviews = await _reviewService.GetProductReviewsAsync(
+                productId: 0,   // 0 signals "all products" — see updated IReviewService below
+                approvedOnly: false);
+
+            return Ok(new { success = true, data = reviews });
         }
     }
 }

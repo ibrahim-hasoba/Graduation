@@ -3,9 +3,6 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Admin;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -43,7 +40,11 @@ namespace Graduation.BLL.Services.Implementations
                     .Where(o => o.Status == OrderStatus.Delivered && o.OrderDate >= firstDayOfMonth)
                     .SumAsync(o => o.TotalAmount),
                 TotalCategories = await _context.Categories.CountAsync(c => c.IsActive),
-                NewUsersToday = await _context.Users.CountAsync(u => u.LockoutEnd == null), // Approximation
+
+                // FIXED BUG: Was counting users where LockoutEnd == null (just unlocked users).
+                // Now correctly counts users registered today using the CreatedAt field.
+                NewUsersToday = await _context.Users.CountAsync(u => u.CreatedAt >= today),
+
                 NewOrdersToday = await _context.Orders.CountAsync(o => o.OrderDate >= today)
             };
 
@@ -54,7 +55,6 @@ namespace Graduation.BLL.Services.Implementations
         {
             var activities = new List<RecentActivityDto>();
 
-            // Recent orders
             var recentOrders = await _context.Orders
                 .Include(o => o.User)
                 .OrderByDescending(o => o.OrderDate)
@@ -70,7 +70,6 @@ namespace Graduation.BLL.Services.Implementations
 
             activities.AddRange(recentOrders);
 
-            // Recent vendor registrations
             var recentVendors = await _context.Vendors
                 .OrderByDescending(v => v.CreatedAt)
                 .Take(count / 2)
@@ -153,7 +152,6 @@ namespace Graduation.BLL.Services.Implementations
             var last30Days = today.AddDays(-29);
             var last12Months = today.AddMonths(-11);
 
-            // Daily sales for last 30 days
             var dailySales = await _context.Orders
                 .Where(o => o.OrderDate >= last30Days && o.Status == OrderStatus.Delivered)
                 .GroupBy(o => o.OrderDate.Date)
@@ -166,7 +164,6 @@ namespace Graduation.BLL.Services.Implementations
                 .OrderBy(x => x.Label)
                 .ToListAsync();
 
-            // Monthly sales for last 12 months
             var monthlySales = await _context.Orders
                 .Where(o => o.OrderDate >= last12Months && o.Status == OrderStatus.Delivered)
                 .GroupBy(o => new { o.OrderDate.Year, o.OrderDate.Month })
@@ -191,7 +188,6 @@ namespace Graduation.BLL.Services.Implementations
             var totalUsers = await _context.Users.CountAsync();
             var verifiedUsers = await _context.Users.CountAsync(u => u.EmailConfirmed);
 
-            // Get role counts
             var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
             var vendorRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Vendor");
             var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
@@ -214,7 +210,7 @@ namespace Graduation.BLL.Services.Implementations
                 AdminsCount = adminsCount,
                 VerifiedUsers = verifiedUsers,
                 UnverifiedUsers = totalUsers - verifiedUsers,
-                MonthlyGrowth = new List<UserGrowthDto>() // Can be implemented later
+                MonthlyGrowth = new List<UserGrowthDto>()
             };
         }
     }
