@@ -53,7 +53,6 @@ namespace Graduation.API
                 // Use Serilog
                 builder.Host.UseSerilog();
 
-
                 // Add services
                 
                 builder.Services.AddControllers()
@@ -197,7 +196,6 @@ namespace Graduation.API
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
                 builder.Services.AddAuthorization();
-
                 builder.Services.AddRateLimiter(options =>
                 {
                     options.AddFixedWindowLimiter("fixed", opt =>

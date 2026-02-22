@@ -109,7 +109,6 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            // Get vendor profile
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
                 return NotFound(new ApiResponse(404, "You don't have a vendor account"));
@@ -133,7 +132,6 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            // Get vendor profile
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to create products");
@@ -205,11 +203,14 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateStock(int id, [FromBody] UpdateStockDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            // FIXED BUG: Was using User.FindFirst("userId")?.Value which only checks the
+            // custom "userId" claim and misses the standard ClaimTypes.NameIdentifier claim,
+            // causing 401 for users whose JWT was issued with the standard claim type.
+            // Now uses the GetUserId() extension which checks both claim types consistently.
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            // Get vendor profile
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to update product stock");

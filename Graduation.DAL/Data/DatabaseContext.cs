@@ -1,6 +1,7 @@
 ﻿using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection.Emit;
 
 namespace Graduation.DAL.Data
 {
@@ -22,6 +23,7 @@ namespace Graduation.DAL.Data
         public DbSet<Wishlist> Wishlists { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<EmailOtp> EmailOtps { get; set; }
+        public DbSet<UserAddress> UserAddresses { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -128,7 +130,34 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(pi => new { pi.ProductId, pi.IsPrimary });
                 entity.HasIndex(pi => new { pi.ProductId, pi.DisplayOrder });
             });
+            builder.Entity<UserAddress>(entity =>
+            {
+                entity.HasKey(e => e.Id);
 
+                entity.Property(e => e.Nickname)
+                      .IsRequired()
+                      .HasMaxLength(50);
+
+                entity.Property(e => e.FullAddress)
+                      .IsRequired()
+                      .HasMaxLength(500);
+
+                entity.Property(e => e.Latitude)
+                      .HasColumnType("float");
+
+                entity.Property(e => e.Longitude)
+                      .HasColumnType("float");
+
+                // Unique filtered index: only one IsDefault=true per user
+                entity.HasIndex(e => new { e.UserId, e.IsDefault })
+                      .HasFilter("[IsDefault] = 1")
+                      .IsUnique();
+
+                entity.HasOne(e => e.User)
+                      .WithMany()
+                      .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
             // Product Review Configuration
             builder.Entity<ProductReview>(entity =>
             {

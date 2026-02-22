@@ -94,8 +94,19 @@ namespace Graduation.BLL.Services.Implementations
         _logger.LogInformation("Notification marked as read: NotificationId={NotificationId}", notificationId);
       }
     }
+    public async Task<int> BulkDeleteAsync(string userId, List<int> ids)
+    {
+        IQueryable<Notification> query = _context.Notifications
+            .Where(n => n.UserId == userId);
 
-    public async Task MarkAllAsReadAsync(string userId)
+        // Empty ids = delete ALL notifications for this user
+        if (ids.Any())
+            query = query.Where(n => ids.Contains(n.Id));
+
+        return await query.ExecuteDeleteAsync();
+    }
+
+        public async Task MarkAllAsReadAsync(string userId)
     {
       var notifications = await _context.Notifications
           .Where(n => n.UserId == userId && !n.IsRead)

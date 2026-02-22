@@ -11,5 +11,9 @@ namespace Graduation.BLL.Services.Interfaces
     Task MarkAllAsReadAsync(string userId);
     Task DeleteNotificationAsync(string userId, int notificationId);
     Task ClearOldNotificationsAsync(int daysOld = 30);
-  }
+    Task<int> BulkDeleteAsync(string userId, List<int> ids);
+    
+
+
+    }
 }

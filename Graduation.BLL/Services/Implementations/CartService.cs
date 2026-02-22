@@ -168,7 +168,7 @@ namespace Graduation.BLL.Services.Implementations
                 ProductId = cartItem.ProductId,
                 ProductNameAr = cartItem.Product.NameAr,
                 ProductNameEn = cartItem.Product.NameEn,
-                ProductImage = primaryImage,
+                ProductImage = primaryImage,    
                 Price = cartItem.Product.Price,
                 DiscountPrice = cartItem.Product.DiscountPrice,
                 UnitPrice = unitPrice,

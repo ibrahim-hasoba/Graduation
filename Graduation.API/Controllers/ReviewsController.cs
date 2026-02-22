@@ -76,7 +76,11 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteReview(int reviewId)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            // FIXED BUG: Was using User.FindFirst("userId")?.Value which only checks the
+            // custom "userId" claim and misses the standard ClaimTypes.NameIdentifier claim,
+            // causing 401 for users whose JWT was issued with the standard claim type.
+            // Now uses the GetUserId() extension which checks both claim types consistently.
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -118,7 +122,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetPendingReviews()
         {
             var reviews = await _reviewService.GetProductReviewsAsync(
-                productId: 0,   // 0 signals "all products" — see updated IReviewService below
+                productId: 0,   // 0 signals "all products" — see IReviewService
                 approvedOnly: false);
 
             return Ok(new Errors.ApiResult(data: reviews));
