@@ -59,6 +59,8 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [Graduation.API.Swagger.Attributes.SwaggerRequestExampleAttribute(typeof(Graduation.API.Swagger.Examples.UserForRegisterExample))]
+        [Graduation.API.Swagger.Attributes.SwaggerResponseExampleAttribute("201", typeof(Graduation.API.Swagger.Examples.UserForRegisterExample))]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
             var existingUser = await _userManager.FindByEmailAsync(userDto.Email!);
@@ -129,6 +131,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [Graduation.API.Swagger.Attributes.SwaggerRequestExampleAttribute(typeof(Graduation.API.Swagger.Examples.UserForLoginExample))]
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);

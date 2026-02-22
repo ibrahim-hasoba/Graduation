@@ -19,6 +19,7 @@ using Serilog;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FluentValidation;
 using System.Threading.RateLimiting;
 using Graduation.API.Errors;
 
@@ -52,12 +53,16 @@ namespace Graduation.API
                 // Use Serilog
                 builder.Host.UseSerilog();
 
+
                 // Add services
-                builder.Services.AddControllers().AddJsonOptions(options =>
+                
+                builder.Services.AddControllers()
+                .AddJsonOptions(options =>
                 {
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
                 });
+                
                 builder.Services.AddEndpointsApiExplorer();
 
                 // Configure Swagger - .NET 8 compatible version
@@ -113,6 +118,14 @@ namespace Graduation.API
                         {
                             options.IncludeXmlComments(xmlPath);
                         }
+                    }
+                    catch { }
+
+                    // Add a global operation filter to document ApiResult/ApiResponse shapes
+                    try
+                    {
+                        options.OperationFilter<Graduation.API.Swagger.ApiResponseOperationFilter>();
+                        options.OperationFilter<Graduation.API.Swagger.Filters.ExampleOperationFilter>();
                     }
                     catch { }
                 });
@@ -183,6 +196,8 @@ namespace Graduation.API
                 builder.Services.AddScoped<IWishlistService, WishlistService>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
+                builder.Services.AddAuthorization();
+
                 builder.Services.AddRateLimiter(options =>
                 {
                     options.AddFixedWindowLimiter("fixed", opt =>
@@ -252,6 +267,18 @@ namespace Graduation.API
                     };
                 });
 
+                // Register FluentValidation validators from this assembly (reflection-based to avoid extension method dependency)
+                var thisAssembly = Assembly.GetExecutingAssembly();
+                var validatorTypes = thisAssembly.GetTypes()
+                    .Where(t => !t.IsAbstract && t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(FluentValidation.IValidator<>)))
+                    .ToList();
+
+                foreach (var impl in validatorTypes)
+                {
+                    var iface = impl.GetInterfaces().First(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(FluentValidation.IValidator<>));
+                    builder.Services.AddTransient(iface, impl);
+                }
+
                 var app = builder.Build();
 
                 // Seed roles and admin user
@@ -275,7 +302,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
