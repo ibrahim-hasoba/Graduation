@@ -2,6 +2,7 @@ using Graduation.API.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Graduation.API.Extensions;
 using Shared.DTOs.Notification;
 using System.Security.Claims;
 
@@ -28,19 +29,12 @@ namespace Graduation.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetNotifications([FromQuery] bool unreadOnly = false)
     {
-      var userId = User.FindFirst("userId")?.Value;
+      var userId = User.GetUserId();
       if (string.IsNullOrEmpty(userId))
-        return Unauthorized(new { success = false, message = "User not authenticated" });
+        return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-      try
-      {
-        var notifications = await _notificationService.GetUserNotificationsAsync(userId, unreadOnly);
-        return Ok(new { success = true, count = notifications.Count, data = notifications });
-      }
-      catch (Exception ex)
-      {
-        return BadRequest(new { success = false, message = ex.Message });
-      }
+      var notifications = await _notificationService.GetUserNotificationsAsync(userId, unreadOnly);
+      return Ok(new Errors.ApiResult(data: notifications, count: notifications.Count));
     }
 
     /// <summary>
@@ -52,19 +46,12 @@ namespace Graduation.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetUnreadCount()
     {
-      var userId = User.FindFirst("userId")?.Value;
+      var userId = User.GetUserId();
       if (string.IsNullOrEmpty(userId))
-        return Unauthorized(new { success = false, message = "User not authenticated" });
+        return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-      try
-      {
-        var count = await _notificationService.GetUnreadCountAsync(userId);
-        return Ok(new { success = true, unreadCount = count });
-      }
-      catch (Exception ex)
-      {
-        return BadRequest(new { success = false, message = ex.Message });
-      }
+      var count = await _notificationService.GetUnreadCountAsync(userId);
+      return Ok(new Errors.ApiResult(data: new { unreadCount = count }));
     }
 
     /// <summary>
@@ -77,22 +64,18 @@ namespace Graduation.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MarkAsRead(int notificationId)
     {
-      var userId = User.FindFirst("userId")?.Value;
+      var userId = User.GetUserId();
       if (string.IsNullOrEmpty(userId))
-        return Unauthorized(new { success = false, message = "User not authenticated" });
+        return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
       try
       {
         await _notificationService.MarkAsReadAsync(userId, notificationId);
-        return Ok(new { success = true, message = "Notification marked as read" });
+        return Ok(new Errors.ApiResult(message: "Notification marked as read"));
       }
       catch (NotFoundException ex)
       {
-        return NotFound(new { success = false, message = ex.Message });
-      }
-      catch (Exception ex)
-      {
-        return BadRequest(new { success = false, message = ex.Message });
+        return NotFound(new ApiResponse(404, ex.Message));
       }
     }
 
@@ -105,19 +88,12 @@ namespace Graduation.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> MarkAllAsRead()
     {
-      var userId = User.FindFirst("userId")?.Value;
+      var userId = User.GetUserId();
       if (string.IsNullOrEmpty(userId))
-        return Unauthorized(new { success = false, message = "User not authenticated" });
+        return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-      try
-      {
-        await _notificationService.MarkAllAsReadAsync(userId);
-        return Ok(new { success = true, message = "All notifications marked as read" });
-      }
-      catch (Exception ex)
-      {
-        return BadRequest(new { success = false, message = ex.Message });
-      }
+      await _notificationService.MarkAllAsReadAsync(userId);
+      return Ok(new Errors.ApiResult(message: "All notifications marked as read"));
     }
 
     /// <summary>
@@ -130,22 +106,18 @@ namespace Graduation.API.Controllers
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> DeleteNotification(int notificationId)
     {
-      var userId = User.FindFirst("userId")?.Value;
+      var userId = User.GetUserId();
       if (string.IsNullOrEmpty(userId))
-        return Unauthorized(new { success = false, message = "User not authenticated" });
+        return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
       try
       {
         await _notificationService.DeleteNotificationAsync(userId, notificationId);
-        return Ok(new { success = true, message = "Notification deleted" });
+        return Ok(new Errors.ApiResult(message: "Notification deleted"));
       }
       catch (NotFoundException ex)
       {
-        return NotFound(new { success = false, message = ex.Message });
-      }
-      catch (Exception ex)
-      {
-        return BadRequest(new { success = false, message = ex.Message });
+        return NotFound(new ApiResponse(404, ex.Message));
       }
     }
   }

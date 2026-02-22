@@ -29,7 +29,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadImage([FromForm] ImageUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new { success = false, message = "No file provided" });
+                return BadRequest(new ApiResponse(400, "No file provided"));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, request.Folder ?? "general");
 
@@ -52,7 +52,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadMultipleImages([FromForm] MultipleImagesUploadRequest request)
         {
             if (request.Files == null || !request.Files.Any())
-                return BadRequest(new { success = false, message = "No files provided" });
+                return BadRequest(new ApiResponse(400, "No files provided"));
 
             var imageUrls = await _imageService.UploadImagesAsync(request.Files, request.Folder ?? "general");
 
@@ -75,10 +75,10 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadProductImages([FromForm] ProductImagesUploadRequest request)
         {
             if (request.Files == null || !request.Files.Any())
-                return BadRequest(new { success = false, message = "No files provided" });
+                return BadRequest(new ApiResponse(400, "No files provided"));
 
             if (request.Files.Count > 5)
-                return BadRequest(new { success = false, message = "Maximum 5 images allowed per product" });
+                return BadRequest(new ApiResponse(400, "Maximum 5 images allowed per product"));
 
             var imageUrls = await _imageService.UploadImagesAsync(request.Files, "products");
 
@@ -101,7 +101,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadVendorLogo([FromForm] SingleFileUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new { success = false, message = "No file provided" });
+                return BadRequest(new ApiResponse(400, "No file provided"));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, "vendors/logos");
 
@@ -124,7 +124,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadVendorBanner([FromForm] SingleFileUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new { success = false, message = "No file provided" });
+                return BadRequest(new ApiResponse(400, "No file provided"));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, "vendors/banners");
 
@@ -147,12 +147,12 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> DeleteImage([FromQuery] string imageUrl)
         {
             if (string.IsNullOrEmpty(imageUrl))
-                return BadRequest(new { success = false, message = "Image URL is required" });
+                return BadRequest(new ApiResponse(400, "Image URL is required"));
 
             var deleted = await _imageService.DeleteImageAsync(imageUrl);
 
             if (!deleted)
-                return NotFound(new { success = false, message = "Image not found" });
+                return NotFound(new ApiResponse(404, "Image not found"));
 
             return Ok(new
             {

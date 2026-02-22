@@ -1,5 +1,6 @@
 using Shared;
 using Graduation.API.Middlewares;
+using Graduation.API.HostedServices;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
@@ -199,6 +200,11 @@ namespace Graduation.API
                     });
                 });
                 builder.Services.AddHostedService<TokenCleanupService>();
+                builder.Services.AddHostedService<ClearOldNotificationsHostedService>();
+
+                // Background task queue + worker for reliable background jobs (email, etc.)
+                builder.Services.AddSingleton<Shared.BackgroundTasks.IBackgroundTaskQueue, Graduation.API.BackgroundTasks.BackgroundTaskQueue>();
+                builder.Services.AddHostedService<Graduation.API.HostedServices.BackgroundProcessingService>();
                 // CORS Configuration
                 //var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
                 //    ?? new[] { "http://localhost:3000", "http://localhost:4200" };
@@ -214,6 +220,17 @@ namespace Graduation.API
                               ;
                     });
                 });
+
+                // Health checks and readiness/liveness
+                builder.Services.AddHealthChecks()
+                    .AddCheck<Graduation.API.HealthChecks.DatabaseHealthCheck>("database");
+
+                // Register the DatabaseHealthCheck for DI
+                builder.Services.AddScoped<Graduation.API.HealthChecks.DatabaseHealthCheck>();
+
+                // Prometheus metrics (prometheus-net)
+                // Note: prometheus-net.AspNetCore package provides MapMetrics/UseHttpMetrics
+                // Ensure package is referenced in the project file.
 
                 // Model Validation Configuration
                 builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -258,7 +275,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -268,6 +285,42 @@ namespace Graduation.API
                 }
                 app.UseHttpsRedirection();
 
+                // Expose Prometheus metrics and collect HTTP metrics.
+                // Use reflection so the project does not require a hard reference to prometheus packages.
+                try
+                {
+                    var extType = Type.GetType("Prometheus.HttpMetricsMiddlewareExtensions, prometheus-net.AspNetCore")
+                                  ?? Type.GetType("Prometheus.HttpMetricsMiddlewareExtensions, prometheus-net")
+                                  ?? Type.GetType("Prometheus.HttpMetricsExtensions, prometheus-net.AspNetCore");
+
+                    if (extType != null)
+                    {
+                        // Try to call UseHttpMetrics(this IApplicationBuilder app)
+                        var useMethod = extType.GetMethod("UseHttpMetrics", BindingFlags.Public | BindingFlags.Static);
+                        if (useMethod != null)
+                        {
+                            try
+                            {
+                                var appBuilder = (Microsoft.AspNetCore.Builder.IApplicationBuilder)app;
+                                useMethod.Invoke(null, new object[] { appBuilder });
+                            }
+                            catch { /* ignore if casting/invocation fails */ }
+                        }
+
+                        // Try to call MapMetrics(this IEndpointRouteBuilder endpoints)
+                        var mapMethod = extType.GetMethod("MapMetrics", BindingFlags.Public | BindingFlags.Static);
+                        if (mapMethod != null)
+                        {
+                            try
+                            {
+                                mapMethod.Invoke(null, new object[] { app });
+                            }
+                            catch { /* ignore if invocation fails */ }
+                        }
+                    }
+                }
+                catch { /* best-effort: don't break startup if prometheus is not available */ }
+
                 // Enable static files for image uploads
                 app.UseStaticFiles();
 
@@ -275,6 +328,28 @@ namespace Graduation.API
                 app.UseRateLimiter();
                 app.UseAuthentication();
                 app.UseAuthorization();
+
+                // Health endpoints
+                app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+                {
+                    Predicate = _ => false
+                });
+
+                app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+                {
+                    Predicate = reg => reg.Name == "database",
+                    ResponseWriter = async (context, report) =>
+                    {
+                        context.Response.ContentType = "application/json";
+                        var result = new
+                        {
+                            status = report.Status.ToString(),
+                            checks = report.Entries.Select(e => new { name = e.Key, status = e.Value.Status.ToString(), description = e.Value.Description })
+                        };
+                        await context.Response.WriteAsJsonAsync(result);
+                    }
+                });
+
                 app.MapControllers();
 
                 Log.Information("API started successfully on {Environment}", app.Environment.EnvironmentName);

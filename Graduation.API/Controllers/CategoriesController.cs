@@ -1,4 +1,5 @@
 ﻿using Graduation.DAL.Data;
+using Graduation.API.Errors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -48,7 +49,7 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new { success = true, data = categories });
+            return Ok(new Errors.ApiResult(data: categories));
         }
 
         /// <summary>
@@ -64,7 +65,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id && c.IsActive);
 
             if (category == null)
-                return NotFound(new { success = false, message = "Category not found" });
+                return NotFound(new ApiResponse(404, "Category not found"));
 
             var categoryDto = new CategoryDto
             {
@@ -89,7 +90,7 @@ namespace Graduation.API.Controllers
                 }).ToList()
             };
 
-            return Ok(new { success = true, data = categoryDto });
+            return Ok(new Errors.ApiResult(data: categoryDto));
         }
 
         /// <summary>
@@ -138,18 +139,14 @@ namespace Graduation.API.Controllers
                 CategoryNameAr = p.Category.NameAr
             }).ToList();
 
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = new
-                {
-                    products = productDtos,
-                    totalCount,
-                    pageNumber,
-                    pageSize,
-                    totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-                }
-            });
+                products = productDtos,
+                totalCount,
+                pageNumber,
+                pageSize,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            }));
         }
 
         /// <summary>
@@ -189,13 +186,7 @@ namespace Graduation.API.Controllers
                 };
             }).OrderBy(x => x.pathEn).ToList();
 
-            return Ok(new
-            {
-                success = true,
-                message = "All leaf categories where products can be added",
-                totalCount = leafDtos.Count,
-                data = leafDtos
-            });
+            return Ok(new Errors.ApiResult(data: leafDtos, message: "All leaf categories where products can be added", count: leafDtos.Count));
         }
 
         // FIXED BUG: Old method called _context.Categories.FirstOrDefault() synchronously

@@ -3,6 +3,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Graduation.API.Extensions;
 using Shared.DTOs.Review;
 
 namespace Graduation.API.Controllers
@@ -26,7 +27,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetProductReviews(int productId)
         {
             var reviews = await _reviewService.GetProductReviewsAsync(productId, approvedOnly: true);
-            return Ok(new { success = true, data = reviews });
+            return Ok(new Errors.ApiResult(data: reviews));
         }
 
         /// <summary>
@@ -38,12 +39,12 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetMyReviews()
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var reviews = await _reviewService.GetUserReviewsAsync(userId);
-            return Ok(new { success = true, data = reviews });
+            return Ok(new Errors.ApiResult(data: reviews));
         }
 
         /// <summary>
@@ -56,18 +57,13 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateReview([FromBody] CreateReviewDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var review = await _reviewService.CreateReviewAsync(userId, dto);
 
-            return StatusCode(201, new
-            {
-                success = true,
-                message = "Review submitted successfully. It will be visible after admin approval.",
-                data = review
-            });
+            return StatusCode(201, new Errors.ApiResult(data: review, message: "Review submitted successfully. It will be visible after admin approval."));
         }
 
         /// <summary>
@@ -89,7 +85,7 @@ namespace Graduation.API.Controllers
             if (!deleted)
                 throw new NotFoundException("Review not found or you don't have permission to delete it");
 
-            return Ok(new { success = true, message = "Review deleted successfully" });
+            return Ok(new Errors.ApiResult(message: "Review deleted successfully"));
         }
 
         /// <summary>
@@ -107,7 +103,7 @@ namespace Graduation.API.Controllers
             if (!approved)
                 throw new NotFoundException("Review not found");
 
-            return Ok(new { success = true, message = "Review approved successfully" });
+            return Ok(new Errors.ApiResult(message: "Review approved successfully"));
         }
 
         /// <summary>
@@ -125,7 +121,7 @@ namespace Graduation.API.Controllers
                 productId: 0,   // 0 signals "all products" — see updated IReviewService below
                 approvedOnly: false);
 
-            return Ok(new { success = true, data = reviews });
+            return Ok(new Errors.ApiResult(data: reviews));
         }
     }
 }

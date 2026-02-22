@@ -43,10 +43,10 @@ namespace Graduation.API.Middlewares
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
                     response = _env.IsDevelopment()
-                        ? new ApiException(
-                            (int)HttpStatusCode.InternalServerError,
-                            ex.Message,
-                            ex.StackTrace?.ToString())
+                            ? new ApiException(
+                                (int)HttpStatusCode.InternalServerError,
+                                ex.Message,
+                                ex.StackTrace)
                         : new ApiException(
                             (int)HttpStatusCode.InternalServerError,
                             "An internal server error occurred");

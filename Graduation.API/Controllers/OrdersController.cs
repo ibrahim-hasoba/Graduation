@@ -3,6 +3,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Graduation.API.Extensions;
 using Shared.DTOs.Order;
 
 namespace Graduation.API.Controllers
@@ -30,18 +31,13 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateOrder([FromBody] CreateOrderDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var order = await _orderService.CreateOrderAsync(userId, dto);
 
-            return StatusCode(201, new
-            {
-                success = true,
-                message = "Order placed successfully!",
-                data = order
-            });
+            return StatusCode(201, new Errors.ApiResult(data: order, message: "Order placed successfully!"));
         }
 
         /// <summary>
@@ -52,12 +48,12 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetMyOrders()
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var orders = await _orderService.GetUserOrdersAsync(userId);
-            return Ok(new { success = true, data = orders });
+            return Ok(new Errors.ApiResult(data: orders));
         }
 
         /// <summary>
@@ -69,12 +65,12 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetOrderById(int id)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var order = await _orderService.GetOrderByIdAsync(id, userId);
-            return Ok(new { success = true, data = order });
+            return Ok(new Errors.ApiResult(data: order));
         }
 
         /// <summary>
@@ -86,7 +82,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetVendorOrders()
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -95,7 +91,7 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("You must be a vendor to view vendor orders");
 
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
-            return Ok(new { success = true, data = orders });
+            return Ok(new Errors.ApiResult(data: orders));
         }
 
         /// <summary>
@@ -108,7 +104,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -118,12 +114,7 @@ namespace Graduation.API.Controllers
 
             var order = await _orderService.UpdateOrderStatusAsync(id, vendor.Id, dto);
 
-            return Ok(new
-            {
-                success = true,
-                message = "Order status updated successfully",
-                data = order
-            });
+            return Ok(new Errors.ApiResult(data: order, message: "Order status updated successfully"));
         }
 
         /// <summary>
@@ -142,12 +133,7 @@ namespace Graduation.API.Controllers
 
             var order = await _orderService.CancelOrderAsync(id, userId, dto.Reason ?? "Cancelled by customer");
 
-            return Ok(new
-            {
-                success = true,
-                message = "Order cancelled successfully",
-                data = order
-            });
+            return Ok(new Errors.ApiResult(data: order, message: "Order cancelled successfully"));
         }
     }
 

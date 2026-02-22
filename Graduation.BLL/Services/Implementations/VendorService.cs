@@ -12,16 +12,19 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly IEmailService _emailService;
+        private readonly Shared.BackgroundTasks.IBackgroundTaskQueue? _taskQueue;
         private readonly ILogger<VendorService> _logger;
 
         public VendorService(
-            DatabaseContext context,
-            IEmailService emailService,
-            ILogger<VendorService> logger)
+                DatabaseContext context,
+                IEmailService emailService,
+                ILogger<VendorService> logger,
+                Shared.BackgroundTasks.IBackgroundTaskQueue? taskQueue = null)
         {
             _context = context;
             _emailService = emailService;
             _logger = logger;
+            _taskQueue = taskQueue;
         }
 
         public async Task<VendorDto> RegisterVendorAsync(string userId, VendorRegisterDto dto)
@@ -184,21 +187,43 @@ namespace Graduation.BLL.Services.Implementations
             // Send notification email
             if (vendor.User != null && !string.IsNullOrEmpty(vendor.User.Email))
             {
-                _ = Task.Run(async () =>
+                // Enqueue email sending to background queue if available, else fall back to fire-and-forget
+                if (_taskQueue != null)
                 {
-                    try
+                    _taskQueue.QueueBackgroundWorkItem(async token =>
                     {
-                        await _emailService.SendVendorApprovalEmailAsync(
-                            vendor.User.Email,
-                            vendor.StoreName,
-                            isApproved,
-                            rejectionReason);
-                    }
-                    catch (Exception ex)
+                        try
+                        {
+                            await _emailService.SendVendorApprovalEmailAsync(
+                                vendor.User.Email,
+                                vendor.StoreName,
+                                isApproved,
+                                rejectionReason);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", vendor.User.Email);
+                        }
+                    });
+                }
+                else
+                {
+                    _ = Task.Run(async () =>
                     {
-                        _logger.LogError(ex, "Failed to send vendor approval email to {Email}", vendor.User.Email);
-                    }
-                });
+                        try
+                        {
+                            await _emailService.SendVendorApprovalEmailAsync(
+                                vendor.User.Email,
+                                vendor.StoreName,
+                                isApproved,
+                                rejectionReason);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", vendor.User.Email);
+                        }
+                    });
+                }
             }
 
             _logger.LogInformation("Vendor {VendorId} approval status changed to {IsApproved}",

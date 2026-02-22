@@ -28,7 +28,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<string> UploadImageAsync(IFormFile file, string folder)
         {
-            // Validate image
+            // Validate image (will check extension, mime and magic bytes)
             if (!await ValidateImageAsync(file))
                 throw new BadRequestException("Invalid image file");
 
@@ -42,10 +42,11 @@ namespace Graduation.BLL.Services.Implementations
             var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-            // Save file
+            // Save file using a fresh read stream to avoid stream position issues
+            using (var sourceStream = file.OpenReadStream())
             using (var fileStream = new FileStream(filePath, FileMode.Create))
             {
-                await file.CopyToAsync(fileStream);
+                await sourceStream.CopyToAsync(fileStream);
             }
 
             // Return relative URL
@@ -77,10 +78,18 @@ namespace Graduation.BLL.Services.Implementations
                 if (string.IsNullOrEmpty(imageUrl))
                     return Task.FromResult(false);
 
-                // Extract file path from URL
+                // Extract file path from URL and ensure it's under the uploads folder
                 var uri = new Uri(imageUrl);
-                var relativePath = uri.AbsolutePath.TrimStart('/');
-                var filePath = Path.Combine(_environment.WebRootPath, relativePath);
+                var relativePath = uri.AbsolutePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+
+                var uploadsRoot = Path.GetFullPath(Path.Combine(_environment.WebRootPath, "uploads"));
+                var filePath = Path.GetFullPath(Path.Combine(_environment.WebRootPath, relativePath));
+
+                if (!filePath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning("Attempt to delete image outside uploads folder: {ImageUrl}", imageUrl);
+                    return Task.FromResult(false);
+                }
 
                 if (File.Exists(filePath))
                 {
@@ -118,7 +127,7 @@ namespace Graduation.BLL.Services.Implementations
                 return Task.FromResult(false);
             }
 
-            // Check MIME type
+            // Check MIME type (basic check)
             var allowedMimeTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp" };
             if (!allowedMimeTypes.Contains(file.ContentType.ToLower()))
             {
@@ -126,7 +135,38 @@ namespace Graduation.BLL.Services.Implementations
                 return Task.FromResult(false);
             }
 
-            return Task.FromResult(true);
+            // Check magic bytes to reduce risk of spoofed files
+            try
+            {
+                using var stream = file.OpenReadStream();
+                var header = new byte[12];
+                var read = stream.Read(header, 0, header.Length);
+
+                // JPEG (FF D8 FF)
+                if (read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF)
+                    return Task.FromResult(true);
+
+                // PNG (89 50 4E 47 0D 0A 1A 0A)
+                if (read >= 8 && header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47)
+                    return Task.FromResult(true);
+
+                // GIF (47 49 46 38 37|39 61)
+                if (read >= 6 && header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x38)
+                    return Task.FromResult(true);
+
+                // WEBP (RIFF....WEBP)
+                if (read >= 12 && header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46
+                    && header[8] == 0x57 && header[9] == 0x45 && header[10] == 0x42 && header[11] == 0x50)
+                    return Task.FromResult(true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read image header for validation");
+                return Task.FromResult(false);
+            }
+
+            _logger.LogWarning("Image failed magic-bytes validation: {FileName}", file.FileName);
+            return Task.FromResult(false);
         }
     }
 }

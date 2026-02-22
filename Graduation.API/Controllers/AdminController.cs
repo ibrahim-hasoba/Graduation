@@ -43,7 +43,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetDashboardStats()
         {
             var stats = await _adminService.GetDashboardStatsAsync();
-            return Ok(new { success = true, data = stats });
+            return Ok(new Errors.ApiResult(data: stats));
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetRecentActivities([FromQuery] int count = 10)
         {
             var activities = await _adminService.GetRecentActivitiesAsync(count);
-            return Ok(new { success = true, data = activities });
+            return Ok(new Errors.ApiResult(data: activities));
         }
 
         /// <summary>
@@ -63,7 +63,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetTopProducts([FromQuery] int count = 10)
         {
             var products = await _adminService.GetTopProductsAsync(count);
-            return Ok(new { success = true, data = products });
+            return Ok(new Errors.ApiResult(data: products));
         }
 
         /// <summary>
@@ -73,7 +73,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetTopVendors([FromQuery] int count = 10)
         {
             var vendors = await _adminService.GetTopVendorsAsync(count);
-            return Ok(new { success = true, data = vendors });
+            return Ok(new Errors.ApiResult(data: vendors));
         }
 
         /// <summary>
@@ -83,7 +83,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetSalesChart()
         {
             var chartData = await _adminService.GetSalesChartDataAsync();
-            return Ok(new { success = true, data = chartData });
+            return Ok(new Errors.ApiResult(data: chartData));
         }
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetUserStats()
         {
             var stats = await _adminService.GetUserStatsAsync();
-            return Ok(new { success = true, data = stats });
+            return Ok(new Errors.ApiResult(data: stats));
         }
 
         /// <summary>
@@ -139,18 +139,14 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = new
-                {
-                    users,
-                    totalCount,
-                    pageNumber,
-                    pageSize,
-                    totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-                }
-            });
+                users,
+                totalCount,
+                pageNumber,
+                pageSize,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            }));
         }
 
         /// <summary>
@@ -167,7 +163,7 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to delete user");
 
-            return Ok(new { success = true, message = "User deleted successfully" });
+            return Ok(new Errors.ApiResult(message: "User deleted successfully"));
         }
 
         /// <summary>
@@ -184,13 +180,13 @@ namespace Graduation.API.Controllers
             {
                 // Unlock
                 await _userManager.SetLockoutEndDateAsync(user, null);
-                return Ok(new { success = true, message = "User unlocked successfully", locked = false });
+                return Ok(new Errors.ApiResult(data: new { locked = false }, message: "User unlocked successfully"));
             }
             else
             {
                 // Lock for 100 years (permanent lock)
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
-                return Ok(new { success = true, message = "User locked successfully", locked = true });
+                return Ok(new Errors.ApiResult(data: new { locked = true }, message: "User locked successfully"));
             }
         }
 
@@ -225,7 +221,7 @@ namespace Graduation.API.Controllers
                     orderNumber = o.OrderNumber,
                     customerName = $"{o.User.FirstName} {o.User.LastName}",
                     customerEmail = o.User.Email,
-                    vendorName = o.OrderItems.FirstOrDefault().Product.Vendor.StoreName,
+                    vendorName = o.OrderItems.Select(oi => oi.Product.Vendor.StoreName).FirstOrDefault(),
                     totalAmount = o.TotalAmount,
                     status = o.Status.ToString(),
                     paymentStatus = o.PaymentStatus.ToString(),
@@ -234,18 +230,14 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = new
-                {
-                    orders,
-                    totalCount,
-                    pageNumber,
-                    pageSize,
-                    totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-                }
-            });
+                orders,
+                totalCount,
+                pageNumber,
+                pageSize,
+                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            }));
         }
 
         /// <summary>
@@ -268,21 +260,17 @@ namespace Graduation.API.Controllers
                 .Where(o => o.OrderDate >= today && o.Status == OrderStatus.Delivered)
                 .SumAsync(o => o.TotalAmount);
 
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = new
-                {
-                    totalUsers,
-                    totalVendors,
-                    totalProducts,
-                    totalOrders,
-                    totalRevenue,
-                    todayOrders,
-                    todayRevenue,
-                    averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
-                }
-            });
+                totalUsers,
+                totalVendors,
+                totalProducts,
+                totalOrders,
+                totalRevenue,
+                todayOrders,
+                todayRevenue,
+                averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
+            }));
         }
 
         #region Category Management
@@ -302,19 +290,19 @@ namespace Graduation.API.Controllers
             {
                 var category = await _categoryService.CreateCategoryAsync(dto);
                 return CreatedAtAction(nameof(GetCategoryById), new { id = category.Id },
-                    new { success = true, data = category });
+                    new Errors.ApiResult(data: category));
             }
             catch (BadRequestException ex)
             {
-                return BadRequest(new { success = false, message = ex.Message });
+                return BadRequest(new ApiResponse(400, ex.Message));
             }
             catch (ConflictException ex)
             {
-                return Conflict(new { success = false, message = ex.Message });
+                return Conflict(new ApiResponse(409, ex.Message));
             }
             catch (NotFoundException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(new ApiResponse(404, ex.Message));
             }
         }
 
@@ -327,7 +315,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
         {
             var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
-            return Ok(new { success = true, data = categories });
+            return Ok(new Errors.ApiResult(data: categories));
         }
 
         /// <summary>
@@ -342,11 +330,11 @@ namespace Graduation.API.Controllers
             try
             {
                 var category = await _categoryService.GetCategoryByIdAsync(id);
-                return Ok(new { success = true, data = category });
+                return Ok(new Errors.ApiResult(data: category));
             }
             catch (NotFoundException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(new ApiResponse(404, ex.Message));
             }
         }
 
@@ -364,23 +352,23 @@ namespace Graduation.API.Controllers
             try
             {
                 var category = await _categoryService.UpdateCategoryAsync(id, dto);
-                return Ok(new { success = true, data = category });
+                return Ok(new Errors.ApiResult(data: category));
             }
             catch (NotFoundException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(new ApiResponse(404, ex.Message));
             }
             catch (BadRequestException ex)
             {
-                return BadRequest(new { success = false, message = ex.Message });
+                return BadRequest(new ApiResponse(400, ex.Message));
             }
             catch (ConflictException ex)
             {
-                return Conflict(new { success = false, message = ex.Message });
+                return Conflict(new ApiResponse(409, ex.Message));
             }
             catch (BusinessException ex)
             {
-                return BadRequest(new { success = false, message = ex.Message });
+                return BadRequest(new ApiResponse(400, ex.Message));
             }
         }
 
@@ -396,11 +384,11 @@ namespace Graduation.API.Controllers
             try
             {
                 await _categoryService.DeleteCategoryAsync(id);
-                return Ok(new { success = true, message = "Category deleted successfully" });
+                return Ok(new Errors.ApiResult(message: "Category deleted successfully"));
             }
             catch (NotFoundException ex)
             {
-                return NotFound(new { success = false, message = ex.Message });
+                return NotFound(new ApiResponse(404, ex.Message));
             }
         }
 
@@ -418,10 +406,10 @@ namespace Graduation.API.Controllers
             [FromQuery] int? vendorId = null)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new { success = false, message = "Start date and end date are required" });
+                return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetSalesReportAsync(startDate, endDate, vendorId);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -433,10 +421,10 @@ namespace Graduation.API.Controllers
             [FromQuery] DateTime endDate)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new { success = false, message = "Start date and end date are required" });
+                return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetSalesByCategoryAsync(startDate, endDate);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -446,7 +434,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetVendorPerformance(int vendorId)
         {
             var report = await _reportService.GetVendorPerformanceAsync(vendorId);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -456,7 +444,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetCustomerInsights()
         {
             var report = await _reportService.GetCustomerInsightsAsync();
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -466,7 +454,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetLowStockProducts([FromQuery] int threshold = 10)
         {
             var report = await _reportService.GetLowStockProductsAsync(threshold);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -479,10 +467,10 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new { success = false, message = "Start date and end date are required" });
+                return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetRevenueByVendorAsync(startDate, endDate, take);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -495,10 +483,10 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new { success = false, message = "Start date and end date are required" });
+                return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetTopProductsAsync(startDate, endDate, take);
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -508,7 +496,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetOrderStatusSummary()
         {
             var report = await _reportService.GetOrderStatusSummaryAsync();
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         /// <summary>
@@ -518,7 +506,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetUserTrends()
         {
             var report = await _reportService.GetUserTrendsAsync();
-            return Ok(new { success = true, data = report });
+            return Ok(new Errors.ApiResult(data: report));
         }
 
         #endregion

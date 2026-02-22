@@ -5,6 +5,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Graduation.API.Extensions;
 using System.Security.Claims;
 
 namespace Graduation.API.Controllers
@@ -28,7 +29,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetAllVendors([FromQuery] bool? isApproved = true)
         {
             var vendors = await _vendorService.GetAllVendorsAsync(isApproved);
-            return Ok(new { success = true, data = vendors });
+            return Ok(new Errors.ApiResult(data: vendors));
         }
 
         /// <summary>
@@ -40,7 +41,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetVendorById(int id)
         {
             var vendor = await _vendorService.GetVendorByIdAsync(id);
-            return Ok(new { success = true, data = vendor });
+            return Ok(new Errors.ApiResult(data: vendor));
         }
 
         /// <summary>
@@ -53,7 +54,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMyVendorProfile()
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -62,7 +63,7 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 return NotFound(new ApiResponse(404, "You don't have a vendor account yet"));
 
-            return Ok(new { success = true, data = vendor });
+            return Ok(new Errors.ApiResult(data: vendor));
         }
 
         /// <summary>
@@ -75,18 +76,13 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RegisterVendor([FromBody] VendorRegisterDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var vendor = await _vendorService.RegisterVendorAsync(userId, dto);
 
-            return StatusCode(201, new
-            {
-                success = true,
-                message = "Vendor registration submitted. Waiting for admin approval.",
-                data = vendor
-            });
+            return StatusCode(201, new Errors.ApiResult(data: vendor, message: "Vendor registration submitted. Waiting for admin approval."));
         }
 
         /// <summary>
@@ -100,12 +96,12 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateVendor(int id, [FromBody] VendorUpdateDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var vendor = await _vendorService.UpdateVendorAsync(id, userId, dto);
-            return Ok(new { success = true, message = "Vendor updated successfully", data = vendor });
+            return Ok(new Errors.ApiResult(data: vendor, message: "Vendor updated successfully"));
         }
 
         /// <summary>
@@ -121,7 +117,7 @@ namespace Graduation.API.Controllers
             var vendor = await _vendorService.ApproveVendorAsync(id, dto.IsApproved, dto.RejectionReason);
 
             var message = dto.IsApproved ? "Vendor approved successfully" : "Vendor rejected";
-            return Ok(new { success = true, message, data = vendor });
+            return Ok(new Errors.ApiResult(data: vendor, message: message));
         }
 
         /// <summary>
@@ -135,7 +131,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> ToggleVendorStatus(int id)
         {
             var vendor = await _vendorService.ToggleVendorStatusAsync(id);
-            return Ok(new { success = true, message = "Vendor status updated", data = vendor });
+            return Ok(new Errors.ApiResult(data: vendor, message: "Vendor status updated"));
         }
 
         /// <summary>
@@ -149,7 +145,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> DeleteVendor(int id)
         {
             await _vendorService.DeleteVendorAsync(id);
-            return Ok(new { success = true, message = "Vendor deleted successfully" });
+            return Ok(new Errors.ApiResult(message: "Vendor deleted successfully"));
         }
 
         /// <summary>
@@ -162,7 +158,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetPendingVendors()
         {
             var vendors = await _vendorService.GetAllVendorsAsync(isApproved: false);
-            return Ok(new { success = true, data = vendors });
+            return Ok(new Errors.ApiResult(data: vendors));
         }
     }
 }

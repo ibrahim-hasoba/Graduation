@@ -73,13 +73,13 @@ namespace Graduation.API.Controllers
                 .AnyAsync(e => e.Email == userDto.Email && e.CreatedAt >= oneMinuteAgo);
 
             if (recent)
-                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
+                return StatusCode(429, new ApiResponse(429, "OTP recently sent. Try again in a minute."));
 
             var lastHourCount = await _context.EmailOtps
                 .CountAsync(e => e.Email == userDto.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
 
             if (lastHourCount >= 5)
-                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
+                return StatusCode(429, new ApiResponse(429, "Too many OTP requests for this email. Try again later."));
 
             // Only create the user after throttle checks pass
             var user = new AppUser
@@ -100,7 +100,7 @@ namespace Graduation.API.Controllers
 
             await SendVerificationEmail(user);
 
-            return StatusCode(201, new { success = true, message = "Registration successful! Please verify your email." });
+            return StatusCode(201, new Errors.ApiResult(message: "Registration successful! Please verify your email."));
         }
 
         [HttpGet("verify-email")]
@@ -118,7 +118,7 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException("Email verification failed.");
 
-            return Ok(new { success = true, message = "Email verified successfully!" });
+            return Ok(new Errors.ApiResult(message: "Email verified successfully!"));
         }
 
         #endregion
@@ -226,7 +226,7 @@ namespace Graduation.API.Controllers
 
                 await transaction.CommitAsync();
 
-                return Ok(new { success = true, data = CreateTokenResponse(accessToken, newToken.Token) });
+                return Ok(new Errors.ApiResult(data: CreateTokenResponse(accessToken, newToken.Token)));
             }
             catch
             {
@@ -243,7 +243,7 @@ namespace Graduation.API.Controllers
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null)
-                return Ok(new { success = true, message = "If your email is in our system, you will receive a reset link." });
+                return Ok(new Errors.ApiResult(message: "If your email is in our system, you will receive a reset link."));
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
@@ -253,7 +253,7 @@ namespace Graduation.API.Controllers
 
             await _emailService.SendPasswordResetEmailAsync(user.Email!, user.FirstName, url);
 
-            return Ok(new { success = true, message = "Reset link sent to your email." });
+            return Ok(new Errors.ApiResult(message: "Reset link sent to your email."));
         }
 
         #region Social & Utility
@@ -265,25 +265,25 @@ namespace Graduation.API.Controllers
         {
             var user = await _userManager.FindByEmailAsync(email);
             if (user == null || user.EmailConfirmed)
-                return Ok(new { message = "Verification email sent if applicable." });
+                return Ok(new Errors.ApiResult(message: "Verification email sent if applicable."));
 
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
 
             if (recent)
-                return StatusCode(429, new { success = false, message = "OTP recently sent. Try again in a minute." });
+                return StatusCode(429, new ApiResponse(429, "OTP recently sent. Try again in a minute."));
 
             var lastHourCount = await _context.EmailOtps
                 .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
 
             if (lastHourCount >= 5)
-                return StatusCode(429, new { success = false, message = "Too many OTP requests for this email. Try again later." });
+                return StatusCode(429, new ApiResponse(429, "Too many OTP requests for this email. Try again later."));
 
             var code = await _otpService.GenerateOtpAsync(user.Email!);
             await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
 
-            return Ok(new { success = true, message = "A new verification code has been sent." });
+            return Ok(new Errors.ApiResult(message: "A new verification code has been sent."));
         }
 
         #endregion
@@ -302,7 +302,7 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            return Ok(new { success = true, message = "Password has been reset successfully." });
+            return Ok(new Errors.ApiResult(message: "Password has been reset successfully."));
         }
 
         #endregion
@@ -320,7 +320,7 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("Unauthorized token revocation");
 
             await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, GetIpAddress());
-            return Ok(new { success = true, message = "Logged out successfully" });
+            return Ok(new Errors.ApiResult(message: "Logged out successfully"));
         }
 
         #endregion
@@ -342,20 +342,16 @@ namespace Graduation.API.Controllers
             // FIXED BUG: Previously returned the raw AppUser entity which exposes
             // PasswordHash, SecurityStamp, ConcurrencyStamp, LockoutInfo etc.
             // Now returns only safe, non-sensitive profile fields.
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = new
-                {
-                    id = user.Id,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    email = user.Email,
-                    emailConfirmed = user.EmailConfirmed,
-                    phoneNumber = user.PhoneNumber,
-                    createdAt = user.CreatedAt
-                }
-            });
+                id = user.Id,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                email = user.Email,
+                emailConfirmed = user.EmailConfirmed,
+                phoneNumber = user.PhoneNumber,
+                createdAt = user.CreatedAt
+            }));
         }
 
         [HttpPost("change-password")]
@@ -374,7 +370,7 @@ namespace Graduation.API.Controllers
 
             await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
 
-            return Ok(new { success = true, message = "Password updated. Other sessions revoked." });
+            return Ok(new Errors.ApiResult(message: "Password updated. Other sessions revoked."));
         }
 
         #endregion
@@ -387,12 +383,11 @@ namespace Graduation.API.Controllers
             var accessToken = _jwtHandler.CreateToken(user, roles);
             var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, GetIpAddress());
 
-            return Ok(new
+            return Ok(new Errors.ApiResult(data: new
             {
-                success = true,
-                data = CreateTokenResponse(accessToken, refreshToken.Token),
+                token = CreateTokenResponse(accessToken, refreshToken.Token),
                 user = new { user.Email, user.FirstName, user.LastName, roles }
-            });
+            }));
         }
 
         private TokenResponseDto CreateTokenResponse(string access, string refresh) => new()
@@ -433,7 +428,7 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to confirm email");
 
-            return Ok(new { success = true, message = "Email verified successfully" });
+            return Ok(new Errors.ApiResult(message: "Email verified successfully"));
         }
 
         #endregion

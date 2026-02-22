@@ -4,6 +4,7 @@ using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Graduation.API.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Product;
 
@@ -35,7 +36,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> SearchProducts([FromQuery] ProductSearchDto searchDto)
         {
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new { success = true, data = result });
+            return Ok(new Errors.ApiResult(data: result));
         }
 
         /// <summary>
@@ -54,7 +55,7 @@ namespace Graduation.API.Controllers
             };
 
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new { success = true, data = result });
+            return Ok(new Errors.ApiResult(data: result));
         }
 
         /// <summary>
@@ -65,7 +66,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetFeaturedProducts([FromQuery] int count = 10)
         {
             var products = await _productService.GetFeaturedProductsAsync(count);
-            return Ok(new { success = true, data = products });
+            return Ok(new Errors.ApiResult(data: products));
         }
 
         /// <summary>
@@ -80,7 +81,7 @@ namespace Graduation.API.Controllers
             await _productService.IncrementViewCountAsync(id);
 
             var product = await _productService.GetProductByIdAsync(id);
-            return Ok(new { success = true, data = product });
+            return Ok(new Errors.ApiResult(data: product));
         }
 
         /// <summary>
@@ -91,7 +92,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetVendorProducts(int vendorId)
         {
             var products = await _productService.GetVendorProductsAsync(vendorId);
-            return Ok(new { success = true, data = products });
+            return Ok(new Errors.ApiResult(data: products));
         }
 
         /// <summary>
@@ -104,7 +105,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMyProducts()
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -114,7 +115,7 @@ namespace Graduation.API.Controllers
                 return NotFound(new ApiResponse(404, "You don't have a vendor account"));
 
             var products = await _productService.GetVendorProductsAsync(vendor.Id);
-            return Ok(new { success = true, data = products });
+            return Ok(new Errors.ApiResult(data: products));
         }
 
         /// <summary>
@@ -128,7 +129,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -142,12 +143,7 @@ namespace Graduation.API.Controllers
 
             var product = await _productService.CreateProductAsync(vendor.Id, dto);
 
-            return StatusCode(201, new
-            {
-                success = true,
-                message = "Product created successfully",
-                data = product
-            });
+            return StatusCode(201, new Errors.ApiResult(data: product, message: "Product created successfully"));
         }
 
         /// <summary>
@@ -162,7 +158,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -172,12 +168,7 @@ namespace Graduation.API.Controllers
 
             var product = await _productService.UpdateProductAsync(id, vendor.Id, dto);
 
-            return Ok(new
-            {
-                success = true,
-                message = "Product updated successfully",
-                data = product
-            });
+            return Ok(new Errors.ApiResult(data: product, message: "Product updated successfully"));
         }
 
         /// <summary>
@@ -190,7 +181,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteProduct(int id)
         {
-            var userId = User.FindFirst("userId")?.Value;
+            var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
@@ -200,11 +191,7 @@ namespace Graduation.API.Controllers
 
             await _productService.DeleteProductAsync(id, vendor.Id);
 
-            return Ok(new
-            {
-                success = true,
-                message = "Product deleted successfully"
-            });
+            return Ok(new Errors.ApiResult(message: "Product deleted successfully"));
         }
 
         /// <summary>
@@ -229,11 +216,7 @@ namespace Graduation.API.Controllers
 
             await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
 
-            return Ok(new
-            {
-                success = true,
-                message = "Stock updated successfully"
-            });
+            return Ok(new Errors.ApiResult(message: "Stock updated successfully"));
         }
     }
 
