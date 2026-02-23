@@ -1,8 +1,8 @@
-namespace Shared.BackgroundTasks
+﻿namespace Shared.BackgroundTasks
 {
-  public interface IBackgroundTaskQueue
-  {
-    void QueueBackgroundWorkItem(Func<CancellationToken, Task> workItem);
-    Task<Func<CancellationToken, Task>> DequeueAsync(CancellationToken cancellationToken);
-  }
+    public interface IBackgroundTaskQueue
+    {
+        void QueueBackgroundWorkItem(Func<CancellationToken, Task> workItem);
+        Task<Func<CancellationToken, Task>> DequeueAsync(CancellationToken cancellationToken);
+    }
 }

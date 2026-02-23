@@ -1,52 +1,44 @@
-using Microsoft.AspNetCore.Mvc.Filters;
-using Microsoft.Extensions.DependencyInjection;
 using FluentValidation;
-using FluentValidation.Results;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Shared.Errors;
 
 namespace Graduation.API.Filters
 {
-    /// <summary>
-    /// Runs any registered FluentValidation validators for action arguments and populates ModelState.
-    /// </summary>
     public class FluentValidationFilter : IAsyncActionFilter
     {
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
         {
             var serviceProvider = context.HttpContext.RequestServices;
 
-            foreach (var arg in context.ActionArguments)
+            foreach (var argument in context.ActionArguments.Values)
             {
-                var argType = arg.Value?.GetType();
-                if (argType == null) continue;
+                if (argument is null) continue;
+
+                var argType = argument.GetType();
 
                 var validatorType = typeof(IValidator<>).MakeGenericType(argType);
-                var validator = serviceProvider.GetService(validatorType) as IValidator;
-                if (validator == null) continue;
-
+                if (serviceProvider.GetService(validatorType) is not IValidator validator)
+                    continue;
                 var validationContextType = typeof(ValidationContext<>).MakeGenericType(argType);
-                var validationContext = Activator.CreateInstance(validationContextType, arg.Value) as IValidationContext;
-                if (validationContext == null) continue;
+                var validationContext = (IValidationContext)Activator.CreateInstance(validationContextType, argument)!;
 
-                var result = await validator.ValidateAsync(validationContext as dynamic);
-                if (!result.IsValid)
-                {
-                    foreach (var failure in result.Errors)
-                    {
-                        context.ModelState.AddModelError(failure.PropertyName ?? string.Empty, failure.ErrorMessage);
-                    }
-                }
+                var result = await validator.ValidateAsync(validationContext);
+
+                if (result.IsValid) continue;
+
+                foreach (var failure in result.Errors)
+                    context.ModelState.AddModelError(failure.PropertyName, failure.ErrorMessage);
             }
 
             if (!context.ModelState.IsValid)
             {
                 var errors = context.ModelState
-                    .Where(m => m.Value!.Errors.Count > 0)
-                    .SelectMany(m => m.Value!.Errors)
-                    .Select(e => e.ErrorMessage)
+                    .Where(kvp => kvp.Value?.Errors.Count > 0)
+                    .SelectMany(kvp => kvp.Value!.Errors.Select(e => e.ErrorMessage))
                     .ToArray();
 
-                var errorResponse = new Shared.Errors.ApiValidationErrorResponse { Errors = errors };
+                var errorResponse = new ApiValidationErrorResponse { Errors = errors };
                 context.Result = new BadRequestObjectResult(errorResponse);
                 return;
             }

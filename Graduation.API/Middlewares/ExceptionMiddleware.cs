@@ -1,4 +1,4 @@
-﻿using Graduation.API.Errors;
+﻿using Shared.Errors;
 using System.Net;
 using System.Text.Json;
 
@@ -20,7 +20,7 @@ namespace Graduation.API.Middlewares
         public async Task InvokeAsync(HttpContext context)
         {
             try
-            {
+            {   
                 await _next(context);
             }
             catch (Exception ex)
