@@ -9,11 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Graduation.API.Controllers
 {
-    /// <summary>
-    /// Vendor-specific dashboard statistics.
-    /// Previously vendors had no stats endpoint — they could list their own orders/products
-    /// but had no aggregated view of their performance.
-    /// </summary>
     [Route("api/vendor")]
     [ApiController]
     [Authorize]
@@ -28,10 +23,7 @@ namespace Graduation.API.Controllers
             _context = context;
         }
 
-        /// <summary>
-        /// Get aggregated dashboard stats for the authenticated vendor.
-        /// Returns revenue, order counts, product counts, avg rating, and monthly breakdown.
-        /// </summary>
+        
         [HttpGet("my-stats")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -49,9 +41,10 @@ namespace Graduation.API.Controllers
             var vendorId = vendor.Id;
             var today = DateTime.UtcNow.Date;
             var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
-            var last30Days = today.AddDays(-29);
+            var firstDayOf6MonthsAgo = new DateTime(
+                today.AddMonths(-5).Year,
+                today.AddMonths(-5).Month, 1);
 
-            // Product stats
             var totalProducts = await _context.Products
                 .CountAsync(p => p.VendorId == vendorId);
             var activeProducts = await _context.Products
@@ -59,74 +52,82 @@ namespace Graduation.API.Controllers
             var outOfStockProducts = await _context.Products
                 .CountAsync(p => p.VendorId == vendorId && p.IsActive && p.StockQuantity == 0);
 
-            // Order stats
-            var orderItems = await _context.OrderItems
-                .Include(oi => oi.Order)
+            
+            var vendorOrderIdsQuery = _context.OrderItems
                 .Where(oi => oi.Product.VendorId == vendorId)
+                .Select(oi => oi.OrderId)
+                .Distinct();
+
+            var orderStatusCounts = await _context.Orders
+                .Where(o => vendorOrderIdsQuery.Contains(o.Id))
+                .GroupBy(o => o.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
                 .ToListAsync();
 
-            var allOrderIds = orderItems.Select(oi => oi.OrderId).Distinct().ToList();
-            var orders = await _context.Orders
-                .Where(o => allOrderIds.Contains(o.Id))
-                .ToListAsync();
+            var totalOrders = orderStatusCounts.Sum(x => x.Count);
+            var pendingOrders = orderStatusCounts
+                .FirstOrDefault(x => x.Status == OrderStatus.Pending)?.Count ?? 0;
+            var completedOrders = orderStatusCounts
+                .FirstOrDefault(x => x.Status == OrderStatus.Delivered)?.Count ?? 0;
+            var cancelledOrders = orderStatusCounts
+                .FirstOrDefault(x => x.Status == OrderStatus.Cancelled)?.Count ?? 0;
 
-            var totalOrders = orders.Count;
-            var pendingOrders = orders.Count(o => o.Status == OrderStatus.Pending);
-            var completedOrders = orders.Count(o => o.Status == OrderStatus.Delivered);
-            var cancelledOrders = orders.Count(o => o.Status == OrderStatus.Cancelled);
+            var todayOrders = await _context.Orders
+                .CountAsync(o => vendorOrderIdsQuery.Contains(o.Id) && o.OrderDate >= today);
 
-            // Revenue
-            var deliveredOrders = orders.Where(o => o.Status == OrderStatus.Delivered).ToList();
-            var deliveredOrderIds = deliveredOrders.Select(o => o.Id).ToHashSet();
-            var totalRevenue = orderItems
-                .Where(oi => deliveredOrderIds.Contains(oi.OrderId))
-                .Sum(oi => oi.TotalPrice);
+            var deliveredOrderIdsQuery = _context.Orders
+                .Where(o => vendorOrderIdsQuery.Contains(o.Id) && o.Status == OrderStatus.Delivered)
+                .Select(o => o.Id);
 
-            var monthlyOrderIds = orders
-                .Where(o => o.Status == OrderStatus.Delivered && o.OrderDate >= firstDayOfMonth)
-                .Select(o => o.Id)
-                .ToHashSet();
-            var monthlyRevenue = orderItems
-                .Where(oi => monthlyOrderIds.Contains(oi.OrderId))
-                .Sum(oi => oi.TotalPrice);
+            var totalRevenue = await _context.OrderItems
+                .Where(oi => oi.Product.VendorId == vendorId
+                          && deliveredOrderIdsQuery.Contains(oi.OrderId))
+                .SumAsync(oi => (decimal?)oi.TotalPrice) ?? 0m;
 
-            var todayOrderIds = orders
-                .Where(o => o.OrderDate >= today)
-                .Select(o => o.Id)
-                .ToHashSet();
-            var todayOrders = todayOrderIds.Count;
+            var monthlyDeliveredIdsQuery = _context.Orders
+                .Where(o => vendorOrderIdsQuery.Contains(o.Id)
+                         && o.Status == OrderStatus.Delivered
+                         && o.OrderDate >= firstDayOfMonth)
+                .Select(o => o.Id);
 
-            // Reviews / rating
-            var reviews = await _context.ProductReviews
+            var monthlyRevenue = await _context.OrderItems
+                .Where(oi => oi.Product.VendorId == vendorId
+                          && monthlyDeliveredIdsQuery.Contains(oi.OrderId))
+                .SumAsync(oi => (decimal?)oi.TotalPrice) ?? 0m;
+
+            var reviewStats = await _context.ProductReviews
                 .Where(r => r.Product.VendorId == vendorId && r.IsApproved)
-                .ToListAsync();
+                .GroupBy(_ => 1)
+                .Select(g => new
+                {
+                    Count = g.Count(),
+                    Avg = g.Average(r => (double)r.Rating)
+                })
+                .FirstOrDefaultAsync();
 
-            var averageRating = reviews.Any() ? Math.Round(reviews.Average(r => r.Rating), 1) : 0.0;
-            var totalReviews = reviews.Count;
+            var averageRating = reviewStats != null ? Math.Round(reviewStats.Avg, 1) : 0.0;
+            var totalReviews = reviewStats?.Count ?? 0;
 
-            // Monthly revenue chart (last 6 months)
-            var sixMonthsAgo = today.AddMonths(-5);
-            var firstDayOf6MonthsAgo = new DateTime(sixMonthsAgo.Year, sixMonthsAgo.Month, 1);
-
-            var monthlyChart = orders
-                .Where(o => o.Status == OrderStatus.Delivered && o.OrderDate >= firstDayOf6MonthsAgo)
-                .GroupJoin(
-                    orderItems,
-                    o => o.Id,
-                    oi => oi.OrderId,
-                    (o, items) => new { o.OrderDate, Revenue = items.Sum(i => i.TotalPrice) })
-                .GroupBy(x => new { x.OrderDate.Year, x.OrderDate.Month })
+            var monthlyChart = await _context.Orders
+                .Where(o => vendorOrderIdsQuery.Contains(o.Id)
+                         && o.Status == OrderStatus.Delivered
+                         && o.OrderDate >= firstDayOf6MonthsAgo)
+                .GroupBy(o => new { o.OrderDate.Year, o.OrderDate.Month })
                 .Select(g => new
                 {
                     label = $"{g.Key.Year}-{g.Key.Month:00}",
-                    revenue = Math.Round(g.Sum(x => x.Revenue), 2),
+                    revenue = Math.Round(
+                        _context.OrderItems
+                            .Where(oi => oi.Product.VendorId == vendorId
+                                      && g.Select(o => o.Id).Contains(oi.OrderId))
+                            .Sum(oi => (decimal?)oi.TotalPrice) ?? 0m, 2),
                     orderCount = g.Count()
                 })
                 .OrderBy(x => x.label)
-                .ToList();
+                .ToListAsync();
 
-            // Top 5 products by revenue
-            var topProducts = orderItems
+            var topProducts = await _context.OrderItems
+                .Where(oi => oi.Product.VendorId == vendorId)
                 .GroupBy(oi => oi.ProductId)
                 .Select(g => new
                 {
@@ -136,44 +137,29 @@ namespace Graduation.API.Controllers
                 })
                 .OrderByDescending(x => x.revenue)
                 .Take(5)
-                .ToList();
+                .ToListAsync();
 
             return Ok(new Errors.ApiResult(data: new
             {
                 vendorId,
                 storeName = vendor.StoreName,
-
-                // Products
                 totalProducts,
                 activeProducts,
                 outOfStockProducts,
-
-                // Orders
                 totalOrders,
                 pendingOrders,
                 completedOrders,
                 cancelledOrders,
                 todayOrders,
-
-                // Revenue
                 totalRevenue = Math.Round(totalRevenue, 2),
                 monthlyRevenue = Math.Round(monthlyRevenue, 2),
-
-                // Reviews
                 averageRating,
                 totalReviews,
-
-                // Charts
                 monthlyRevenueChart = monthlyChart,
                 topProducts
             }));
         }
 
-        /// <summary>
-        /// Get order status timeline for a specific vendor order.
-        /// Exposes the ConfirmedAt, ShippedAt, DeliveredAt, CancelledAt timestamps
-        /// that exist on the Order entity but were never surfaced in the API response.
-        /// </summary>
         [HttpGet("orders/{orderId}/timeline")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -186,7 +172,6 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
 
-            // Allow both customers and vendors to fetch the timeline for their own orders
             Order? order;
             if (vendor != null)
             {
@@ -205,10 +190,9 @@ namespace Graduation.API.Controllers
             if (order == null)
                 return NotFound(new ApiResponse(404, "Order not found"));
 
-            // Build timeline steps — only include steps that have actually occurred
             var timeline = new List<object>
             {
-                new { step = "Placed",    status = "Placed",    timestamp = (DateTime?)order.OrderDate,    completed = true }
+                new { step = "Placed", status = "Placed", timestamp = (DateTime?)order.OrderDate, completed = true }
             };
 
             if (order.ConfirmedAt.HasValue || order.Status >= OrderStatus.Confirmed)

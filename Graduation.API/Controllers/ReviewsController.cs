@@ -19,20 +19,14 @@ namespace Graduation.API.Controllers
             _reviewService = reviewService;
         }
 
-        /// <summary>
-        /// Get product reviews (public)
-        /// </summary>
         [HttpGet("product/{productId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetProductReviews(int productId)
         {
-            var reviews = await _reviewService.GetProductReviewsAsync(productId, approvedOnly: true);
+            var reviews = await _reviewService.GetProductReviewsAsync(productId);
             return Ok(new Errors.ApiResult(data: reviews));
         }
 
-        /// <summary>
-        /// Get my reviews (authenticated)
-        /// </summary>
         [HttpGet("my-reviews")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -47,9 +41,6 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: reviews));
         }
 
-        /// <summary>
-        /// Create review (authenticated, must have purchased)
-        /// </summary>
         [HttpPost]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status201Created)]
@@ -62,13 +53,11 @@ namespace Graduation.API.Controllers
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var review = await _reviewService.CreateReviewAsync(userId, dto);
-
-            return StatusCode(201, new Errors.ApiResult(data: review, message: "Review submitted successfully. It will be visible after admin approval."));
+            return StatusCode(201, new Errors.ApiResult(
+                data: review,
+                message: "Review submitted successfully. It will be visible after admin approval."));
         }
 
-        /// <summary>
-        /// Delete my review (authenticated)
-        /// </summary>
         [HttpDelete("{reviewId}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -76,25 +65,17 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteReview(int reviewId)
         {
-            // FIXED BUG: Was using User.FindFirst("userId")?.Value which only checks the
-            // custom "userId" claim and misses the standard ClaimTypes.NameIdentifier claim,
-            // causing 401 for users whose JWT was issued with the standard claim type.
-            // Now uses the GetUserId() extension which checks both claim types consistently.
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var deleted = await _reviewService.DeleteReviewAsync(reviewId, userId);
-
             if (!deleted)
                 throw new NotFoundException("Review not found or you don't have permission to delete it");
 
             return Ok(new Errors.ApiResult(message: "Review deleted successfully"));
         }
 
-        /// <summary>
-        /// Approve review (admin only)
-        /// </summary>
         [HttpPost("{reviewId}/approve")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -103,29 +84,20 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> ApproveReview(int reviewId)
         {
             var approved = await _reviewService.ApproveReviewAsync(reviewId);
-
             if (!approved)
                 throw new NotFoundException("Review not found");
 
             return Ok(new Errors.ApiResult(message: "Review approved successfully"));
         }
 
-        /// <summary>
-        /// Get pending reviews (admin only)
-        /// FIXED BUG: Was always returning an empty list unconditionally.
-        /// Now calls the service to fetch unapproved reviews from the database.
-        /// </summary>
         [HttpGet("pending")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPendingReviews()
         {
-            var reviews = await _reviewService.GetProductReviewsAsync(
-                productId: 0,   // 0 signals "all products" — see IReviewService
-                approvedOnly: false);
-
-            return Ok(new Errors.ApiResult(data: reviews));
+            var reviews = await _reviewService.GetPendingReviewsAsync();
+            return Ok(new Errors.ApiResult(data: reviews, count: reviews.Count));
         }
     }
 }

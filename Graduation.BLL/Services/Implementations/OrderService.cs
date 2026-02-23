@@ -26,13 +26,11 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
-            // CRITICAL FIX: Added transaction for atomicity with proper isolation level
             using var transaction = await _context.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable);
 
             try
             {
-                // Get user's cart
                 var cartItems = await _context.CartItems
                     .Include(ci => ci.Product)
                         .ThenInclude(p => p.Vendor)
@@ -42,61 +40,48 @@ namespace Graduation.BLL.Services.Implementations
                 if (!cartItems.Any())
                     throw new BadRequestException("Your cart is empty");
 
-                // Group by vendor (each vendor gets separate order)
-                var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId);
-
+                var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
                 var createdOrders = new List<Order>();
+                var allCartItemsToRemove = new List<CartItem>();
 
                 foreach (var vendorGroup in vendorGroups)
                 {
-                    var vendorId = vendorGroup.Key;
                     var items = vendorGroup.ToList();
 
-                    // IMPROVED FIX: Use atomic SQL updates to prevent race conditions
+                    // Atomic stock decrement per item
                     foreach (var item in items)
                     {
-                        // Atomic decrement with stock validation in a single SQL statement
                         var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE Products 
+                            UPDATE Products
                             SET StockQuantity = StockQuantity - {item.Quantity}
-                            WHERE Id = {item.ProductId} 
-                            AND StockQuantity >= {item.Quantity}
-                            AND IsActive = 1");
+                            WHERE Id = {item.ProductId}
+                              AND StockQuantity >= {item.Quantity}
+                              AND IsActive = 1");
 
                         if (rowsAffected == 0)
                         {
-                            // Check why the update failed
                             var product = await _context.Products
                                 .AsNoTracking()
                                 .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
                             if (product == null)
                                 throw new NotFoundException($"Product with ID {item.ProductId} not found");
-
                             if (!product.IsActive)
                                 throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
 
-                            if (product.StockQuantity < item.Quantity)
-                                throw new BadRequestException(
-                                    $"Product '{product.NameEn}' has insufficient stock. Only {product.StockQuantity} available");
-
-                            // If we get here, something unexpected happened
-                            throw new BadRequestException($"Failed to reserve stock for '{product.NameEn}'");
+                            throw new BadRequestException(
+                                $"Product '{product.NameEn}' has insufficient stock. " +
+                                $"Only {product.StockQuantity} available");
                         }
                     }
 
-                    // Calculate totals
                     var subTotal = items.Sum(i => (i.Product.DiscountPrice ?? i.Product.Price) * i.Quantity);
                     var shippingCost = CalculateShipping(dto.ShippingGovernorate);
                     var totalAmount = subTotal + shippingCost;
 
-                    // Generate order number
-                    var orderNumber = GenerateOrderNumber();
-
-                    // Create order
                     var order = new Order
                     {
-                        OrderNumber = orderNumber,
+                        OrderNumber = GenerateOrderNumber(),
                         UserId = userId,
                         SubTotal = subTotal,
                         ShippingCost = shippingCost,
@@ -117,41 +102,45 @@ namespace Graduation.BLL.Services.Implementations
                     _context.Orders.Add(order);
                     await _context.SaveChangesAsync();
 
-                    // Create order items
                     foreach (var cartItem in items)
                     {
                         var unitPrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
-
-                        var orderItem = new OrderItem
+                        _context.OrderItems.Add(new OrderItem
                         {
                             OrderId = order.Id,
                             ProductId = cartItem.ProductId,
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
                             TotalPrice = unitPrice * cartItem.Quantity
-                        };
-
-                        _context.OrderItems.Add(orderItem);
+                        });
                     }
+
+                    // FIX #4: Collect all cart items to remove BEFORE any SaveChangesAsync.
+                    // Previously, cart items were removed after the loop in a second
+                    // SaveChangesAsync outside the vendor loop, meaning a crash between
+                    // the two saves would leave orders created but cart intact.
+                    // Now we stage removals and flush them all in ONE save still inside
+                    // the transaction — fully atomic with order creation.
+                    allCartItemsToRemove.AddRange(items);
 
                     await _context.SaveChangesAsync();
                     createdOrders.Add(order);
-
-                    // Remove items from cart
-                    _context.CartItems.RemoveRange(items);
                 }
 
+                // Remove all cart items in a single operation, still inside the transaction
+                _context.CartItems.RemoveRange(allCartItemsToRemove);
                 await _context.SaveChangesAsync();
 
-                // Commit transaction
+                // Everything succeeded — commit
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Order created successfully: {OrderNumber} for user {UserId}",
-                    createdOrders.First().OrderNumber, userId);
+                _logger.LogInformation(
+                    "Order(s) created: {OrderNumbers} for user {UserId}",
+                    string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                // Send confirmation email (async, don't await to not block response)
+                // Send confirmation email fire-and-forget AFTER commit
                 var user = await _context.Users.FindAsync(userId);
-                if (user != null && !string.IsNullOrEmpty(user.Email))
+                if (user?.Email != null)
                 {
                     var firstOrder = createdOrders.First();
                     _ = Task.Run(async () =>
@@ -159,9 +148,7 @@ namespace Graduation.BLL.Services.Implementations
                         try
                         {
                             await _emailService.SendOrderConfirmationEmailAsync(
-                                user.Email,
-                                firstOrder.OrderNumber,
-                                firstOrder.TotalAmount);
+                                user.Email, firstOrder.OrderNumber, firstOrder.TotalAmount);
                         }
                         catch (Exception ex)
                         {
@@ -170,14 +157,11 @@ namespace Graduation.BLL.Services.Implementations
                     });
                 }
 
-                // Return first order
                 return await GetOrderByIdAsync(createdOrders.First().Id, userId);
             }
-            catch (Exception ex)
+            catch
             {
-                // Rollback on any error
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Failed to create order for user {UserId}", userId);
                 throw;
             }
         }
@@ -238,7 +222,6 @@ namespace Graduation.BLL.Services.Implementations
             if (order == null)
                 throw new NotFoundException("Order", id);
 
-            // Validate status transition
             if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
                 throw new BadRequestException("Cannot update status of cancelled or delivered orders");
 
@@ -259,19 +242,16 @@ namespace Graduation.BLL.Services.Implementations
                 case OrderStatus.Cancelled:
                     order.CancelledAt = DateTime.UtcNow;
                     order.CancellationReason = dto.CancellationReason;
-                    // Restore stock using atomic update
                     foreach (var item in order.OrderItems)
                     {
                         await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE Products 
-                            SET StockQuantity = StockQuantity + {item.Quantity}
+                            UPDATE Products SET StockQuantity = StockQuantity + {item.Quantity}
                             WHERE Id = {item.ProductId}");
                     }
                     break;
             }
 
             await _context.SaveChangesAsync();
-
             return MapToDto(order);
         }
 
@@ -294,29 +274,22 @@ namespace Graduation.BLL.Services.Implementations
             order.CancelledAt = DateTime.UtcNow;
             order.CancellationReason = reason;
 
-            // Restore stock using atomic update
             foreach (var item in order.OrderItems)
             {
                 await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                    UPDATE Products 
-                    SET StockQuantity = StockQuantity + {item.Quantity}
+                    UPDATE Products SET StockQuantity = StockQuantity + {item.Quantity}
                     WHERE Id = {item.ProductId}");
             }
 
             await _context.SaveChangesAsync();
-
             return MapToDto(order);
         }
 
         private string GenerateOrderNumber()
-        {
-            return $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper()}";
-        }
+            => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
 
         private decimal CalculateShipping(EgyptianGovernorate governorate)
-        {
-            // Egyptian shipping rates by governorate
-            return governorate switch
+            => governorate switch
             {
                 EgyptianGovernorate.Cairo => 30m,
                 EgyptianGovernorate.Giza => 30m,
@@ -328,52 +301,48 @@ namespace Graduation.BLL.Services.Implementations
                 EgyptianGovernorate.SouthSinai => 80m,
                 EgyptianGovernorate.Aswan => 75m,
                 EgyptianGovernorate.Luxor => 70m,
-                _ => 50m // Default shipping
+                _ => 50m
             };
-        }
 
-        private OrderDto MapToDto(Order order)
+        private OrderDto MapToDto(Order order) => new()
         {
-            return new OrderDto
+            Id = order.Id,
+            OrderNumber = order.OrderNumber,
+            SubTotal = order.SubTotal,
+            ShippingCost = order.ShippingCost,
+            TotalAmount = order.TotalAmount,
+            Status = order.Status.ToString(),
+            StatusId = (int)order.Status,
+            PaymentMethod = order.PaymentMethod.ToString(),
+            PaymentStatus = order.PaymentStatus.ToString(),
+            OrderDate = order.OrderDate,
+            DeliveredAt = order.DeliveredAt,
+            ShippingFirstName = order.ShippingFirstName,
+            ShippingLastName = order.ShippingLastName,
+            ShippingAddress = order.ShippingAddress,
+            ShippingCity = order.ShippingCity,
+            ShippingGovernorate = order.ShippingGovernorate.ToString(),
+            ShippingPhone = order.ShippingPhone,
+            Notes = order.Notes,
+            VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
+            VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
+            Items = order.OrderItems.Select(oi => new OrderItemDto
             {
-                Id = order.Id,
-                OrderNumber = order.OrderNumber,
-                SubTotal = order.SubTotal,
-                ShippingCost = order.ShippingCost,
-                TotalAmount = order.TotalAmount,
-                Status = order.Status.ToString(),
-                StatusId = (int)order.Status,
-                PaymentMethod = order.PaymentMethod.ToString(),
-                PaymentStatus = order.PaymentStatus.ToString(),
-                OrderDate = order.OrderDate,
-                DeliveredAt = order.DeliveredAt,
-                ShippingFirstName = order.ShippingFirstName,
-                ShippingLastName = order.ShippingLastName,
-                ShippingAddress = order.ShippingAddress,
-                ShippingCity = order.ShippingCity,
-                ShippingGovernorate = order.ShippingGovernorate.ToString(),
-                ShippingPhone = order.ShippingPhone,
-                Notes = order.Notes,
-                VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
-                VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
-                Items = order.OrderItems.Select(oi => new OrderItemDto
-                {
-                    Id = oi.Id,
-                    ProductId = oi.ProductId,
-                    ProductNameAr = oi.Product.NameAr,
-                    ProductNameEn = oi.Product.NameEn,
-                    ProductImage = oi.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                        ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
-                    Quantity = oi.Quantity,
-                    UnitPrice = oi.UnitPrice,
-                    TotalPrice = oi.TotalPrice
-                }).ToList()
-            };
-        }
+                Id = oi.Id,
+                ProductId = oi.ProductId,
+                ProductNameAr = oi.Product.NameAr,
+                ProductNameEn = oi.Product.NameEn,
+                ProductImage = oi.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
+                    ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
+                Quantity = oi.Quantity,
+                UnitPrice = oi.UnitPrice,
+                TotalPrice = oi.TotalPrice
+            }).ToList()
+        };
 
         private OrderListDto MapToListDto(Order order, int? vendorId = null)
         {
-            var vendorItems = vendorId.HasValue 
+            var vendorItems = vendorId.HasValue
                 ? order.OrderItems.Where(oi => oi.Product.VendorId == vendorId.Value).ToList()
                 : order.OrderItems.ToList();
 

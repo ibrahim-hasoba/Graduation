@@ -50,35 +50,30 @@ namespace Graduation.BLL.Services.Implementations
             _context.ProductReviews.Add(review);
             await _context.SaveChangesAsync();
 
-            return await GetReviewByIdAsync(review.Id) ?? throw new NotFoundException("Review not found after creation");
+            return await GetReviewByIdAsync(review.Id)
+                ?? throw new NotFoundException("Review not found after creation");
         }
 
-        /// <summary>
-        /// FIXED BUG: Previously GetPendingReviews in the controller returned an empty list
-        /// unconditionally. The fix: pass productId = 0 to fetch across ALL products.
-        /// When productId == 0, the product filter is skipped entirely so the admin
-        /// can see all pending reviews regardless of which product they belong to.
-        /// </summary>
-        public async Task<List<ReviewDto>> GetProductReviewsAsync(int productId, bool approvedOnly = true)
+
+        public async Task<List<ReviewDto>> GetProductReviewsAsync(int productId)
         {
-            var query = _context.ProductReviews
+            var reviews = await _context.ProductReviews
                 .Include(r => r.User)
                 .Include(r => r.Product)
-                .AsQueryable();
+                .Where(r => r.ProductId == productId && r.IsApproved)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
 
-            // productId == 0 means "all products" (admin use-case for pending reviews)
-            if (productId > 0)
-                query = query.Where(r => r.ProductId == productId);
+            return reviews.Select(MapToDto).ToList();
+        }
 
-            if (approvedOnly)
-                query = query.Where(r => r.IsApproved);
-            else
-                // When fetching unapproved reviews, only return the ones not yet approved
-                // so the admin list stays clean (don't return already-approved reviews
-                // unless the caller also passes approvedOnly: true with productId filter)
-                query = query.Where(r => !r.IsApproved);
 
-            var reviews = await query
+        public async Task<List<ReviewDto>> GetPendingReviewsAsync()
+        {
+            var reviews = await _context.ProductReviews
+                .Include(r => r.User)
+                .Include(r => r.Product)
+                .Where(r => !r.IsApproved)
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();
 
@@ -102,8 +97,7 @@ namespace Graduation.BLL.Services.Implementations
             var review = await _context.ProductReviews
                 .FirstOrDefaultAsync(r => r.Id == reviewId && r.UserId == userId);
 
-            if (review == null)
-                return false;
+            if (review == null) return false;
 
             _context.ProductReviews.Remove(review);
             await _context.SaveChangesAsync();
@@ -113,8 +107,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<bool> ApproveReviewAsync(int reviewId)
         {
             var review = await _context.ProductReviews.FindAsync(reviewId);
-            if (review == null)
-                return false;
+            if (review == null) return false;
 
             review.IsApproved = true;
             await _context.SaveChangesAsync();
@@ -131,19 +124,16 @@ namespace Graduation.BLL.Services.Implementations
             return review != null ? MapToDto(review) : null;
         }
 
-        private ReviewDto MapToDto(ProductReview review)
+        private ReviewDto MapToDto(ProductReview review) => new()
         {
-            return new ReviewDto
-            {
-                Id = review.Id,
-                ProductId = review.ProductId,
-                ProductName = review.Product.NameEn,
-                Rating = review.Rating,
-                Comment = review.Comment,
-                UserName = $"{review.User.FirstName} {review.User.LastName}",
-                IsApproved = review.IsApproved,
-                CreatedAt = review.CreatedAt
-            };
-        }
+            Id = review.Id,
+            ProductId = review.ProductId,
+            ProductName = review.Product.NameEn,
+            Rating = review.Rating,
+            Comment = review.Comment,
+            UserName = $"{review.User.FirstName} {review.User.LastName}",
+            IsApproved = review.IsApproved,
+            CreatedAt = review.CreatedAt
+        };
     }
 }

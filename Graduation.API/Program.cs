@@ -53,6 +53,18 @@ namespace Graduation.API
 
                 var builder = WebApplication.CreateBuilder(args);
 
+                var jwtKey = builder.Configuration["JWTSettings:securityKey"];
+                if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+                    throw new InvalidOperationException(
+                        "JWTSettings:securityKey is missing or too short (minimum 32 characters). " +
+                        "Set it via environment variable or dotnet user-secrets.");
+
+                var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+                if (string.IsNullOrWhiteSpace(connStr))
+                    throw new InvalidOperationException(
+                        "ConnectionStrings:DefaultConnection is missing. " +
+                        "Set it via environment variable ConnectionStrings__DefaultConnection.");
+
                 builder.Host.UseSerilog();
 
 
