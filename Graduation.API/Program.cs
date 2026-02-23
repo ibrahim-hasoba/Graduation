@@ -33,7 +33,6 @@ namespace Graduation.API
     {
         public static async Task Main(string[] args)
         {
-            // Configure Serilog FIRST (before creating builder)
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
                 .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
