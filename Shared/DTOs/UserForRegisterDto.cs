@@ -13,6 +13,8 @@ namespace Shared.DTOs
         public string? Password { get; set; }
         [Compare("Password" , ErrorMessage ="The Password and Confirmation do not match")]
         public string? ConfirmPassword { get; set; }
+        public string? PhoneNumber { get; set; }
+
 
     }
 }

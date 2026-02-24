@@ -16,13 +16,15 @@ namespace Graduation.BLL.Services.Implementations
             _context = context;
         }
 
-        public async Task<RefreshToken> GenerateRefreshTokenAsync(string userId, string ipAddress)
+        public async Task<RefreshToken> GenerateRefreshTokenAsync(string userId, string ipAddress , bool rememberMe = false)
         {
             var refreshToken = new RefreshToken
             {
                 UserId = userId,
                 Token = GenerateToken(),
-                ExpiresAt = DateTime.UtcNow.AddDays(7), // 7 days expiration
+                ExpiresAt = rememberMe
+                        ? DateTime.UtcNow.AddDays(30)
+                        : DateTime.UtcNow.AddDays(1),
                 CreatedAt = DateTime.UtcNow,
                 CreatedByIp = ipAddress
             };

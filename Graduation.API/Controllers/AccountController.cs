@@ -1,21 +1,21 @@
 ﻿using Auth.DTOs;
-using Graduation.API.Errors;
+using Shared.Errors;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
 using System.Security.Claims;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
 
 namespace Graduation.API.Controllers
 {
@@ -52,7 +52,7 @@ namespace Graduation.API.Controllers
             _otpService = otpService;
         }
 
-        #region Registration & Verification
+        
 
         [HttpPost("register")]
         [EnableRateLimiting("otp")]
@@ -96,27 +96,7 @@ namespace Graduation.API.Controllers
             return StatusCode(201, new ApiResult(message: "Registration successful! Please verify your email."));
         }
 
-        [HttpGet("verify-email")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> VerifyEmail([FromQuery] string userId, [FromQuery] string token)
-        {
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException("User not found");
-
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
-            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
-            if (!result.Succeeded)
-                throw new BadRequestException("Email verification failed.");
-
-            return Ok(new ApiResult(message: "Email verified successfully!"));
-        }
-
-        #endregion
-
-        #region Login & Token Management
-
+     
         [HttpPost("login")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -139,7 +119,7 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("Please verify your email first.");
 
             await _userManager.ResetAccessFailedCountAsync(user);
-            return await GenerateAuthResponse(user);
+            return await GenerateAuthResponse(user , loginDto.RememberMe);
         }
 
         public class GoogleLoginDto
@@ -181,25 +161,15 @@ namespace Graduation.API.Controllers
         }
 
         [HttpPost("refresh-token")]
-        [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
             var ipAddress = GetIpAddress();
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? User.FindFirstValue("userId");
-
-            if (string.IsNullOrEmpty(currentUserId))
-                throw new UnauthorizedException("User not authenticated");
 
             var oldToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
             if (oldToken == null || !oldToken.IsActive)
-                throw new UnauthorizedException("Invalid session");
-
-            if (oldToken.UserId != currentUserId)
-                throw new UnauthorizedException("Invalid session");
+                throw new UnauthorizedException("Invalid or expired session");
 
             var user = await _userManager.FindByIdAsync(oldToken.UserId);
             if (user == null) throw new UnauthorizedException("User no longer exists");
@@ -209,7 +179,10 @@ namespace Graduation.API.Controllers
             {
                 var roles = await _userManager.GetRolesAsync(user);
                 var accessToken = _jwtHandler.CreateToken(user, roles);
+
+                
                 var newToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
+
                 await _refreshTokenService.RevokeTokenAsync(oldToken.Token, ipAddress, newToken.Token);
                 await transaction.CommitAsync();
 
@@ -222,7 +195,7 @@ namespace Graduation.API.Controllers
             }
         }
 
-        #region Password Recovery
+        
 
         [HttpPost("forgot-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -230,47 +203,59 @@ namespace Graduation.API.Controllers
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null)
-                return Ok(new ApiResult(message: "If your email is in our system, you will receive a reset link."));
+                return Ok(new ApiResult(message: "If your email is in our system, you will receive a code."));
 
-            var baseUrl = _configuration["AppSettings:ClientUrl"];
-            if (string.IsNullOrWhiteSpace(baseUrl))
-            {
-                return StatusCode(503, new ApiResponse(503,
-                    "Password reset is temporarily unavailable. Please contact support."));
-            }
+            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
+            var recent = await _context.EmailOtps
+                .AnyAsync(e => e.Email == dto.Email && e.Purpose == "password_reset" && e.CreatedAt >= oneMinuteAgo);
+            if (recent)
+                return StatusCode(429, new ApiResponse(429, "Code recently sent. Try again in a minute."));
 
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-            var resetUrl = $"{baseUrl.TrimEnd('/')}/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={encodedToken}";
+            var lastHourCount = await _context.EmailOtps
+                .CountAsync(e => e.Email == dto.Email && e.Purpose == "password_reset"
+                              && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
+            if (lastHourCount >= 5)
+                return StatusCode(429, new ApiResponse(429, "Too many requests. Try again later."));
 
-            await _emailService.SendPasswordResetEmailAsync(user.Email!, user.FirstName, resetUrl);
-            return Ok(new ApiResult(message: "Reset link sent to your email."));
+            var code = await _otpService.GenerateOtpAsync(dto.Email!, purpose: "password_reset");
+            await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
+
+            return Ok(new ApiResult(message: "Verification code sent to your email."));
         }
 
         [HttpPost("reset-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordDto dto)
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordWithOtpDto dto)
         {
-            var user = await _userManager.FindByEmailAsync(dto.Email!);
+            if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Code)
+                || string.IsNullOrEmpty(dto.NewPassword))
+                throw new BadRequestException("Email, code, and new password are required");
+
+            if (dto.NewPassword != dto.ConfirmPassword)
+                throw new BadRequestException("Passwords do not match");
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null) throw new BadRequestException("Invalid request");
 
-            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(dto.Token!));
-            var result = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword!);
+            var valid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code, purpose: "password_reset");
+            if (!valid) throw new BadRequestException("Invalid or expired verification code");
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             return Ok(new ApiResult(message: "Password has been reset successfully."));
         }
 
-        #endregion
 
         [HttpPost("resend-verification-email")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [EnableRateLimiting("otp")]
-        public async Task<IActionResult> ResendVerification([FromBody] string email)
+        public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationDto dto)
         {
-            var user = await _userManager.FindByEmailAsync(email);
+            var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null || user.EmailConfirmed)
                 return Ok(new ApiResult(message: "Verification email sent if applicable."));
 
@@ -306,9 +291,7 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Logged out successfully"));
         }
 
-        #endregion
-
-        #region Profile & Security
+       
 
         [HttpGet("profile")]
         [Authorize]
@@ -322,12 +305,10 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(data: new
             {
-                id = user.Id,
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 email = user.Email,
                 emailConfirmed = user.EmailConfirmed,
-                phoneNumber = user.PhoneNumber,
                 createdAt = user.CreatedAt
             }));
         }
@@ -350,15 +331,13 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Password updated. Other sessions revoked."));
         }
 
-        #endregion
+       
 
-        #region Helpers
-
-        private async Task<IActionResult> GenerateAuthResponse(AppUser user)
+        private async Task<IActionResult> GenerateAuthResponse(AppUser user , bool rememberMe = false)
         {
             var roles = await _userManager.GetRolesAsync(user);
             var accessToken = _jwtHandler.CreateToken(user, roles);
-            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, GetIpAddress());
+            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, GetIpAddress() , rememberMe);
 
             return Ok(new ApiResult(data: new
             {
@@ -406,6 +385,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Email verified successfully"));
         }
 
-        #endregion
+        
     }
 }

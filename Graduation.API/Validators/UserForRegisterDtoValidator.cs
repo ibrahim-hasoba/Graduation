@@ -35,6 +35,11 @@ namespace Graduation.API.Validators
             RuleFor(x => x.ConfirmPassword)
                 .NotEmpty().WithMessage("Confirm password is required.")
                 .Equal(x => x.Password).WithMessage("Password and confirmation password do not match.");
+
+            RuleFor(x => x.PhoneNumber)
+           .Matches(@"^(?:\+20|0020)?0?1[0125]\d{8}$")
+           .WithMessage("If provided, the phone number must be a valid Egyptian number.")
+           .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
         }
     }
 }

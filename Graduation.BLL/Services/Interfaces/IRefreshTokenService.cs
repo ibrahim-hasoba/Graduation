@@ -7,7 +7,7 @@ namespace Graduation.BLL.Services.Interfaces
         /// <summary>
         /// Generate a new refresh token for a user
         /// </summary>
-        Task<RefreshToken> GenerateRefreshTokenAsync(string userId, string ipAddress);
+        Task<RefreshToken> GenerateRefreshTokenAsync(string userId, string ipAddress , bool rememberMe = false);
 
         /// <summary>
         /// Get refresh token by token string

@@ -31,7 +31,6 @@ namespace Graduation.API.Middlewares
 
                 ApiResponse response;
 
-                // Handle custom business exceptions
                 if (ex is BusinessException businessEx)
                 {
                     context.Response.StatusCode = businessEx.StatusCode;
@@ -39,7 +38,6 @@ namespace Graduation.API.Middlewares
                 }
                 else
                 {
-                    // Handle unexpected exceptions
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
                     response = _env.IsDevelopment()

@@ -24,50 +24,7 @@ namespace Graduation.BLL.Services.Implementations
             _senderName = _configuration["EmailSettings:SenderName"]!;
         }
 
-        public async Task SendEmailVerificationAsync(string email, string firstName, string verificationUrl)
-        {
-            var subject = "Verify Your Email - Egyptian Products Marketplace";
-
-            var body = $@"
-                <html>
-                <head>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-                        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-                        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-                        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-                        .button {{ display: inline-block; padding: 15px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
-                        .footer {{ text-align: center; margin-top: 20px; color: #666; font-size: 12px; }}
-                    </style>
-                </head>
-                <body>
-                    <div class='container'>
-                        <div class='header'>
-                            <h1>🇪🇬 Welcome to Egyptian Products Marketplace!</h1>
-                        </div>
-                        <div class='content'>
-                            <h2>Hello {firstName}! 👋</h2>
-                            <p>Thank you for registering with Egyptian Products Marketplace - your gateway to authentic Egyptian products!</p>
-                            <p>To complete your registration and verify your email address, please click the button below:</p>
-                            <div style='text-align: center;'>
-                                <a href='{verificationUrl}' class='button'>Verify Email Address</a>
-                            </div>
-                            <p>Or copy and paste this link into your browser:</p>
-                            <p style='background: #fff; padding: 10px; border: 1px solid #ddd; word-break: break-all;'>{verificationUrl}</p>
-                            <p><strong>This link will expire in 24 hours.</strong></p>
-                            <p>If you didn't create an account, you can safely ignore this email.</p>
-                            <div class='footer'>
-                                <p>© 2025 Egyptian Products Marketplace. Made with ❤️ in Egypt 🇪🇬</p>
-                            </div>
-                        </div>
-                    </div>
-                </body>
-                </html>
-            ";
-
-            await SendEmailAsync(email, subject, body);
-        }
-
+       
         public async Task SendEmailOtpAsync(string email, string firstName, string code)
         {
             var subject = "Your verification code - Heka";

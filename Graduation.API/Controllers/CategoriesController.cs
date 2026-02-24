@@ -1,5 +1,5 @@
 ﻿using Graduation.DAL.Data;
-using Graduation.API.Errors;
+using Shared.Errors;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

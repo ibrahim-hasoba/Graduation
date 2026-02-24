@@ -1,5 +1,5 @@
-﻿using Graduation.API.Errors;
-using Graduation.DAL.Data;
+﻿using Graduation.DAL.Data;
+using Graduation.API.Errors;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
