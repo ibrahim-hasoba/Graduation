@@ -61,9 +61,18 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
-            var existingUser = await _userManager.FindByEmailAsync(userDto.Email!);
-            if (existingUser != null)
+            var existingByEmail = await _userManager.FindByEmailAsync(userDto.Email!);
+            if (existingByEmail != null)
                 throw new ConflictException("A user with this email already exists");
+
+            if (!string.IsNullOrWhiteSpace(userDto.PhoneNumber))
+            {
+                var existingByPhone = await _userManager.Users
+                    .AnyAsync(u => u.PhoneNumber == userDto.PhoneNumber);
+
+                if (existingByPhone)
+                    throw new ConflictException("This phone number is already registered");
+            }
 
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
@@ -83,7 +92,8 @@ namespace Graduation.API.Controllers
                 Email = userDto.Email,
                 UserName = userDto.Email,
                 EmailConfirmed = false,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                PhoneNumber = userDto.PhoneNumber
             };
 
             var result = await _userManager.CreateAsync(user, userDto.Password!);
@@ -308,8 +318,8 @@ namespace Graduation.API.Controllers
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 email = user.Email,
-                emailConfirmed = user.EmailConfirmed,
-                createdAt = user.CreatedAt
+                createdAt = user.CreatedAt,
+                phoneNumber = user.PhoneNumber
             }));
         }
 
@@ -322,8 +332,9 @@ namespace Graduation.API.Controllers
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
             var user = await _userManager.FindByIdAsync(userId!);
-
-            var result = await _userManager.ChangePasswordAsync(user!, dto.CurrentPassword, dto.NewPassword);
+            if (user == null) 
+                throw new NotFoundException("User not found");
+            var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to change password.");
 

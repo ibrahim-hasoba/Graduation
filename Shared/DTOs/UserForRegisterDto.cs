@@ -15,6 +15,8 @@ namespace Shared.DTOs
         public string? ConfirmPassword { get; set; }
         public string? PhoneNumber { get; set; }
 
-
+        [Required]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must accept the terms and conditions.")]
+        public bool AcceptTerms { get; set; }
     }
 }

@@ -240,6 +240,7 @@ namespace Graduation.API
                 builder.Services.AddHostedService<BackgroundProcessingService>();
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<ClearOldNotificationsHostedService>();
+                builder.Services.AddHostedService<UnverifiedUserCleanupService>();
 
                 // CORS Configuration
                 //var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
@@ -267,7 +268,7 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

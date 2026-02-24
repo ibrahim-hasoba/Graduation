@@ -44,13 +44,12 @@ namespace Graduation.BLL.JwtFeatures
                 new Claim(ClaimTypes.Email, user.Email!),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-
                 new Claim("userId", user.Id),
             };
 
             foreach (var role in roles)
                 claims.Add(new Claim(ClaimTypes.Role, role));
-
+ 
             return claims;
         }
 

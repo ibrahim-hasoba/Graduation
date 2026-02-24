@@ -40,6 +40,9 @@ namespace Graduation.API.Validators
            .Matches(@"^(?:\+20|0020)?0?1[0125]\d{8}$")
            .WithMessage("If provided, the phone number must be a valid Egyptian number.")
            .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
+
+            RuleFor(x => x.AcceptTerms)
+            .Equal(true).WithMessage("You must accept the privacy policy and terms of use.");
         }
     }
 }
