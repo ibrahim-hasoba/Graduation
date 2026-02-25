@@ -318,7 +318,6 @@ namespace Graduation.API.Controllers
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 email = user.Email,
-                createdAt = user.CreatedAt,
                 phoneNumber = user.PhoneNumber
             }));
         }
@@ -342,19 +341,40 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Password updated. Other sessions revoked."));
         }
 
-       
 
-        private async Task<IActionResult> GenerateAuthResponse(AppUser user , bool rememberMe = false)
+
+        private async Task<IActionResult> GenerateAuthResponse(AppUser user, bool rememberMe = false)
         {
             var roles = await _userManager.GetRolesAsync(user);
-            var accessToken = _jwtHandler.CreateToken(user, roles);
-            var refreshToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, GetIpAddress() , rememberMe);
 
-            return Ok(new ApiResult(data: new
+            var accessToken = _jwtHandler.CreateToken(user, roles);
+
+            var refreshToken = await _refreshTokenService
+                .GenerateRefreshTokenAsync(user.Id, GetIpAddress(), rememberMe);
+
+            var hasAddress = await _context.UserAddresses
+                .AnyAsync(a => a.UserId == user.Id);
+
+            var response = new AuthResponseDto
             {
-                token = CreateTokenResponse(accessToken, refreshToken.Token),
-                user = new { user.Email, user.FirstName, user.LastName, roles }
-            }));
+                Token = new TokenResponseDto
+                {
+                    AccessToken = accessToken,
+                    RefreshToken = refreshToken.Token,
+                    ExpiresIn = 3600,
+                    TokenType = "Bearer"
+                },
+                User = new UserInfoDto
+                {
+                    Email = user.Email!,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Roles = roles,
+                    HasAddress = hasAddress
+                }
+            };
+
+            return Ok(new ApiResult(data: response));
         }
 
         private TokenResponseDto CreateTokenResponse(string access, string refresh) => new()
@@ -380,22 +400,28 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
         {
-            if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Code))
+            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
                 throw new BadRequestException("Email and code are required");
 
             var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null) throw new NotFoundException("User not found");
+            if (user == null)
+                throw new NotFoundException("User not found");
 
-            var valid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
-            if (!valid) throw new BadRequestException("Invalid or expired verification code");
+            var isValid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
+            if (!isValid)
+                throw new BadRequestException("Invalid or expired verification code");
 
-            user.EmailConfirmed = true;
-            var result = await _userManager.UpdateAsync(user);
-            if (!result.Succeeded) throw new BadRequestException("Failed to confirm email");
+            if (!user.EmailConfirmed)
+            {
+                user.EmailConfirmed = true;
+                var updateResult = await _userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                    throw new BadRequestException("Failed to confirm email");
+            }
 
-            return Ok(new ApiResult(message: "Email verified successfully"));
+            return await GenerateAuthResponse(user);
         }
 
-        
+
     }
 }
