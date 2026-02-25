@@ -1,6 +1,7 @@
-﻿using Shared.Errors;
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
+using SharedErrors = Shared.Errors;
+using ApiErrors = Graduation.API.Errors;
 
 namespace Graduation.API.Middlewares
 {
@@ -20,7 +21,7 @@ namespace Graduation.API.Middlewares
         public async Task InvokeAsync(HttpContext context)
         {
             try
-            {   
+            {
                 await _next(context);
             }
             catch (Exception ex)
@@ -29,23 +30,28 @@ namespace Graduation.API.Middlewares
 
                 context.Response.ContentType = "application/json";
 
-                ApiResponse response;
+                SharedErrors.ApiResponse response;
 
-                if (ex is BusinessException businessEx)
+                if (ex is SharedErrors.BusinessException sharedBizEx)
                 {
-                    context.Response.StatusCode = businessEx.StatusCode;
-                    response = new ApiResponse(businessEx.StatusCode, businessEx.Message);
+                    context.Response.StatusCode = sharedBizEx.StatusCode;
+                    response = new SharedErrors.ApiResponse(sharedBizEx.StatusCode, sharedBizEx.Message);
+                }
+                else if (ex is ApiErrors.BusinessException apiBizEx)
+                {
+                    context.Response.StatusCode = apiBizEx.StatusCode;
+                    response = new SharedErrors.ApiResponse(apiBizEx.StatusCode, apiBizEx.Message);
                 }
                 else
                 {
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
                     response = _env.IsDevelopment()
-                            ? new ApiException(
-                                (int)HttpStatusCode.InternalServerError,
-                                ex.Message,
-                                ex.StackTrace)
-                        : new ApiException(
+                        ? new SharedErrors.ApiException(
+                            (int)HttpStatusCode.InternalServerError,
+                            ex.Message,
+                            ex.StackTrace)
+                        : new SharedErrors.ApiException(
                             (int)HttpStatusCode.InternalServerError,
                             "An internal server error occurred");
                 }
@@ -56,7 +62,6 @@ namespace Graduation.API.Middlewares
                 };
 
                 var json = JsonSerializer.Serialize(response, options);
-
                 await context.Response.WriteAsync(json);
             }
         }

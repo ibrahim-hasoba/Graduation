@@ -12,5 +12,7 @@ namespace Graduation.DAL.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? ProfilePictureUrl { get; set; }
         public ICollection<UserAddress> Addresses { get; set; } = new List<UserAddress>();
+
+        public DateTime? WarningEmailSentAt { get; set; }
     }
 }

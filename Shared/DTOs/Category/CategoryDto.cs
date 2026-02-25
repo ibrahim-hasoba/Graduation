@@ -9,5 +9,8 @@ namespace Shared.DTOs.Category
         public string? ImageUrl { get; set; }
         public int? ParentCategoryId { get; set; }
         public int ProductCount { get; set; }
+
+        public List<CategoryDto> SubCategories { get; set; } = new();
+
     }
 }

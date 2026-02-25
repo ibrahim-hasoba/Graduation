@@ -87,63 +87,61 @@ namespace Graduation.BLL.Services.Implementations
             return activities.OrderByDescending(a => a.Timestamp).Take(count).ToList();
         }
 
-        public async Task<List<TopProductDto>> GetTopProductsAsync(int count = 10)
-        {
-            var topProducts = await _context.OrderItems
-                .Include(oi => oi.Product)
-                    .ThenInclude(p => p.Vendor)
-                .Include(oi => oi.Product)
-                    .ThenInclude(p => p.Images)
-                .GroupBy(oi => oi.ProductId)
-                .Select(g => new
-                {
-                    ProductId = g.Key,
-                    Product = g.First().Product,
-                    TotalSales = g.Sum(oi => oi.Quantity),
-                    Revenue = g.Sum(oi => oi.TotalPrice)
-                })
-                .OrderByDescending(x => x.TotalSales)
-                .Take(count)
-                .ToListAsync();
-
-            return topProducts.Select(tp => new TopProductDto
-            {
-                Id = tp.ProductId,
-                NameEn = tp.Product.NameEn,
-                NameAr = tp.Product.NameAr,
-                ImageUrl = tp.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                    ?? tp.Product.Images.FirstOrDefault()?.ImageUrl,
-                TotalSales = tp.TotalSales,
-                Revenue = tp.Revenue,
-                VendorName = tp.Product.Vendor.StoreName
-            }).ToList();
-        }
-
         public async Task<List<TopVendorDto>> GetTopVendorsAsync(int count = 10)
         {
-            var topVendors = await _context.Vendors
-                .Include(v => v.Products)
-                    .ThenInclude(p => p.Reviews.Where(r => r.IsApproved))
+            var approvedVendors = await _context.Vendors
                 .Where(v => v.IsApproved)
+                .Select(v => new
+                {
+                    v.Id,
+                    v.StoreName,
+                    v.StoreNameAr,
+                    TotalProducts = v.Products.Count(p => p.IsActive)
+                })
+                .ToListAsync();
+
+            var vendorIds = approvedVendors.Select(v => v.Id).ToList();
+
+            // Single query: order counts and revenue per vendor
+            var vendorOrderStats = await _context.OrderItems
+                .Where(oi => vendorIds.Contains(oi.Product.VendorId))
+                .GroupBy(oi => oi.Product.VendorId)
+                .Select(g => new
+                {
+                    VendorId = g.Key,
+                    TotalOrders = g.Select(oi => oi.OrderId).Distinct().Count(),
+                    TotalRevenue = g.Sum(oi => (decimal?)oi.TotalPrice) ?? 0m
+                })
+                .ToListAsync();
+
+            // Single query: average rating per vendor
+            var vendorRatingStats = await _context.ProductReviews
+                .Where(r => r.IsApproved && vendorIds.Contains(r.Product.VendorId))
+                .GroupBy(r => r.Product.VendorId)
+                .Select(g => new
+                {
+                    VendorId = g.Key,
+                    AverageRating = g.Average(r => (double)r.Rating)
+                })
+                .ToListAsync();
+
+            var orderStatsDict = vendorOrderStats.ToDictionary(x => x.VendorId);
+            var ratingDict = vendorRatingStats.ToDictionary(x => x.VendorId);
+
+            return approvedVendors
                 .Select(v => new TopVendorDto
                 {
                     Id = v.Id,
                     StoreName = v.StoreName,
                     StoreNameAr = v.StoreNameAr,
-                    TotalProducts = v.Products.Count(p => p.IsActive),
-                    TotalOrders = _context.OrderItems.Count(oi => oi.Product.VendorId == v.Id),
-                    TotalRevenue = _context.OrderItems.Where(oi => oi.Product.VendorId == v.Id).Sum(oi => oi.TotalPrice),
-                    AverageRating = v.Products
-                        .SelectMany(p => p.Reviews)
-                        .Any()
-                        ? v.Products.SelectMany(p => p.Reviews).Average(r => r.Rating)
-                        : 0
+                    TotalProducts = v.TotalProducts,
+                    TotalOrders = orderStatsDict.TryGetValue(v.Id, out var os) ? os.TotalOrders : 0,
+                    TotalRevenue = orderStatsDict.TryGetValue(v.Id, out var rs) ? rs.TotalRevenue : 0m,
+                    AverageRating = ratingDict.TryGetValue(v.Id, out var rat) ? Math.Round(rat.AverageRating, 1) : 0.0
                 })
                 .OrderByDescending(v => v.TotalRevenue)
                 .Take(count)
-                .ToListAsync();
-
-            return topVendors;
+                .ToList();
         }
 
         public async Task<SalesChartDto> GetSalesChartDataAsync()
@@ -212,6 +210,38 @@ namespace Graduation.BLL.Services.Implementations
                 UnverifiedUsers = totalUsers - verifiedUsers,
                 MonthlyGrowth = new List<UserGrowthDto>()
             };
+        }
+
+        public async Task<List<TopProductDto>> GetTopProductsAsync(int count = 10)
+        {
+            var topProducts = await _context.OrderItems
+                .Include(oi => oi.Product)
+                    .ThenInclude(p => p.Vendor)
+                .Include(oi => oi.Product)
+                    .ThenInclude(p => p.Images)
+                .GroupBy(oi => oi.ProductId)
+                .Select(g => new
+                {
+                    ProductId = g.Key,
+                    Product = g.First().Product,
+                    TotalSales = g.Sum(oi => oi.Quantity),
+                    Revenue = g.Sum(oi => oi.TotalPrice)
+                })
+                .OrderByDescending(x => x.TotalSales)
+                .Take(count)
+                .ToListAsync();
+
+            return topProducts.Select(tp => new TopProductDto
+            {
+                Id = tp.ProductId,
+                NameEn = tp.Product.NameEn,
+                NameAr = tp.Product.NameAr,
+                ImageUrl = tp.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
+                    ?? tp.Product.Images.FirstOrDefault()?.ImageUrl,
+                TotalSales = tp.TotalSales,
+                Revenue = tp.Revenue,
+                VendorName = tp.Product.Vendor.StoreName
+            }).ToList();
         }
     }
 }

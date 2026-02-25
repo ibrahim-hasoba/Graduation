@@ -6,5 +6,6 @@
         Task SendVendorApprovalEmailAsync(string email, string storeName, bool isApproved, string? reason = null);
         Task SendPasswordResetEmailAsync(string email, string firstName, string resetUrl);
         Task SendOrderConfirmationEmailAsync(string email, string orderNumber, decimal total);
+        Task SendVerificationWarningEmailAsync(string email, string firstName, int hoursRemaining);
     }
 }

@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Category;
-using Graduation.API.Errors;
+using Shared.Errors;
 
 
 namespace Graduation.API.Controllers
@@ -274,11 +274,9 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        #region Category Management
+        
 
-        /// <summary>
-        /// Create a new category
-        /// </summary>
+        
         [HttpPost("categories")]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -287,61 +285,33 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
-            try
-            {
-                var category = await _categoryService.CreateCategoryAsync(dto);
-                return CreatedAtAction(nameof(GetCategoryById), new { id = category.Id },
-                    new Errors.ApiResult(data: category));
-            }
-            catch (BadRequestException ex)
-            {
-                return BadRequest(new ApiResponse(400, ex.Message));
-            }
-            catch (ConflictException ex)
-            {
-                return Conflict(new ApiResponse(409, ex.Message));
-            }
-            catch (NotFoundException ex)
-            {
-                return NotFound(new ApiResponse(404, ex.Message));
-            }
+            var category = await _categoryService.CreateCategoryAsync(dto);
+            return CreatedAtAction(nameof(GetCategoryById), new { id = category.Id },
+                new ApiResult(data: category));
         }
 
-        /// <summary>
-        /// Get all categories with hierarchy
-        /// </summary>
+        /// <summary>Get all categories with hierarchy</summary>
         [HttpGet("categories")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
         {
             var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
-            return Ok(new Errors.ApiResult(data: categories));
+            return Ok(new ApiResult(data: categories));
         }
 
-        /// <summary>
-        /// Get category by ID
-        /// </summary>
+        /// <summary>Get category by ID</summary>
         [HttpGet("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetCategoryById(int id)
         {
-            try
-            {
-                var category = await _categoryService.GetCategoryByIdAsync(id);
-                return Ok(new Errors.ApiResult(data: category));
-            }
-            catch (NotFoundException ex)
-            {
-                return NotFound(new ApiResponse(404, ex.Message));
-            }
+            var category = await _categoryService.GetCategoryByIdAsync(id);
+            return Ok(new ApiResult(data: category));
         }
 
-        /// <summary>
-        /// Update category
-        /// </summary>
+        /// <summary>Update category</summary>
         [HttpPut("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -350,50 +320,22 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> UpdateCategory(int id, [FromBody] UpdateCategoryDto dto)
         {
-            try
-            {
-                var category = await _categoryService.UpdateCategoryAsync(id, dto);
-                return Ok(new Errors.ApiResult(data: category));
-            }
-            catch (NotFoundException ex)
-            {
-                return NotFound(new ApiResponse(404, ex.Message));
-            }
-            catch (BadRequestException ex)
-            {
-                return BadRequest(new ApiResponse(400, ex.Message));
-            }
-            catch (ConflictException ex)
-            {
-                return Conflict(new ApiResponse(409, ex.Message));
-            }
-            catch (BusinessException ex)
-            {
-                return BadRequest(new ApiResponse(400, ex.Message));
-            }
+            var category = await _categoryService.UpdateCategoryAsync(id, dto);
+            return Ok(new ApiResult(data: category));
         }
 
-        /// <summary>
-        /// Delete category (soft delete)
-        /// </summary>
+        /// <summary>Delete category (soft delete)</summary>
         [HttpDelete("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> DeleteCategory(int id)
         {
-            try
-            {
-                await _categoryService.DeleteCategoryAsync(id);
-                return Ok(new Errors.ApiResult(message: "Category deleted successfully"));
-            }
-            catch (NotFoundException ex)
-            {
-                return NotFound(new ApiResponse(404, ex.Message));
-            }
+            await _categoryService.DeleteCategoryAsync(id);
+            return Ok(new ApiResult(message: "Category deleted successfully"));
         }
 
-        #endregion
+        
 
         #region Reports
 

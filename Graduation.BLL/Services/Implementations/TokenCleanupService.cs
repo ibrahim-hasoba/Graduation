@@ -1,33 +1,70 @@
-﻿using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.DAL.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-public class TokenCleanupService : BackgroundService
+namespace Graduation.API.HostedServices
 {
-    private readonly IServiceProvider _services;
-    private readonly ILogger<TokenCleanupService> _logger;
-
-    public TokenCleanupService(IServiceProvider services, ILogger<TokenCleanupService> logger)
+    public class TokenCleanupService : BackgroundService
     {
-        _services = services;
-        _logger = logger;
-    }
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<TokenCleanupService> _logger;
+        private readonly TimeSpan _interval;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
+        public TokenCleanupService(
+            IServiceProvider serviceProvider,
+            ILogger<TokenCleanupService> logger,
+            IConfiguration configuration)
         {
-            _logger.LogInformation("Token Cleanup Service is running.");
+            _serviceProvider = serviceProvider;
+            _logger = logger;
 
-            using (var scope = _services.CreateScope())
+            var intervalHours = configuration.GetValue<int>("TokenCleanup:IntervalHours", 24);
+            _interval = TimeSpan.FromHours(intervalHours);
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation(
+                "TokenCleanupService started. Runs every {Interval}.", _interval);
+
+            while (!stoppingToken.IsCancellationRequested)
             {
-                var refreshTokenService = scope.ServiceProvider.GetRequiredService<IRefreshTokenService>();
-                await refreshTokenService.CleanupExpiredTokensAsync();
-            }
+                await Task.Delay(_interval, stoppingToken);
 
-            // Run once every 24 hours
-            await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
+                try
+                {
+                    await CleanupExpiredTokensAsync(stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during token cleanup");
+                }
+            }
+        }
+
+        private async Task CleanupExpiredTokensAsync(CancellationToken ct)
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+
+            var cutoff = DateTime.UtcNow;
+
+            var deletedCount = await context.RefreshTokens
+                .Where(t => t.ExpiresAt <= cutoff)
+                .ExecuteDeleteAsync(ct);
+
+            if (deletedCount > 0)
+            {
+                _logger.LogInformation(
+                    "TokenCleanupService removed {Count} expired refresh token(s).", deletedCount);
+            }
         }
     }
 }

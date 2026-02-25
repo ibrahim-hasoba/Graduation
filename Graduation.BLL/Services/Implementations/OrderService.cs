@@ -24,7 +24,7 @@ namespace Graduation.BLL.Services.Implementations
             _logger = logger;
         }
 
-        public async Task<OrderDto> CreateOrderAsync(string userId, CreateOrderDto dto)
+        public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
             using var transaction = await _context.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable);
@@ -115,14 +115,7 @@ namespace Graduation.BLL.Services.Implementations
                         });
                     }
 
-                    // FIX #4: Collect all cart items to remove BEFORE any SaveChangesAsync.
-                    // Previously, cart items were removed after the loop in a second
-                    // SaveChangesAsync outside the vendor loop, meaning a crash between
-                    // the two saves would leave orders created but cart intact.
-                    // Now we stage removals and flush them all in ONE save still inside
-                    // the transaction — fully atomic with order creation.
                     allCartItemsToRemove.AddRange(items);
-
                     await _context.SaveChangesAsync();
                     createdOrders.Add(order);
                 }
@@ -131,7 +124,6 @@ namespace Graduation.BLL.Services.Implementations
                 _context.CartItems.RemoveRange(allCartItemsToRemove);
                 await _context.SaveChangesAsync();
 
-                // Everything succeeded — commit
                 await transaction.CommitAsync();
 
                 _logger.LogInformation(
@@ -157,7 +149,18 @@ namespace Graduation.BLL.Services.Implementations
                     });
                 }
 
-                return await GetOrderByIdAsync(createdOrders.First().Id, userId);
+                // FIX #5: Build and return ALL created orders.
+                var orderDtos = new List<OrderDto>();
+                foreach (var o in createdOrders)
+                {
+                    orderDtos.Add(await GetOrderByIdInternalAsync(o.Id));
+                }
+
+                return new CreateOrderResultDto
+                {
+                    Orders = orderDtos,
+                    TotalOrdersCreated = orderDtos.Count
+                };
             }
             catch
             {
@@ -357,6 +360,24 @@ namespace Graduation.BLL.Services.Implementations
                 ItemsCount = vendorItems.Count,
                 VendorName = vendorItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown"
             };
+        }
+
+        private async Task<OrderDto> GetOrderByIdInternalAsync(int id)
+        {
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Images)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                throw new NotFoundException("Order", id);
+
+            return MapToDto(order);
         }
     }
 }

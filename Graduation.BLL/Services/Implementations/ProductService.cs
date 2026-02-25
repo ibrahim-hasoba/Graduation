@@ -4,9 +4,6 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Product;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -21,7 +18,6 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductDto> CreateProductAsync(int vendorId, ProductCreateDto dto)
         {
-            // Verify vendor exists and is approved
             var vendor = await _context.Vendors.FindAsync(vendorId);
             if (vendor == null)
                 throw new NotFoundException("Vendor", vendorId);
@@ -29,12 +25,10 @@ namespace Graduation.BLL.Services.Implementations
             if (!vendor.IsApproved)
                 throw new UnauthorizedException("Your vendor account must be approved before adding products");
 
-            // Check if SKU already exists
             var skuExists = await _context.Products.AnyAsync(p => p.SKU == dto.SKU);
             if (skuExists)
                 throw new ConflictException($"Product with SKU '{dto.SKU}' already exists");
 
-            // Verify category exists
             var category = await _context.Categories
                             .Include(c => c.SubCategories)
                             .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
@@ -45,11 +39,9 @@ namespace Graduation.BLL.Services.Implementations
             if (category.SubCategories.Any())
                 throw new BadRequestException("Products must be added to a subcategory, not a parent category");
 
-            // Validate Egyptian product requirements
             if (dto.IsEgyptianMade && string.IsNullOrEmpty(dto.MadeInCity))
                 throw new BadRequestException("Please specify which Egyptian city this product is made in");
 
-            // Validate discount price
             if (dto.DiscountPrice.HasValue && dto.DiscountPrice >= dto.Price)
                 throw new BadRequestException("Discount price must be less than regular price");
 
@@ -76,7 +68,6 @@ namespace Graduation.BLL.Services.Implementations
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
 
-            // Add images if provided
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
                 for (int i = 0; i < dto.ImageUrls.Count; i++)
@@ -121,7 +112,6 @@ namespace Graduation.BLL.Services.Implementations
                 .Where(p => p.IsActive)
                 .AsQueryable();
 
-            // Apply filters
             if (!string.IsNullOrWhiteSpace(searchDto.SearchTerm))
             {
                 var searchLower = searchDto.SearchTerm.ToLower();
@@ -156,7 +146,6 @@ namespace Graduation.BLL.Services.Implementations
             if (searchDto.IsFeatured == true)
                 query = query.Where(p => p.IsFeatured);
 
-            // Apply sorting
             query = searchDto.SortBy?.ToLower() switch
             {
                 "price_asc" => query.OrderBy(p => p.Price),
@@ -167,10 +156,8 @@ namespace Graduation.BLL.Services.Implementations
                 _ => query.OrderByDescending(p => p.CreatedAt)
             };
 
-            // Get total count
             var totalCount = await query.CountAsync();
 
-            // Apply pagination
             var products = await query
                 .Skip((searchDto.PageNumber - 1) * searchDto.PageSize)
                 .Take(searchDto.PageSize)
@@ -231,7 +218,6 @@ namespace Graduation.BLL.Services.Implementations
             if (product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only update your own products");
 
-            // Verify category exists
             var category = await _context.Categories
                                 .Include(c => c.SubCategories)
                                 .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
@@ -242,7 +228,6 @@ namespace Graduation.BLL.Services.Implementations
             if (category.SubCategories.Any())
                 throw new BadRequestException("Products must be added to a subcategory, not a parent category");
 
-            // Validate discount price
             if (dto.DiscountPrice.HasValue && dto.DiscountPrice >= dto.Price)
                 throw new BadRequestException("Discount price must be less than regular price");
 
@@ -261,7 +246,6 @@ namespace Graduation.BLL.Services.Implementations
             product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-
             return await GetProductByIdAsync(id);
         }
 
@@ -288,7 +272,6 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null)
                 throw new NotFoundException("Product", id);
 
-            // Verify vendor ownership if vendorId is provided
             if (vendorId.HasValue && product.VendorId != vendorId.Value)
                 throw new UnauthorizedException("You can only update stock for your own products");
 
@@ -302,14 +285,14 @@ namespace Graduation.BLL.Services.Implementations
             return true;
         }
 
+        // FIX #12: Replace read-modify-write (product.ViewCount++) with an atomic SQL UPDATE.
+        // The old approach had a race condition under concurrent requests: two threads both
+        // read ViewCount=5, both write 6, losing one increment. The UPDATE executes atomically
+        // in the database, so every view is counted exactly once regardless of concurrency.
         public async Task IncrementViewCountAsync(int id)
         {
-            var product = await _context.Products.FindAsync(id);
-            if (product != null)
-            {
-                product.ViewCount++;
-                await _context.SaveChangesAsync();
-            }
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
         private ProductDto MapToDto(Product product)

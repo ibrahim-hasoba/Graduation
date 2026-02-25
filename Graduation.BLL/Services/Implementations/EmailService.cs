@@ -154,5 +154,11 @@ namespace Graduation.BLL.Services.Implementations
                 Console.WriteLine($"Email sending failed: {ex.Message}");
             }
         }
+        public async Task SendVerificationWarningEmailAsync(string email, string firstName, int hoursRemaining)
+        {
+            var body = $"Hi {firstName}, your account will be deleted in {hoursRemaining} hours " +
+                       $"if you don't verify your email. Please check your inbox for the verification code.";
+            await SendEmailAsync(email, "Action Required: Verify your email", body);
+        }
     }
 }

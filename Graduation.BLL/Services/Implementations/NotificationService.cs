@@ -94,17 +94,21 @@ namespace Graduation.BLL.Services.Implementations
         _logger.LogInformation("Notification marked as read: NotificationId={NotificationId}", notificationId);
       }
     }
-    public async Task<int> BulkDeleteAsync(string userId, List<int> ids)
-    {
-        IQueryable<Notification> query = _context.Notifications
-            .Where(n => n.UserId == userId);
+        public async Task BulkDeleteAsync(List<int> ids, string userId)
+        {
+            if (ids == null || ids.Count == 0)
+                throw new BadRequestException(
+                    "At least one notification ID must be provided for bulk delete. " +
+                    "To delete all notifications, use the DELETE /notifications/all endpoint.");
 
-        // Empty ids = delete ALL notifications for this user
-        if (ids.Any())
-            query = query.Where(n => ids.Contains(n.Id));
+            var distinctIds = ids.Distinct().ToList();
 
-        return await query.ExecuteDeleteAsync();
-    }
+            var deletedCount = await _context.Notifications
+                .Where(n => n.UserId == userId && distinctIds.Contains(n.Id))
+                .ExecuteDeleteAsync();
+
+            _ = deletedCount;
+        }
 
         public async Task MarkAllAsReadAsync(string userId)
     {

@@ -155,7 +155,7 @@ namespace Graduation.API.Controllers
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-            var deletedCount = await _notificationService.BulkDeleteAsync(userId, dto.Ids);
+            await _notificationService.BulkDeleteAsync(dto.Ids , userId);
             return Ok(new ApiResult ( "Notifications deleted permanently" ));
         }
     }

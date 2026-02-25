@@ -7,7 +7,7 @@ namespace Graduation.BLL.Services.Interfaces
 {
     public interface IOrderService
     {
-        Task<OrderDto> CreateOrderAsync(string userId, CreateOrderDto dto);
+        Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto);
         Task<OrderDto> GetOrderByIdAsync(int id, string userId);
         Task<List<OrderListDto>> GetUserOrdersAsync(string userId);
         Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId);
