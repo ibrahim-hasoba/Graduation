@@ -7,5 +7,7 @@
         public string LastName { get; set; } = string.Empty;
         public IList<string> Roles { get; set; } = new List<string>();
         public bool HasAddress { get; set; }
+
+        public string ProfilePictureUrl { get; set; } = string.Empty;   
     }
 }

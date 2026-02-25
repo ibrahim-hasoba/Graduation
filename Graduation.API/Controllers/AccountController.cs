@@ -31,6 +31,8 @@ namespace Graduation.API.Controllers
         private readonly DatabaseContext _context;
         private readonly IGoogleAuthService _googleAuthService;
         private readonly IOtpService _otpService;
+        private readonly IImageService _imageService;
+        private readonly IHostEnvironment _environment;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -40,7 +42,9 @@ namespace Graduation.API.Controllers
             IRefreshTokenService refreshTokenService,
             DatabaseContext context,
             IGoogleAuthService googleAuthService,
-            IOtpService otpService)
+            IOtpService otpService,
+            IImageService imageService,
+            IHostEnvironment environment)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -50,6 +54,8 @@ namespace Graduation.API.Controllers
             _context = context;
             _googleAuthService = googleAuthService;
             _otpService = otpService;
+            this._imageService = imageService;
+            this._environment = environment;
         }
 
         
@@ -300,8 +306,53 @@ namespace Graduation.API.Controllers
             await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, GetIpAddress());
             return Ok(new ApiResult(message: "Logged out successfully"));
         }
+        /*
+        [HttpPost("upload-profile-picture")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
 
-       
+        public async Task<IActionResult> UploadProfilePicture(IFormFile file)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
+
+            if (user == null) throw new NotFoundException("User not found");
+
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
+            }
+
+            var imageUrl = await _imageService.UploadImageAsync(file, "profiles");
+
+            user.ProfilePictureUrl = imageUrl;
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new ApiResult(data: new { imageUrl }, message: "Profile picture updated successfully"));
+        }
+        */
+        [HttpDelete("delete-profile-picture")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteProfilePicture()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
+
+            if (user == null) throw new NotFoundException("User not found");
+
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
+
+                user.ProfilePictureUrl = null;
+                await _userManager.UpdateAsync(user);
+            }
+
+            return Ok(new ApiResult(message: "Profile picture removed successfully"));
+        }
 
         [HttpGet("profile")]
         [Authorize]
@@ -313,13 +364,47 @@ namespace Graduation.API.Controllers
             var user = await _userManager.FindByIdAsync(userId!);
             if (user == null) throw new NotFoundException("User not found");
 
+            // Generate full URL for frontend using the helper method
+            var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl);
+
             return Ok(new ApiResult(data: new
             {
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 email = user.Email,
-                phoneNumber = user.PhoneNumber
+                phoneNumber = user.PhoneNumber,
+                profilePictureUrl = fullProfilePictureUrl, // Full URL for frontend
+                profilePictureRelativePath = user.ProfilePictureUrl // Optional relative path
             }));
+        }
+
+        [HttpPost("upload-profile-picture")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UploadProfilePicture(IFormFile file)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
+
+            if (user == null) throw new NotFoundException("User not found");
+
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
+            }
+
+            var imageUrl = await _imageService.UploadImageAsync(file, "profiles");
+
+            user.ProfilePictureUrl = imageUrl; // This now stores RELATIVE path only
+            await _userManager.UpdateAsync(user);
+
+            // Return both relative and full URL
+            return Ok(new ApiResult(data: new
+            {
+                relativePath = imageUrl,
+                fullUrl = _imageService.GetFullImageUrl(imageUrl)
+            }, message: "Profile picture updated successfully"));
         }
 
         [HttpPost("change-password")]
@@ -370,7 +455,8 @@ namespace Graduation.API.Controllers
                     FirstName = user.FirstName,
                     LastName = user.LastName,
                     Roles = roles,
-                    HasAddress = hasAddress
+                    HasAddress = hasAddress,
+                    ProfilePictureUrl = user.ProfilePictureUrl
                 }
             };
 
@@ -421,7 +507,22 @@ namespace Graduation.API.Controllers
 
             return await GenerateAuthResponse(user);
         }
+        /*
+        [HttpGet("debug/file-exists")]
+        [Authorize(Roles = "Admin")]
+        public IActionResult CheckFileExists([FromQuery] string path)
+        {
+            var fullPath = Path.Combine(_environment.ContentRootPath, "uploads", path.TrimStart('/'));
+            var exists = System.IO.File.Exists(fullPath);
 
-
+            return Ok(new
+            {
+                requestedPath = path,
+                fullPath = fullPath,
+                exists = exists,
+                contentRoot = _environment.ContentRootPath
+            });
+        }
+        */
     }
 }

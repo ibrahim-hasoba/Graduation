@@ -1,9 +1,10 @@
-﻿using Shared.Errors;
-using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -28,12 +29,19 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<string> UploadImageAsync(IFormFile file, string folder)
         {
-            // Validate image (will check extension, mime and magic bytes)
+            // Validate image
             if (!await ValidateImageAsync(file))
                 throw new BadRequestException("Invalid image file");
 
+            // Use ContentRootPath for production (runasp.net) and WebRootPath for development
+            // On runasp.net, WebRootPath might not be writable, so we use ContentRootPath
+            string rootPath = _environment.IsProduction()
+                ? _environment.ContentRootPath
+                : _environment.WebRootPath;
+
+            var uploadsFolder = Path.Combine(rootPath, "uploads", folder);
+
             // Create folder if it doesn't exist
-            var uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads", folder);
             if (!Directory.Exists(uploadsFolder))
                 Directory.CreateDirectory(uploadsFolder);
 
@@ -42,18 +50,18 @@ namespace Graduation.BLL.Services.Implementations
             var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-            // Save file using a fresh read stream to avoid stream position issues
+            // Save file
             using (var sourceStream = file.OpenReadStream())
             using (var fileStream = new FileStream(filePath, FileMode.Create))
             {
                 await sourceStream.CopyToAsync(fileStream);
             }
 
-            // Return relative URL
-            var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5069";
-            var imageUrl = $"{baseUrl}/uploads/{folder}/{uniqueFileName}";
+            // Return RELATIVE URL only (this is the key fix!)
+            var imageUrl = $"/uploads/{folder}/{uniqueFileName}";
 
-            _logger.LogInformation("Image uploaded successfully: {ImageUrl}", imageUrl);
+            _logger.LogInformation("Image uploaded successfully. Relative path: {ImageUrl}, Full path: {FilePath}",
+                imageUrl, filePath);
 
             return imageUrl;
         }
@@ -78,26 +86,62 @@ namespace Graduation.BLL.Services.Implementations
                 if (string.IsNullOrEmpty(imageUrl))
                     return Task.FromResult(false);
 
-                // Extract file path from URL and ensure it's under the uploads folder
-                var uri = new Uri(imageUrl);
-                var relativePath = uri.AbsolutePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+                _logger.LogInformation("Attempting to delete image: {ImageUrl}", imageUrl);
 
-                var uploadsRoot = Path.GetFullPath(Path.Combine(_environment.WebRootPath, "uploads"));
-                var filePath = Path.GetFullPath(Path.Combine(_environment.WebRootPath, relativePath));
+                // Extract filename from the URL/path
+                string fileName;
 
-                if (!filePath.StartsWith(uploadsRoot, StringComparison.OrdinalIgnoreCase))
+                if (imageUrl.StartsWith("http://") || imageUrl.StartsWith("https://"))
                 {
-                    _logger.LogWarning("Attempt to delete image outside uploads folder: {ImageUrl}", imageUrl);
+                    // It's a full URL - extract filename
+                    var uri = new Uri(imageUrl);
+                    fileName = Path.GetFileName(uri.LocalPath);
+                }
+                else
+                {
+                    // It's a relative path - extract filename
+                    fileName = Path.GetFileName(imageUrl);
+                }
+
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    _logger.LogWarning("Could not extract filename from: {ImageUrl}", imageUrl);
                     return Task.FromResult(false);
                 }
 
-                if (File.Exists(filePath))
+                _logger.LogInformation("Looking for file with name: {FileName}", fileName);
+
+                // Search for the file in all subdirectories of the uploads folder
+                // Check both ContentRootPath and WebRootPath
+                var pathsToSearch = new[]
                 {
-                    File.Delete(filePath);
-                    _logger.LogInformation("Image deleted successfully: {ImageUrl}", imageUrl);
-                    return Task.FromResult(true);
+                    Path.Combine(_environment.ContentRootPath, "uploads"),
+                    Path.Combine(_environment.WebRootPath, "uploads")
+                };
+
+                foreach (var searchPath in pathsToSearch)
+                {
+                    if (!Directory.Exists(searchPath))
+                        continue;
+
+                    var foundFiles = Directory.GetFiles(searchPath, fileName, SearchOption.AllDirectories);
+
+                    foreach (var foundFile in foundFiles)
+                    {
+                        try
+                        {
+                            File.Delete(foundFile);
+                            _logger.LogInformation("Image deleted successfully: {FilePath}", foundFile);
+                            return Task.FromResult(true);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to delete file: {FilePath}", foundFile);
+                        }
+                    }
                 }
 
+                _logger.LogWarning("Image file not found: {FileName} in any uploads directory", fileName);
                 return Task.FromResult(false);
             }
             catch (Exception ex)
@@ -105,6 +149,31 @@ namespace Graduation.BLL.Services.Implementations
                 _logger.LogError(ex, "Failed to delete image: {ImageUrl}", imageUrl);
                 return Task.FromResult(false);
             }
+        }
+
+        // Helper method to get full URL when needed for frontend
+        public string GetFullImageUrl(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath))
+                return null;
+
+            // If it's already a full URL, return as is
+            if (relativePath.StartsWith("http://") || relativePath.StartsWith("https://"))
+                return relativePath;
+
+            // Get base URL from app settings
+            var baseUrl = _configuration["AppSettings:BaseUrl"]?.TrimEnd('/');
+
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                baseUrl = "https://heka.runasp.net"; // Fallback to your actual domain
+            }
+
+            // Ensure relative path starts with /
+            if (!relativePath.StartsWith("/"))
+                relativePath = "/" + relativePath;
+
+            return $"{baseUrl}{relativePath}";
         }
 
         public Task<bool> ValidateImageAsync(IFormFile file)
@@ -127,7 +196,7 @@ namespace Graduation.BLL.Services.Implementations
                 return Task.FromResult(false);
             }
 
-            // Check MIME type (basic check)
+            // Check MIME type
             var allowedMimeTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp" };
             if (!allowedMimeTypes.Contains(file.ContentType.ToLower()))
             {
@@ -135,7 +204,7 @@ namespace Graduation.BLL.Services.Implementations
                 return Task.FromResult(false);
             }
 
-            // Check magic bytes to reduce risk of spoofed files
+            // Check magic bytes
             try
             {
                 using var stream = file.OpenReadStream();

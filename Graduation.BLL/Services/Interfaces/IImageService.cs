@@ -8,5 +8,6 @@ namespace Graduation.BLL.Services.Interfaces
         Task<List<string>> UploadImagesAsync(List<IFormFile> files, string folder);
         Task<bool> DeleteImageAsync(string imageUrl);
         Task<bool> ValidateImageAsync(IFormFile file);
+        string GetFullImageUrl(string relativePath);
     }
 }

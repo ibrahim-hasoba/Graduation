@@ -12,10 +12,12 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -219,6 +221,10 @@ namespace Graduation.API
                 builder.Services.AddScoped<IWishlistService, WishlistService>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
+                builder.Services.Configure<FormOptions>(options =>
+                {
+                    options.MultipartBodyLengthLimit = 5 * 1024 * 1024;
+                });
                 builder.Services.AddAuthorization();
                 builder.Services.AddRateLimiter(options =>
                 {
@@ -268,7 +274,7 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -277,7 +283,33 @@ namespace Graduation.API
                     });
                 }
                 app.UseHttpsRedirection();
-                app.UseStaticFiles();
+                var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+                if (!Directory.Exists(uploadsPath))
+                {
+                    Directory.CreateDirectory(uploadsPath);
+                }
+
+                // Create profiles subdirectory
+                var profilesPath = Path.Combine(uploadsPath, "profiles");
+                if (!Directory.Exists(profilesPath))
+                {
+                    Directory.CreateDirectory(profilesPath);
+                }
+
+                app.UseStaticFiles(); // For wwwroot
+
+                // Configure static files for uploads folder
+                app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(uploadsPath),
+                    RequestPath = "/uploads",
+                    OnPrepareResponse = ctx =>
+                    {
+                        // Add caching headers for better performance
+                        ctx.Context.Response.Headers.Append(
+                            "Cache-Control", $"public, max-age={60 * 60 * 24}"); // 24 hours cache
+                    }
+                });
                 app.UseCors("AllowAll");
                 app.UseRateLimiter();
                 app.UseAuthentication();
