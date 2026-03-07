@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Shared.Errors;
+using System.IO;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -29,39 +30,41 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<string> UploadImageAsync(IFormFile file, string folder)
         {
-            // Validate image
             if (!await ValidateImageAsync(file))
                 throw new BadRequestException("Invalid image file");
 
-            // Use ContentRootPath for production (runasp.net) and WebRootPath for development
-            // On runasp.net, WebRootPath might not be writable, so we use ContentRootPath
-            string rootPath = _environment.IsProduction()
-                ? _environment.ContentRootPath
-                : _environment.WebRootPath;
+            string webRootPath = _environment.WebRootPath;
 
-            var uploadsFolder = Path.Combine(rootPath, "uploads", folder);
+            if (string.IsNullOrEmpty(webRootPath))
+            {
+                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+                if (!Directory.Exists(webRootPath))
+                {
+                    Directory.CreateDirectory(webRootPath);
+                    _logger.LogInformation("Created wwwroot folder at: {WebRootPath}", webRootPath);
+                }
+            }
 
-            // Create folder if it doesn't exist
+            var uploadsFolder = Path.Combine(webRootPath, "uploads", folder);
+
             if (!Directory.Exists(uploadsFolder))
+            {
                 Directory.CreateDirectory(uploadsFolder);
+                _logger.LogInformation("Created folder at: {UploadsFolder}", uploadsFolder);
+            }
 
-            // Generate unique filename
             var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
             var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
-            // Save file
-            using (var sourceStream = file.OpenReadStream())
-            using (var fileStream = new FileStream(filePath, FileMode.Create))
+            using (var stream = new FileStream(filePath, FileMode.Create))
             {
-                await sourceStream.CopyToAsync(fileStream);
+                await file.CopyToAsync(stream);
             }
 
-            // Return RELATIVE URL only (this is the key fix!)
-            var imageUrl = $"/uploads/{folder}/{uniqueFileName}";
+            _logger.LogInformation("File saved at: {FilePath}", filePath);
 
-            _logger.LogInformation("Image uploaded successfully. Relative path: {ImageUrl}, Full path: {FilePath}",
-                imageUrl, filePath);
+            var imageUrl = $"/uploads/{folder}/{uniqueFileName}";
 
             return imageUrl;
         }
@@ -111,37 +114,39 @@ namespace Graduation.BLL.Services.Implementations
 
                 _logger.LogInformation("Looking for file with name: {FileName}", fileName);
 
+                // Determine the wwwroot path
+                string wwwrootPath = _environment.WebRootPath;
+                if (string.IsNullOrEmpty(wwwrootPath))
+                {
+                    wwwrootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
+                }
+
+                var uploadsPath = Path.Combine(wwwrootPath, "uploads");
+
+                if (!Directory.Exists(uploadsPath))
+                {
+                    _logger.LogWarning("Uploads directory not found: {UploadsPath}", uploadsPath);
+                    return Task.FromResult(false);
+                }
+
                 // Search for the file in all subdirectories of the uploads folder
-                // Check both ContentRootPath and WebRootPath
-                var pathsToSearch = new[]
+                var foundFiles = Directory.GetFiles(uploadsPath, fileName, SearchOption.AllDirectories);
+
+                foreach (var foundFile in foundFiles)
                 {
-                    Path.Combine(_environment.ContentRootPath, "uploads"),
-                    Path.Combine(_environment.WebRootPath, "uploads")
-                };
-
-                foreach (var searchPath in pathsToSearch)
-                {
-                    if (!Directory.Exists(searchPath))
-                        continue;
-
-                    var foundFiles = Directory.GetFiles(searchPath, fileName, SearchOption.AllDirectories);
-
-                    foreach (var foundFile in foundFiles)
+                    try
                     {
-                        try
-                        {
-                            File.Delete(foundFile);
-                            _logger.LogInformation("Image deleted successfully: {FilePath}", foundFile);
-                            return Task.FromResult(true);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to delete file: {FilePath}", foundFile);
-                        }
+                        File.Delete(foundFile);
+                        _logger.LogInformation("Image deleted successfully: {FilePath}", foundFile);
+                        return Task.FromResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to delete file: {FilePath}", foundFile);
                     }
                 }
 
-                _logger.LogWarning("Image file not found: {FileName} in any uploads directory", fileName);
+                _logger.LogWarning("Image file not found: {FileName} in {UploadsPath}", fileName, uploadsPath);
                 return Task.FromResult(false);
             }
             catch (Exception ex)
@@ -151,7 +156,6 @@ namespace Graduation.BLL.Services.Implementations
             }
         }
 
-        // Helper method to get full URL when needed for frontend
         public string GetFullImageUrl(string relativePath)
         {
             if (string.IsNullOrEmpty(relativePath))
@@ -166,7 +170,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (string.IsNullOrEmpty(baseUrl))
             {
-                baseUrl = "https://heka.runasp.net"; // Fallback to your actual domain
+                baseUrl = "https://heka.runasp.net"; // Your actual domain
             }
 
             // Ensure relative path starts with /
@@ -225,7 +229,7 @@ namespace Graduation.BLL.Services.Implementations
 
                 // WEBP (RIFF....WEBP)
                 if (read >= 12 && header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46
-                    && header[8] == 0x57 && header[9] == 0x45 && header[10] == 0x42 && header[11] == 0x50)
+                    && header[8] == 0x57 && header[9] == 0x45 && header[10] == 0x46 && header[11] == 0x50)
                     return Task.FromResult(true);
             }
             catch (Exception ex)

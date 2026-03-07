@@ -283,33 +283,28 @@ namespace Graduation.API
                     });
                 }
                 app.UseHttpsRedirection();
-                var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+                app.UseStaticFiles();  
+
+                var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+                if (!Directory.Exists(wwwrootPath))
+                {
+                    Directory.CreateDirectory(wwwrootPath);
+                    Log.Information("Created wwwroot folder at: {Path}", wwwrootPath);
+                }
+
+                var uploadsPath = Path.Combine(wwwrootPath, "uploads");
                 if (!Directory.Exists(uploadsPath))
                 {
                     Directory.CreateDirectory(uploadsPath);
+                    Log.Information("Created uploads folder at: {Path}", uploadsPath);
                 }
 
-                // Create profiles subdirectory
                 var profilesPath = Path.Combine(uploadsPath, "profiles");
                 if (!Directory.Exists(profilesPath))
                 {
                     Directory.CreateDirectory(profilesPath);
+                    Log.Information("Created profiles folder at: {Path}", profilesPath);
                 }
-
-                app.UseStaticFiles(); // For wwwroot
-
-                // Configure static files for uploads folder
-                app.UseStaticFiles(new StaticFileOptions
-                {
-                    FileProvider = new PhysicalFileProvider(uploadsPath),
-                    RequestPath = "/uploads",
-                    OnPrepareResponse = ctx =>
-                    {
-                        // Add caching headers for better performance
-                        ctx.Context.Response.Headers.Append(
-                            "Cache-Control", $"public, max-age={60 * 60 * 24}"); // 24 hours cache
-                    }
-                });
                 app.UseCors("AllowAll");
                 app.UseRateLimiter();
                 app.UseAuthentication();
