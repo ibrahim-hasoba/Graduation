@@ -306,6 +306,38 @@ namespace Graduation.API.Controllers
             await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, GetIpAddress());
             return Ok(new ApiResult(message: "Logged out successfully"));
         }
+
+        [HttpPost("admin/login")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> AdminLogin([FromBody] UserForLoginDto loginDto)
+        {
+            var user = await _userManager.FindByEmailAsync(loginDto.Email!);
+
+            if (user == null)
+                throw new UnauthorizedException("Invalid credentials");
+
+            if (await _userManager.IsLockedOutAsync(user))
+                throw new BadRequestException("Account locked. Please try again later.");
+
+            if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
+            {
+                await _userManager.AccessFailedAsync(user);
+                throw new UnauthorizedException("Invalid credentials");
+            }
+
+            if (!user.EmailConfirmed)
+                throw new UnauthorizedException("Please verify your email first.");
+
+            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            if (!isAdmin)
+                throw new UnauthorizedException("You are not authorized as admin.");
+
+            await _userManager.ResetAccessFailedCountAsync(user);
+
+            return await GenerateAuthResponse(user, loginDto.RememberMe);
+        }
         /*
         [HttpPost("upload-profile-picture")]
         [Authorize]
