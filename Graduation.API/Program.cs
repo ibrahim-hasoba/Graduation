@@ -283,32 +283,23 @@ namespace Graduation.API
                     });
                 }
                 app.UseHttpsRedirection();
-                var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+                var uploadsPath = Path.Combine(builder.Environment.WebRootPath, "uploads");
+
                 if (!Directory.Exists(uploadsPath))
                 {
                     Directory.CreateDirectory(uploadsPath);
                 }
 
-                // Create profiles subdirectory
                 var profilesPath = Path.Combine(uploadsPath, "profiles");
                 if (!Directory.Exists(profilesPath))
                 {
                     Directory.CreateDirectory(profilesPath);
                 }
-
-                app.UseStaticFiles(); // For wwwroot
-
-                // Configure static files for uploads folder
+                app.UseStaticFiles();
                 app.UseStaticFiles(new StaticFileOptions
                 {
                     FileProvider = new PhysicalFileProvider(uploadsPath),
-                    RequestPath = "/uploads",
-                    OnPrepareResponse = ctx =>
-                    {
-                        // Add caching headers for better performance
-                        ctx.Context.Response.Headers.Append(
-                            "Cache-Control", $"public, max-age={60 * 60 * 24}"); // 24 hours cache
-                    }
+                    RequestPath = "/uploads"
                 });
                 app.UseCors("AllowAll");
                 app.UseRateLimiter();
