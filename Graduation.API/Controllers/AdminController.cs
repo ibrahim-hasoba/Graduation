@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Shared.DTOs.Admin;
 using Shared.DTOs.Category;
 using Shared.Errors;
 
@@ -44,7 +45,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetDashboardStats()
         {
             var stats = await _adminService.GetDashboardStatsAsync();
-            return Ok(new Errors.ApiResult(data: stats));
+            return Ok(new ApiResult(data: stats));
         }
 
         /// <summary>
@@ -54,7 +55,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetRecentActivities([FromQuery] int count = 10)
         {
             var activities = await _adminService.GetRecentActivitiesAsync(count);
-            return Ok(new Errors.ApiResult(data: activities));
+            return Ok(new ApiResult(data: activities));
         }
 
         /// <summary>
@@ -64,7 +65,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetTopProducts([FromQuery] int count = 10)
         {
             var products = await _adminService.GetTopProductsAsync(count);
-            return Ok(new Errors.ApiResult(data: products));
+            return Ok(new ApiResult(data: products));
         }
 
         /// <summary>
@@ -74,7 +75,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetTopVendors([FromQuery] int count = 10)
         {
             var vendors = await _adminService.GetTopVendorsAsync(count);
-            return Ok(new Errors.ApiResult(data: vendors));
+            return Ok(new ApiResult(data: vendors));
         }
 
         /// <summary>
@@ -84,7 +85,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetSalesChart()
         {
             var chartData = await _adminService.GetSalesChartDataAsync();
-            return Ok(new Errors.ApiResult(data: chartData));
+            return Ok(new ApiResult(data: chartData));
         }
 
         /// <summary>
@@ -94,7 +95,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetUserStats()
         {
             var stats = await _adminService.GetUserStatsAsync();
-            return Ok(new Errors.ApiResult(data: stats));
+            return Ok(new ApiResult(data: stats));
         }
 
         /// <summary>
@@ -140,7 +141,7 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new Errors.ApiResult(data: new
+            return Ok(new ApiResult(data: new
             {
                 users,
                 totalCount,
@@ -164,7 +165,7 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to delete user");
 
-            return Ok(new Errors.ApiResult(message: "User deleted successfully"));
+            return Ok(new ApiResult(message: "User deleted successfully"));
         }
 
         /// <summary>
@@ -181,14 +182,64 @@ namespace Graduation.API.Controllers
             {
                 // Unlock
                 await _userManager.SetLockoutEndDateAsync(user, null);
-                return Ok(new Errors.ApiResult(data: new { locked = false }, message: "User unlocked successfully"));
+                return Ok(new ApiResult(data: new { locked = false }, message: "User unlocked successfully"));
             }
             else
             {
                 // Lock for 100 years (permanent lock)
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
-                return Ok(new Errors.ApiResult(data: new { locked = true }, message: "User locked successfully"));
+                return Ok(new ApiResult(data: new { locked = true }, message: "User locked successfully"));
             }
+        }
+        [HttpPut("users/{userId}")]
+        public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            user.FirstName = dto.FirstName ?? user.FirstName;
+            user.LastName = dto.LastName ?? user.LastName;
+            user.PhoneNumber = dto.PhoneNumber ?? user.PhoneNumber;
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                throw new BadRequestException(result.Errors.First().Description);
+
+            return Ok(new ApiResult(data: new
+            {
+                id = user.Id,
+                email = user.Email,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                phoneNumber = user.PhoneNumber
+                
+            }, message: "User updated successfully"));
+        }
+        /// <summary>
+        /// Admin resets a user's password
+        /// </summary>
+        [HttpPost("users/{userId}/reset-password")]
+        public async Task<IActionResult> ResetUserPassword(string userId, [FromBody] AdminResetPasswordDto dto)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            var isTargetAdmin = await _userManager.IsInRoleAsync(user, "Admin");
+            if (isTargetAdmin)
+                throw new BadRequestException("Admins cannot reset other admin passwords");
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+            var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
+
+            if (!result.Succeeded)
+                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            await _userManager.UpdateSecurityStampAsync(user);
+
+            return Ok(new ApiResult(message: "Password reset successfully"));
         }
 
         /// <summary>
@@ -231,7 +282,7 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new Errors.ApiResult(data: new
+            return Ok(new ApiResult(data: new
             {
                 orders,
                 totalCount,
@@ -261,7 +312,7 @@ namespace Graduation.API.Controllers
                 .Where(o => o.OrderDate >= today && o.Status == OrderStatus.Delivered)
                 .SumAsync(o => o.TotalAmount);
 
-            return Ok(new Errors.ApiResult(data: new
+            return Ok(new ApiResult(data: new
             {
                 totalUsers,
                 totalVendors,
@@ -352,7 +403,7 @@ namespace Graduation.API.Controllers
                 return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetSalesReportAsync(startDate, endDate, vendorId);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -367,7 +418,7 @@ namespace Graduation.API.Controllers
                 return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetSalesByCategoryAsync(startDate, endDate);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -377,7 +428,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetVendorPerformance(int vendorId)
         {
             var report = await _reportService.GetVendorPerformanceAsync(vendorId);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -387,7 +438,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetCustomerInsights()
         {
             var report = await _reportService.GetCustomerInsightsAsync();
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -397,7 +448,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetLowStockProducts([FromQuery] int threshold = 10)
         {
             var report = await _reportService.GetLowStockProductsAsync(threshold);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -413,7 +464,7 @@ namespace Graduation.API.Controllers
                 return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetRevenueByVendorAsync(startDate, endDate, take);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -429,7 +480,7 @@ namespace Graduation.API.Controllers
                 return BadRequest(new ApiResponse(400, "Start date and end date are required"));
 
             var report = await _reportService.GetTopProductsAsync(startDate, endDate, take);
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -439,7 +490,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetOrderStatusSummary()
         {
             var report = await _reportService.GetOrderStatusSummaryAsync();
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         /// <summary>
@@ -449,7 +500,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetUserTrends()
         {
             var report = await _reportService.GetUserTrendsAsync();
-            return Ok(new Errors.ApiResult(data: report));
+            return Ok(new ApiResult(data: report));
         }
 
         #endregion

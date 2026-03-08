@@ -539,7 +539,7 @@ namespace Graduation.API.Controllers
 
             return await GenerateAuthResponse(user);
         }
-
+        /*
         [HttpPost("admin/login")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -571,6 +571,7 @@ namespace Graduation.API.Controllers
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
+        */
         /*
         [HttpGet("debug/file-exists")]
         [Authorize(Roles = "Admin")]
