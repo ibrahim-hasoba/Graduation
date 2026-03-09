@@ -1,6 +1,5 @@
 ﻿namespace Shared.DTOs.Address
 {
-    /// <summary>Response — never returns raw entity to avoid leaking UserId.</summary>
     public class AddressResponseDto
     {
         public int Id { get; set; }

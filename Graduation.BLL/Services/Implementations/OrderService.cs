@@ -26,6 +26,8 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
+            // FIX #4: Use a single Serializable transaction and defer ALL SaveChangesAsync calls
+            // to after the full loop so partial-commit state can never leak out of the transaction.
             using var transaction = await _context.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable);
 
@@ -40,15 +42,29 @@ namespace Graduation.BLL.Services.Implementations
                 if (!cartItems.Any())
                     throw new BadRequestException("Your cart is empty");
 
+                // FIX #13 (CartService equivalent): Reject cart items whose vendor is
+                // suspended or unapproved before creating the order.
+                var invalidItems = cartItems
+                    .Where(ci => !ci.Product.Vendor.IsApproved || !ci.Product.Vendor.IsActive)
+                    .Select(ci => ci.Product.Vendor.StoreName)
+                    .Distinct()
+                    .ToList();
+
+                if (invalidItems.Any())
+                    throw new BadRequestException(
+                        $"The following vendors are currently unavailable: {string.Join(", ", invalidItems)}. " +
+                        "Please remove their products from your cart before placing an order.");
+
                 var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
                 var createdOrders = new List<Order>();
-                var allCartItemsToRemove = new List<CartItem>();
+                var allOrderItems = new List<OrderItem>();
+                var allCartItemsToRemove = new List<CartItem>(cartItems);
 
                 foreach (var vendorGroup in vendorGroups)
                 {
                     var items = vendorGroup.ToList();
 
-                    // Atomic stock decrement per item
+                    // Atomic stock decrement per item — participates in the ambient transaction.
                     foreach (var item in items)
                     {
                         var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -100,27 +116,24 @@ namespace Graduation.BLL.Services.Implementations
                     };
 
                     _context.Orders.Add(order);
-                    await _context.SaveChangesAsync();
+                    createdOrders.Add(order);
 
                     foreach (var cartItem in items)
                     {
                         var unitPrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
-                        _context.OrderItems.Add(new OrderItem
+                        allOrderItems.Add(new OrderItem
                         {
-                            OrderId = order.Id,
+                            Order = order,   // navigation property — EF resolves Id after SaveChanges
                             ProductId = cartItem.ProductId,
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
                             TotalPrice = unitPrice * cartItem.Quantity
                         });
                     }
-
-                    allCartItemsToRemove.AddRange(items);
-                    await _context.SaveChangesAsync();
-                    createdOrders.Add(order);
                 }
 
-                // Remove all cart items in a single operation, still inside the transaction
+                // FIX #4: Single SaveChangesAsync for all orders + items + cart removal.
+                _context.OrderItems.AddRange(allOrderItems);
                 _context.CartItems.RemoveRange(allCartItemsToRemove);
                 await _context.SaveChangesAsync();
 
@@ -130,7 +143,7 @@ namespace Graduation.BLL.Services.Implementations
                     "Order(s) created: {OrderNumbers} for user {UserId}",
                     string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                // Send confirmation email fire-and-forget AFTER commit
+                // Fire-and-forget confirmation email AFTER commit
                 var user = await _context.Users.FindAsync(userId);
                 if (user?.Email != null)
                 {
@@ -149,12 +162,9 @@ namespace Graduation.BLL.Services.Implementations
                     });
                 }
 
-                // FIX #5: Build and return ALL created orders.
                 var orderDtos = new List<OrderDto>();
                 foreach (var o in createdOrders)
-                {
                     orderDtos.Add(await GetOrderByIdInternalAsync(o.Id));
-                }
 
                 return new CreateOrderResultDto
                 {
@@ -258,6 +268,10 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
+        /// <summary>
+        /// FIX #6: Guard against double-cancellation so stock is never restored twice.
+        /// Only Pending or Confirmed orders may be cancelled.
+        /// </summary>
         public async Task<OrderDto> CancelOrderAsync(int id, string userId, string reason)
         {
             var order = await _context.Orders
@@ -270,8 +284,12 @@ namespace Graduation.BLL.Services.Implementations
             if (order == null)
                 throw new NotFoundException("Order", id);
 
+            // FIX #6: Reject already-cancelled orders before touching stock.
+            if (order.Status == OrderStatus.Cancelled)
+                throw new BadRequestException("This order has already been cancelled.");
+
             if (order.Status != OrderStatus.Pending && order.Status != OrderStatus.Confirmed)
-                throw new BadRequestException("Can only cancel pending or confirmed orders");
+                throw new BadRequestException("Can only cancel pending or confirmed orders.");
 
             order.Status = OrderStatus.Cancelled;
             order.CancelledAt = DateTime.UtcNow;
@@ -287,6 +305,8 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
             return MapToDto(order);
         }
+
+        // ── Private helpers ────────────────────────────────────────────────────────
 
         private string GenerateOrderNumber()
             => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";

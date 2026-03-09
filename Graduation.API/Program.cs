@@ -246,7 +246,6 @@ namespace Graduation.API
                     Graduation.API.BackgroundTasks.BackgroundTaskQueue>();
                 builder.Services.AddHostedService<BackgroundProcessingService>();
                 builder.Services.AddHostedService<TokenCleanupService>();
-                builder.Services.AddHostedService<ClearOldNotificationsHostedService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
 
                 // CORS Configuration

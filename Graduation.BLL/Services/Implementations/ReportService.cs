@@ -2,298 +2,291 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
+using Shared.DTOs.Report;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
     public class ReportService : IReportService
     {
         private readonly DatabaseContext _context;
-        private readonly ILogger<ReportService> _logger;
 
-        public ReportService(
-            DatabaseContext context,
-            ILogger<ReportService> logger)
+        public ReportService(DatabaseContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
-        public async Task<dynamic> GetSalesReportAsync(DateTime startDate, DateTime endDate, int? vendorId = null)
+        public async Task<SalesReportDto> GetSalesReportAsync(
+            DateTime startDate, DateTime endDate, int? vendorId = null)
         {
-            var orders = await _context.Orders
-                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate)
+            var query = _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
-                        .ThenInclude(p => p.Vendor)
-                .ToListAsync();
+                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate)
+                .AsQueryable();
 
             if (vendorId.HasValue)
+                query = query.Where(o => o.OrderItems.Any(oi => oi.Product.VendorId == vendorId.Value));
+
+            var orders = await query.ToListAsync();
+
+            // FIX #17: For vendor-scoped reports, only sum that vendor's items — not the full order total
+            var totalRevenue = vendorId.HasValue
+                ? orders.SelectMany(o => o.OrderItems)
+                        .Where(oi => oi.Product.VendorId == vendorId.Value)
+                        .Sum(oi => oi.TotalPrice)
+                : orders.Sum(o => o.TotalAmount);
+
+            return new SalesReportDto
             {
-                orders = orders.Where(o => o.OrderItems.Any(oi => oi.Product.VendorId == vendorId)).ToList();
-            }
-
-            var deliveredOrders = orders.Where(o => o.Status == OrderStatus.Delivered).ToList();
-
-            var totalSales = deliveredOrders.Sum(o => o.TotalAmount);
-            var totalOrders = deliveredOrders.Count;
-            var averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-
-            var salesByStatus = orders
-                .GroupBy(o => o.Status)
-                .Select(g => new { Status = g.Key.ToString(), Count = g.Count() })
-                .ToList();
-
-            _logger.LogInformation("Sales report generated: StartDate={StartDate}, EndDate={EndDate}, VendorId={VendorId}",
-                startDate, endDate, vendorId);
-
-            return new
-            {
-                startDate,
-                endDate,
-                totalSales = decimal.Round(totalSales, 2),
-                totalOrders,
-                averageOrderValue = decimal.Round((decimal)averageOrderValue, 2),
-                ordersByStatus = salesByStatus
+                StartDate = startDate,
+                EndDate = endDate,
+                TotalOrders = orders.Count,
+                TotalRevenue = decimal.Round(totalRevenue, 2),
+                DeliveredOrders = orders.Count(o => o.Status == OrderStatus.Delivered),
+                PendingOrders = orders.Count(o => o.Status == OrderStatus.Pending),
+                CancelledOrders = orders.Count(o => o.Status == OrderStatus.Cancelled),
+                AverageOrderValue = orders.Any() ? decimal.Round(totalRevenue / orders.Count, 2) : 0
             };
         }
 
-        public async Task<dynamic> GetSalesByCategoryAsync(DateTime startDate, DateTime endDate)
+        public async Task<List<CategorySalesDto>> GetSalesByCategoryAsync(
+            DateTime startDate, DateTime endDate)
         {
-            var salesByCategory = await _context.Orders
-                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate && o.Status == OrderStatus.Delivered)
-                .SelectMany(o => o.OrderItems)
+            return await _context.OrderItems
+                .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Category)
-                .GroupBy(oi => oi.Product.Category!.NameEn)
-                .Select(g => new
+                .Where(oi => oi.Order.OrderDate >= startDate
+                          && oi.Order.OrderDate <= endDate
+                          && oi.Order.Status == OrderStatus.Delivered)
+                .GroupBy(oi => new { oi.Product.CategoryId, oi.Product.Category.NameEn })
+                .Select(g => new CategorySalesDto
                 {
-                    category = g.Key,
-                    totalSales = decimal.Round(g.Sum(oi => oi.UnitPrice * oi.Quantity), 2),
-                    totalItems = g.Sum(oi => oi.Quantity)
+                    CategoryId = g.Key.CategoryId,
+                    CategoryName = g.Key.NameEn,
+                    TotalSales = g.Sum(oi => oi.TotalPrice),
+                    TotalOrders = g.Select(oi => oi.OrderId).Distinct().Count(),
+                    TotalItemsSold = g.Sum(oi => oi.Quantity)
                 })
-                .OrderByDescending(x => x.totalSales)
+                .OrderByDescending(c => c.TotalSales)
+                .ToListAsync();
+        }
+
+        
+        public async Task<VendorPerformanceDto> GetVendorPerformanceAsync(int vendorId)
+        {
+            var vendor = await _context.Vendors
+                .Include(v => v.Products)
+                .FirstOrDefaultAsync(v => v.Id == vendorId)
+                ?? throw new NotFoundException("Vendor", vendorId);
+
+            var vendorItems = await _context.OrderItems
+                .IgnoreQueryFilters()
+                .Include(oi => oi.Order)
+                .Include(oi => oi.Product)
+                    .ThenInclude(p => p.Images)
+                .Where(oi => oi.Product.VendorId == vendorId
+                          && oi.Order.Status == OrderStatus.Delivered)
                 .ToListAsync();
 
-            return new
+            var totalRevenue = decimal.Round(vendorItems.Sum(oi => oi.TotalPrice), 2);
+            var totalOrderIds = vendorItems.Select(oi => oi.OrderId).Distinct().Count();
+            var avgOrderValue = totalOrderIds > 0
+                ? decimal.Round(totalRevenue / totalOrderIds, 2)
+                : 0m;
+
+            var topProducts = vendorItems
+                .GroupBy(oi => new
+                {
+                    oi.ProductId,
+                    oi.Product.NameEn,
+                    oi.Product.NameAr,
+                    oi.Product.Images
+                })
+                .Select(g => new TopProductDto
+                {
+                    Id = g.Key.ProductId,
+                    NameEn = g.Key.NameEn,
+                    NameAr = g.Key.NameAr,
+                    ImageUrl = g.Key.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
+                            ?? g.Key.Images.FirstOrDefault()?.ImageUrl,
+                    TotalSales = g.Sum(oi => oi.Quantity),
+                    Revenue = decimal.Round(g.Sum(oi => oi.TotalPrice), 2),
+                    VendorName = vendor.StoreName
+                })
+                .OrderByDescending(p => p.Revenue)
+                .Take(10)
+                .ToList();
+
+            var thirtyDaysAgo = DateTime.UtcNow.AddDays(-30);
+            var recentRevenue = decimal.Round(
+                vendorItems
+                    .Where(oi => oi.Order.DeliveredAt >= thirtyDaysAgo)
+                    .Sum(oi => oi.TotalPrice), 2);
+
+            return new VendorPerformanceDto
             {
-                startDate,
-                endDate,
-                data = salesByCategory
+                VendorId = vendorId,
+                StoreName = vendor.StoreName,
+                TotalRevenue = totalRevenue,
+                TotalOrders = totalOrderIds,
+                AverageOrderValue = avgOrderValue,
+                TotalProducts = vendor.Products.Count,
+                ActiveProducts = vendor.Products.Count(p => p.IsActive),
+                TopProducts = topProducts,
+                RevenueLastThirtyDays = recentRevenue
             };
         }
 
-        public async Task<dynamic> GetVendorPerformanceAsync(int vendorId)
+        public async Task<CustomerInsightsDto> GetCustomerInsightsAsync()
         {
-            var vendor = await _context.Vendors.FindAsync(vendorId);
-            if (vendor == null)
-                return new { error = "Vendor not found" };
-
-            var products = await _context.Products
-                .Where(p => p.VendorId == vendorId)
-                .Include(p => p.Reviews)
-                .ToListAsync();
-
-            var orders = await _context.Orders
-                .Where(o => o.OrderItems.Any(oi => oi.Product.VendorId == vendorId))
-                .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Product)
-                .ToListAsync();
-
-            var deliveredOrders = orders.Where(o => o.Status == OrderStatus.Delivered).ToList();
-            var totalRevenue = decimal.Round(deliveredOrders.Sum(o => o.TotalAmount), 2);
-            var totalOrders = deliveredOrders.Count;
-
-            var allReviews = products.SelectMany(p => p.Reviews).ToList();
-            var averageRating = allReviews.Any() ? Math.Round(allReviews.Average(r => r.Rating), 1) : 0;
-
-            return new
-            {
-                vendorId,
-                vendorName = vendor.StoreName,
-                totalProducts = products.Count,
-                totalRevenue,
-                totalOrders,
-                averageRating,
-                totalReviews = allReviews.Count,
-                activeProducts = products.Count(p => p.IsActive)
-            };
-        }
-
-        public async Task<dynamic> GetCustomerInsightsAsync()
-        {
-            var totalCustomers = await _context.Users.CountAsync(u => u.Email != null);
-
+            var totalCustomers = await _context.Users.CountAsync();
             var activeCustomers = await _context.Orders
                 .Select(o => o.UserId)
                 .Distinct()
                 .CountAsync();
 
-            var totalSpent = await _context.Orders
-                .Where(o => o.Status == OrderStatus.Delivered)
-                .SumAsync(o => o.TotalAmount);
+            var repeatCustomers = await _context.Orders
+                .GroupBy(o => o.UserId)
+                .CountAsync(g => g.Count() > 1);
 
-            var averageSpentPerCustomer = totalCustomers > 0 ? totalSpent / totalCustomers : 0;
-
-            var topCustomers = await _context.Orders
-                .Where(o => o.Status == OrderStatus.Delivered)
-                .GroupBy(o => new { o.UserId, UserName = $"{o.User.FirstName} {o.User.LastName}" })
-                .Select(g => new
-                {
-                    userId = g.Key.UserId,
-                    name = g.Key.UserName,
-                    totalOrders = g.Count(),
-                    totalSpent = decimal.Round(g.Sum(o => o.TotalAmount), 2)
-                })
-                .Where(x => x.totalOrders > 0)
-                .OrderByDescending(x => x.totalSpent)
-                .Take(10)
-                .ToListAsync();
-
-            return new
+            return new CustomerInsightsDto
             {
-                totalCustomers,
-                activeCustomers,
-                totalSpent = decimal.Round(totalSpent, 2),
-                averageSpentPerCustomer = decimal.Round((decimal)averageSpentPerCustomer, 2),
-                topCustomers
+                TotalCustomers = totalCustomers,
+                ActiveCustomers = activeCustomers,
+                RepeatCustomers = repeatCustomers,
+                CustomerRetentionRate = activeCustomers > 0
+                    ? Math.Round((double)repeatCustomers / activeCustomers * 100, 1)
+                    : 0
             };
         }
 
-        public async Task<dynamic> GetLowStockProductsAsync(int threshold = 10)
+        public async Task<List<LowStockProductDto>> GetLowStockProductsAsync(int threshold = 10)
         {
-            var lowStockProducts = await _context.Products
-                .Where(p => p.StockQuantity <= threshold && p.IsActive)
+            return await _context.Products
                 .Include(p => p.Vendor)
-                .Include(p => p.Category)
-                .Select(p => new
+                .Where(p => p.IsActive && p.StockQuantity <= threshold)
+                .OrderBy(p => p.StockQuantity)
+                .Select(p => new LowStockProductDto
                 {
-                    productId = p.Id,
-                    name = p.NameEn,
-                    nameAr = p.NameAr,
-                    currentStock = p.StockQuantity,
-                    price = p.Price,
-                    vendor = p.Vendor!.StoreName,
-                    category = p.Category!.NameEn
+                    ProductId = p.Id,
+                    ProductName = p.NameEn,
+                    CurrentStock = p.StockQuantity,
+                    VendorName = p.Vendor.StoreName,
+                    VendorId = p.VendorId
                 })
-                .OrderBy(p => p.currentStock)
                 .ToListAsync();
-
-            return new
-            {
-                threshold,
-                count = lowStockProducts.Count,
-                products = lowStockProducts
-            };
         }
 
-        public async Task<dynamic> GetRevenueByVendorAsync(DateTime startDate, DateTime endDate, int take = 10)
+        public async Task<List<VendorRevenueDto>> GetRevenueByVendorAsync(
+            DateTime startDate, DateTime endDate, int take = 10)
         {
-            var revenueByVendor = await _context.Orders
-                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate && o.Status == OrderStatus.Delivered)
-                .SelectMany(o => o.OrderItems)
+            return await _context.OrderItems
+                .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Vendor)
-                .GroupBy(oi => oi.Product.VendorId)
-                .Select(g => new
+                .Where(oi => oi.Order.OrderDate >= startDate
+                          && oi.Order.OrderDate <= endDate
+                          && oi.Order.Status == OrderStatus.Delivered)
+                .GroupBy(oi => new { oi.Product.VendorId, oi.Product.Vendor.StoreName })
+                .Select(g => new VendorRevenueDto
                 {
-                    vendorId = g.Key,
-                    vendorName = g.First().Product.Vendor!.StoreName,
-                    revenue = decimal.Round(g.Sum(oi => oi.UnitPrice * oi.Quantity), 2),
-                    orderCount = g.Select(oi => oi.OrderId).Distinct().Count()
+                    VendorId = g.Key.VendorId,
+                    StoreName = g.Key.StoreName,
+                    TotalRevenue = decimal.Round(g.Sum(oi => oi.TotalPrice), 2),
+                    TotalOrders = g.Select(oi => oi.OrderId).Distinct().Count()
                 })
-                .OrderByDescending(x => x.revenue)
+                .OrderByDescending(v => v.TotalRevenue)
                 .Take(take)
                 .ToListAsync();
-
-            return new
-            {
-                startDate,
-                endDate,
-                data = revenueByVendor
-            };
         }
 
-        public async Task<dynamic> GetTopProductsAsync(DateTime startDate, DateTime endDate, int take = 10)
+        public async Task<List<TopProductDto>> GetTopProductsAsync(
+            DateTime startDate, DateTime endDate, int take = 10)
         {
-            var topProducts = await _context.Orders
-                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate)
-                .SelectMany(o => o.OrderItems)
+            // Aggregate in DB first, then fetch images in a separate query
+            // to avoid EF GroupBy + navigation collection limitations.
+            var grouped = await _context.OrderItems
+                .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
-                .GroupBy(oi => oi.ProductId)
+                    .ThenInclude(p => p.Vendor)
+                .Where(oi => oi.Order.OrderDate >= startDate
+                          && oi.Order.OrderDate <= endDate
+                          && oi.Order.Status == OrderStatus.Delivered)
+                .GroupBy(oi => new
+                {
+                    oi.ProductId,
+                    oi.Product.NameEn,
+                    oi.Product.NameAr,
+                    oi.Product.Vendor.StoreName
+                })
                 .Select(g => new
                 {
-                    productId = g.Key,
-                    name = g.First().Product.NameEn,
-                    totalSold = g.Sum(oi => oi.Quantity),
-                    totalRevenue = decimal.Round(g.Sum(oi => oi.UnitPrice * oi.Quantity), 2)
+                    g.Key.ProductId,
+                    g.Key.NameEn,
+                    g.Key.NameAr,
+                    g.Key.StoreName,
+                    TotalSales = g.Sum(oi => oi.Quantity),
+                    Revenue = decimal.Round(g.Sum(oi => oi.TotalPrice), 2)
                 })
-                .OrderByDescending(x => x.totalSold)
+                .OrderByDescending(p => p.TotalSales)
                 .Take(take)
                 .ToListAsync();
 
-            return new
-            {
-                startDate,
-                endDate,
-                data = topProducts
-            };
-        }
-
-        public async Task<dynamic> GetOrderStatusSummaryAsync()
-        {
-            var statusSummary = await _context.Orders
-                .GroupBy(o => o.Status)
+            // Fetch primary images for the top products in a single focused query
+            var productIds = grouped.Select(g => g.ProductId).ToList();
+            var images = await _context.ProductImages
+                .Where(i => productIds.Contains(i.ProductId))
+                .GroupBy(i => i.ProductId)
                 .Select(g => new
                 {
-                    status = g.Key.ToString(),
-                    count = g.Count(),
-                    totalAmount = decimal.Round(g.Sum(o => o.TotalAmount), 2)
+                    ProductId = g.Key,
+                    ImageUrl = g.OrderByDescending(i => i.IsPrimary).First().ImageUrl
                 })
-                .ToListAsync();
+                .ToDictionaryAsync(x => x.ProductId, x => x.ImageUrl);
 
-            var totalOrders = statusSummary.Sum(x => x.count);
-            var totalRevenue = statusSummary.Sum(x => x.totalAmount);
-
-            return new
+            return grouped.Select(g => new TopProductDto
             {
-                totalOrders,
-                totalRevenue,
-                byStatus = statusSummary
-            };
+                Id = g.ProductId,
+                NameEn = g.NameEn,
+                NameAr = g.NameAr,
+                ImageUrl = images.GetValueOrDefault(g.ProductId),
+                TotalSales = g.TotalSales,
+                Revenue = g.Revenue,
+                VendorName = g.StoreName
+            }).ToList();
         }
 
-        public async Task<dynamic> GetUserTrendsAsync()
+        public async Task<List<OrderStatusSummaryDto>> GetOrderStatusSummaryAsync()
         {
-            var now = DateTime.UtcNow;
-            var last30Days = now.AddDays(-30);
-            var last7Days = now.AddDays(-7);
+            return await _context.Orders
+                .GroupBy(o => o.Status)
+                .Select(g => new OrderStatusSummaryDto
+                {
+                    Status = g.Key.ToString(),
+                    Count = g.Count(),
+                    TotalAmount = decimal.Round(g.Sum(o => o.TotalAmount), 2)
+                })
+                .ToListAsync();
+        }
 
-            // FIXED BUG: Was counting ALL users with a non-null Id for both windows —
-            // the date predicate was completely absent. The comment even said "approximation here".
-            // Now correctly filters by CreatedAt so the counts actually reflect the time window.
-            var newUsersLast30Days = await _context.Users
-                .CountAsync(u => u.CreatedAt >= last30Days);
+        public async Task<List<UserTrendDto>> GetUserTrendsAsync()
+        {
+            var sixMonthsAgo = DateTime.UtcNow.AddDays(-180);
 
-            var newUsersLast7Days = await _context.Users
-                .CountAsync(u => u.CreatedAt >= last7Days);
-
-            var totalOrders = await _context.Orders.CountAsync();
-
-            var ordersLast30Days = await _context.Orders
-                .CountAsync(o => o.OrderDate >= last30Days);
-
-            var ordersLast7Days = await _context.Orders
-                .CountAsync(o => o.OrderDate >= last7Days);
-
-            return new
-            {
-                newUsersLast30Days,
-                newUsersLast7Days,
-                totalOrders,
-                ordersLast30Days,
-                ordersLast7Days
-            };
+            return await _context.Users
+                .Where(u => u.CreatedAt >= sixMonthsAgo)
+                .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
+                .Select(g => new UserTrendDto
+                {
+                    Year = g.Key.Year,
+                    Month = g.Key.Month,
+                    NewUsers = g.Count()
+                })
+                .OrderBy(t => t.Year)
+                .ThenBy(t => t.Month)
+                .ToListAsync();
         }
     }
 }

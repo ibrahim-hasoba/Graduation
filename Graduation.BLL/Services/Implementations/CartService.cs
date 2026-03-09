@@ -4,9 +4,6 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Cart;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -31,8 +28,6 @@ namespace Graduation.BLL.Services.Implementations
 
             var items = cartItems.Select(MapToDto).ToList();
             var subTotal = items.Sum(i => i.TotalPrice);
-
-            // Simple shipping calculation - 30 EGP flat rate
             var shippingCost = items.Any() ? 30m : 0m;
 
             return new CartDto
@@ -48,7 +43,6 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<CartItemDto> AddToCartAsync(string userId, AddToCartDto dto)
         {
-            // Check if product exists and is active
             var product = await _context.Products
                 .Include(p => p.Images)
                 .Include(p => p.Vendor)
@@ -60,11 +54,13 @@ namespace Graduation.BLL.Services.Implementations
             if (!product.IsActive)
                 throw new BadRequestException("This product is no longer available");
 
-            // Check stock
+            // FIX #13: Reject products from unapproved or suspended vendors.
+            if (!product.Vendor.IsApproved || !product.Vendor.IsActive)
+                throw new BadRequestException("This product's vendor is currently unavailable");
+
             if (product.StockQuantity < dto.Quantity)
                 throw new BadRequestException($"Only {product.StockQuantity} items available in stock");
 
-            // Check if item already in cart
             var existingItem = await _context.CartItems
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
@@ -73,7 +69,6 @@ namespace Graduation.BLL.Services.Implementations
 
             if (existingItem != null)
             {
-                // Update quantity
                 var newQuantity = existingItem.Quantity + dto.Quantity;
 
                 if (product.StockQuantity < newQuantity)
@@ -84,7 +79,6 @@ namespace Graduation.BLL.Services.Implementations
                 return MapToDto(existingItem);
             }
 
-            // Add new item
             var cartItem = new CartItem
             {
                 UserId = userId,
@@ -96,7 +90,6 @@ namespace Graduation.BLL.Services.Implementations
             _context.CartItems.Add(cartItem);
             await _context.SaveChangesAsync();
 
-            // Reload with includes
             cartItem = await _context.CartItems
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
@@ -117,7 +110,6 @@ namespace Graduation.BLL.Services.Implementations
             if (cartItem == null)
                 throw new NotFoundException("Cart item not found");
 
-            // Check stock
             if (cartItem.Product.StockQuantity < dto.Quantity)
                 throw new BadRequestException($"Only {cartItem.Product.StockQuantity} items available in stock");
 

@@ -1,83 +1,84 @@
-using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Shared.DTOs.Notification;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
     public class NotificationService : INotificationService
     {
         private readonly DatabaseContext _context;
-        private readonly ILogger<NotificationService> _logger;
 
-        public NotificationService(
-            DatabaseContext context,
-            ILogger<NotificationService> logger)
+        public NotificationService(DatabaseContext context)
         {
             _context = context;
-            _logger = logger;
         }
 
-        public async Task<NotificationDto> SendNotificationAsync(
+        /// <summary>
+        /// FIX #7: Pagination is applied at the database layer via Skip/Take on the
+        /// IQueryable before materialisation. No full-table load occurs.
+        /// </summary>
+        public async Task<PagedNotificationResultDto> GetUserNotificationsAsync(
             string userId,
-            string title,
-            string message,
-            string type,
-            int? orderId = null,
-            int? productId = null,
-            int? vendorId = null)
-        {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            var notification = new Notification
-            {
-                UserId = userId,
-                Title = title,
-                Message = message,
-                Type = type,
-                OrderId = orderId,
-                ProductId = productId,
-                VendorId = vendorId,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.Notifications.Add(notification);
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Notification sent: Type={Type}, UserId={UserId}, NotificationId={NotificationId}",
-                type, userId, notification.Id);
-
-            return MapToNotificationDto(notification);
-        }
-
-        public async Task<List<NotificationDto>> GetUserNotificationsAsync(string userId, bool unreadOnly = false)
+            bool unreadOnly = false,
+            int pageNumber = 1,
+            int pageSize = 20)
         {
             var query = _context.Notifications
-                .Where(n => n.UserId == userId);
+                .Where(n => n.UserId == userId)
+                .AsQueryable();
 
             if (unreadOnly)
                 query = query.Where(n => !n.IsRead);
 
-            var notifications = await query
+            var totalCount = await query.CountAsync();
+
+            // FIX #7: Only the requested page is fetched from the DB
+            var items = await query
                 .OrderByDescending(n => n.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(n => new NotificationDto
+                {
+                    Id = n.Id,
+                    Title = n.Title,
+                    Message = n.Message,
+                    Type = n.Type,
+                    OrderId = n.OrderId,
+                    ProductId = n.ProductId,
+                    VendorId = n.VendorId,
+                    IsRead = n.IsRead,
+                    CreatedAt = n.CreatedAt,
+                    ReadAt = n.ReadAt
+                })
                 .ToListAsync();
 
-            return notifications.Select(MapToNotificationDto).ToList();
+            return new PagedNotificationResultDto
+            {
+                Items = items,
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
+                UnreadCount = unreadOnly
+                    ? items.Count(n => !n.IsRead)
+                    : await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead)
+            };
+        }
+
+        public async Task BulkDeleteAsync(IEnumerable<int> ids, string userId)
+        {
+            await _context.Notifications
+                .Where(n => ids.Contains(n.Id) && n.UserId == userId)
+                .ExecuteDeleteAsync();
         }
 
         public async Task<int> GetUnreadCountAsync(string userId)
-        {
-            return await _context.Notifications
-                .CountAsync(n => n.UserId == userId && !n.IsRead);
-        }
+            => await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead);
 
-        public async Task MarkAsReadAsync(string userId, int notificationId)
+        public async Task MarkAsReadAsync(int notificationId, string userId)
         {
             var notification = await _context.Notifications
                 .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
@@ -90,47 +91,19 @@ namespace Graduation.BLL.Services.Implementations
                 notification.IsRead = true;
                 notification.ReadAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Notification marked as read: NotificationId={NotificationId}", notificationId);
             }
-        }
-        public async Task BulkDeleteAsync(List<int> ids, string userId)
-        {
-            if (ids == null || ids.Count == 0)
-                throw new BadRequestException(
-                    "At least one notification ID must be provided for bulk delete. " +
-                    "To delete all notifications, use the DELETE /notifications/all endpoint.");
-
-            var distinctIds = ids.Distinct().ToList();
-
-            var deletedCount = await _context.Notifications
-                .Where(n => n.UserId == userId && distinctIds.Contains(n.Id))
-                .ExecuteDeleteAsync();
-
-            _ = deletedCount;
         }
 
         public async Task MarkAllAsReadAsync(string userId)
         {
-            var notifications = await _context.Notifications
+            await _context.Notifications
                 .Where(n => n.UserId == userId && !n.IsRead)
-                .ToListAsync();
-
-            foreach (var notification in notifications)
-            {
-                notification.IsRead = true;
-                notification.ReadAt = DateTime.UtcNow;
-            }
-
-            if (notifications.Any())
-            {
-                await _context.SaveChangesAsync();
-                _logger.LogInformation("All notifications marked as read: UserId={UserId}, Count={Count}",
-                    userId, notifications.Count);
-            }
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(n => n.IsRead, true)
+                    .SetProperty(n => n.ReadAt, DateTime.UtcNow));
         }
 
-        public async Task DeleteNotificationAsync(string userId, int notificationId)
+        public async Task DeleteNotificationAsync(int notificationId, string userId)
         {
             var notification = await _context.Notifications
                 .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
@@ -140,42 +113,46 @@ namespace Graduation.BLL.Services.Implementations
 
             _context.Notifications.Remove(notification);
             await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Notification deleted: NotificationId={NotificationId}", notificationId);
         }
 
-        public async Task ClearOldNotificationsAsync(int daysOld = 30)
+        public async Task CreateNotificationAsync(
+            string userId,
+            string title,
+            string message,
+            string type = "",
+            int? orderId = null,
+            int? productId = null,
+            int? vendorId = null)
         {
-            var cutoffDate = DateTime.UtcNow.AddDays(-daysOld);
-            var oldNotifications = await _context.Notifications
-                .Where(n => n.IsRead && n.CreatedAt < cutoffDate)
-                .ToListAsync();
-
-            if (oldNotifications.Any())
+            _context.Notifications.Add(new Notification
             {
-                _context.Notifications.RemoveRange(oldNotifications);
-                await _context.SaveChangesAsync();
+                UserId = userId,
+                Title = title,
+                Message = message,
+                Type = type,
+                OrderId = orderId,
+                ProductId = productId,
+                VendorId = vendorId,
+                IsRead = false,
+                CreatedAt = DateTime.UtcNow
+            });
 
-                _logger.LogInformation("Old notifications deleted: Count={Count}, OlderThan={Days} days",
-                    oldNotifications.Count, daysOld);
-            }
+            await _context.SaveChangesAsync();
         }
 
-        private NotificationDto MapToNotificationDto(Notification notification)
+        public async Task CreateNotificationForVendorAsync(
+            int vendorId,
+            string title,
+            string message,
+            string type = "",
+            int? orderId = null,
+            int? productId = null)
         {
-            return new NotificationDto
-            {
-                Id = notification.Id,
-                Title = notification.Title,
-                Message = notification.Message,
-                Type = notification.Type,
-                OrderId = notification.OrderId,
-                ProductId = notification.ProductId,
-                VendorId = notification.VendorId,
-                IsRead = notification.IsRead,
-                CreatedAt = notification.CreatedAt,
-                ReadAt = notification.ReadAt
-            };
+            var vendor = await _context.Vendors.FindAsync(vendorId);
+            if (vendor == null) return;
+
+            await CreateNotificationAsync(vendor.UserId, title, message, type,
+                orderId: orderId, productId: productId, vendorId: vendorId);
         }
     }
 }

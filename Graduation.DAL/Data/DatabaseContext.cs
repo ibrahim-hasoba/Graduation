@@ -1,7 +1,6 @@
 ﻿using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection.Emit;
 
 namespace Graduation.DAL.Data
 {
@@ -25,6 +24,7 @@ namespace Graduation.DAL.Data
         public DbSet<EmailOtp> EmailOtps { get; set; }
         public DbSet<UserAddress> UserAddresses { get; set; }
         public DbSet<ProductVariant> ProductVariants { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -43,8 +43,10 @@ namespace Graduation.DAL.Data
                 entity.Property(v => v.StoreName).IsRequired().HasMaxLength(200);
                 entity.Property(v => v.PhoneNumber).IsRequired().HasMaxLength(20);
 
+                // One-to-One: one user = one vendor store
+                entity.HasIndex(v => v.UserId).IsUnique();
+
                 // Performance Indexes
-                entity.HasIndex(v => v.UserId);
                 entity.HasIndex(v => v.IsApproved);
                 entity.HasIndex(v => v.IsActive);
                 entity.HasIndex(v => new { v.IsApproved, v.IsActive });
@@ -131,6 +133,8 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(pi => new { pi.ProductId, pi.IsPrimary });
                 entity.HasIndex(pi => new { pi.ProductId, pi.DisplayOrder });
             });
+
+            // UserAddress Configuration
             builder.Entity<UserAddress>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -159,6 +163,7 @@ namespace Graduation.DAL.Data
                       .HasForeignKey(e => e.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
+
             // Product Review Configuration
             builder.Entity<ProductReview>(entity =>
             {
@@ -208,26 +213,45 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(ci => ci.AddedAt);
             });
 
-            // 1. One-to-One: One User = One Store (Egyptian Business Rule)
-            builder.Entity<Vendor>()
-                .HasIndex(v => v.UserId)
-                .IsUnique();
-
-            // 1. Add matching filters to child entities
+            // Global query filters — only applied to entities where hiding inactive data
+            // in the current session makes sense for ALL callers.
+            //
+            // FIX #12 side-effect: Products are now soft-deleted (IsActive = false).
+            // ProductImages, ProductReviews, and CartItems filter by Product.IsActive —
+            // this is safe because:
+            //   - Images/reviews of a deleted product should not surface in the storefront.
+            //   - Cart items for a deleted product should not be purchasable.
+            //
+            // IMPORTANT: OrderItems must NOT have a global filter on Product.IsActive.
+            // A soft-deleted product must not erase order history. Any code that reads
+            // OrderItems for historical purposes (reports, order detail pages, review
+            // eligibility checks) must use .IgnoreQueryFilters() explicitly if it also
+            // needs to traverse the Product navigation — or simply avoid filtering
+            // OrderItems by product activity at the global level.
             builder.Entity<ProductImage>().HasQueryFilter(pi => pi.Product.IsActive);
             builder.Entity<ProductReview>().HasQueryFilter(pr => pr.Product.IsActive);
             builder.Entity<CartItem>().HasQueryFilter(ci => ci.Product.IsActive);
+            // NOTE: No global filter on OrderItem — order history must be preserved.
 
-            // 2. For Orders, we usually want to see the order even if a vendor becomes inactive
-            // Change these relationships to "Restricted" or ensure filters match
-            builder.Entity<OrderItem>().HasQueryFilter(oi => oi.Product.IsActive);
-
-            // 3. Optimized RefreshToken Indexing
+            // RefreshToken Configuration
             builder.Entity<RefreshToken>(entity =>
             {
+                entity.HasKey(rt => rt.Id);
+
+                entity.HasOne(rt => rt.User)
+                    .WithMany()
+                    .HasForeignKey(rt => rt.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.Property(rt => rt.Token).IsRequired().HasMaxLength(200);
+
+                // Performance Indexes
                 entity.HasIndex(rt => rt.Token).IsUnique();
-                // Composite index for the 'Validate' method to make it lightning fast
+                entity.HasIndex(rt => rt.UserId);
+                entity.HasIndex(rt => rt.ExpiresAt);
+                entity.HasIndex(rt => rt.IsRevoked);
                 entity.HasIndex(rt => new { rt.Token, rt.UserId, rt.IsRevoked });
+                entity.HasIndex(rt => new { rt.UserId, rt.IsRevoked, rt.ExpiresAt });
             });
 
             // Order Configuration
@@ -282,26 +306,6 @@ namespace Graduation.DAL.Data
                 // Performance Indexes
                 entity.HasIndex(oi => oi.OrderId);
                 entity.HasIndex(oi => oi.ProductId);
-            });
-
-            // RefreshToken Configuration
-            builder.Entity<RefreshToken>(entity =>
-            {
-                entity.HasKey(rt => rt.Id);
-
-                entity.HasOne(rt => rt.User)
-                    .WithMany()
-                    .HasForeignKey(rt => rt.UserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasIndex(rt => rt.Token).IsUnique();
-                entity.Property(rt => rt.Token).IsRequired().HasMaxLength(200);
-
-                // Performance Indexes
-                entity.HasIndex(rt => rt.UserId);
-                entity.HasIndex(rt => rt.ExpiresAt);
-                entity.HasIndex(rt => rt.IsRevoked);
-                entity.HasIndex(rt => new { rt.UserId, rt.IsRevoked, rt.ExpiresAt });
             });
 
             // Wishlist Configuration

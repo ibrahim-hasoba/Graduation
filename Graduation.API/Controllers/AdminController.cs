@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Admin;
 using Shared.DTOs.Category;
 using Shared.Errors;
-
+using System.Security.Claims;
 
 namespace Graduation.API.Controllers
 {
@@ -38,9 +38,6 @@ namespace Graduation.API.Controllers
             _userManager = userManager;
         }
 
-        /// <summary>
-        /// Get dashboard statistics
-        /// </summary>
         [HttpGet("dashboard/stats")]
         public async Task<IActionResult> GetDashboardStats()
         {
@@ -48,9 +45,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: stats));
         }
 
-        /// <summary>
-        /// Get recent activities
-        /// </summary>
         [HttpGet("dashboard/activities")]
         public async Task<IActionResult> GetRecentActivities([FromQuery] int count = 10)
         {
@@ -58,9 +52,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: activities));
         }
 
-        /// <summary>
-        /// Get top selling products
-        /// </summary>
         [HttpGet("dashboard/top-products")]
         public async Task<IActionResult> GetTopProducts([FromQuery] int count = 10)
         {
@@ -68,9 +59,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: products));
         }
 
-        /// <summary>
-        /// Get top vendors by revenue
-        /// </summary>
         [HttpGet("dashboard/top-vendors")]
         public async Task<IActionResult> GetTopVendors([FromQuery] int count = 10)
         {
@@ -78,9 +66,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: vendors));
         }
 
-        /// <summary>
-        /// Get sales chart data
-        /// </summary>
         [HttpGet("dashboard/sales-chart")]
         public async Task<IActionResult> GetSalesChart()
         {
@@ -88,9 +73,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: chartData));
         }
 
-        /// <summary>
-        /// Get user statistics
-        /// </summary>
         [HttpGet("dashboard/user-stats")]
         public async Task<IActionResult> GetUserStats()
         {
@@ -98,9 +80,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: stats));
         }
 
-        /// <summary>
-        /// Get all users with pagination
-        /// </summary>
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers(
             [FromQuery] int pageNumber = 1,
@@ -151,12 +130,16 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        /// <summary>
-        /// Delete user account
-        /// </summary>
+        
         [HttpDelete("users/{userId}")]
         public async Task<IActionResult> DeleteUser(string userId)
         {
+            // FIX #10: Prevent self-deletion
+            var requestingAdminId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                 ?? User.FindFirstValue("userId");
+            if (requestingAdminId == userId)
+                throw new BadRequestException("You cannot delete your own admin account.");
+
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
                 throw new NotFoundException("User not found");
@@ -168,9 +151,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "User deleted successfully"));
         }
 
-        /// <summary>
-        /// Lock/Unlock user account
-        /// </summary>
         [HttpPost("users/{userId}/toggle-lock")]
         public async Task<IActionResult> ToggleUserLock(string userId)
         {
@@ -180,17 +160,16 @@ namespace Graduation.API.Controllers
 
             if (user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
-                // Unlock
                 await _userManager.SetLockoutEndDateAsync(user, null);
                 return Ok(new ApiResult(data: new { locked = false }, message: "User unlocked successfully"));
             }
             else
             {
-                // Lock for 100 years (permanent lock)
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
                 return Ok(new ApiResult(data: new { locked = true }, message: "User locked successfully"));
             }
         }
+
         [HttpPut("users/{userId}")]
         public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto)
         {
@@ -214,12 +193,9 @@ namespace Graduation.API.Controllers
                 lastName = user.LastName,
                 phoneNumber = user.PhoneNumber,
                 lockoutEnabled = user.LockoutEnabled
-
             }, message: "User updated successfully"));
         }
-        /// <summary>
-        /// Admin resets a user's password
-        /// </summary>
+
         [HttpPost("users/{userId}/reset-password")]
         public async Task<IActionResult> ResetUserPassword(string userId, [FromBody] AdminResetPasswordDto dto)
         {
@@ -232,20 +208,16 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException("Admins cannot reset other admin passwords");
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-
             var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
 
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.UpdateSecurityStampAsync(user);
-
             return Ok(new ApiResult(message: "Password reset successfully"));
         }
 
-        /// <summary>
-        /// Get all orders with filters
-        /// </summary>
+        
         [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders(
             [FromQuery] int pageNumber = 1,
@@ -274,7 +246,12 @@ namespace Graduation.API.Controllers
                     orderNumber = o.OrderNumber,
                     customerName = $"{o.User.FirstName} {o.User.LastName}",
                     customerEmail = o.User.Email,
-                    vendorName = o.OrderItems.Select(oi => oi.Product.Vendor.StoreName).FirstOrDefault(),
+                    // FIX #13: Return all distinct vendor names so multi-vendor orders are not
+                    // misrepresented as belonging to only one vendor.
+                    vendorNames = o.OrderItems
+                        .Select(oi => oi.Product.Vendor.StoreName)
+                        .Distinct()
+                        .ToList(),
                     totalAmount = o.TotalAmount,
                     status = o.Status.ToString(),
                     paymentStatus = o.PaymentStatus.ToString(),
@@ -293,9 +270,6 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        /// <summary>
-        /// Get system statistics summary
-        /// </summary>
         [HttpGet("stats/summary")]
         public async Task<IActionResult> GetSystemSummary()
         {
@@ -326,9 +300,8 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        
+        #region Categories
 
-        
         [HttpPost("categories")]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -342,7 +315,6 @@ namespace Graduation.API.Controllers
                 new ApiResult(data: category));
         }
 
-        /// <summary>Get all categories with hierarchy</summary>
         [HttpGet("categories")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -352,7 +324,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: categories));
         }
 
-        /// <summary>Get category by ID</summary>
         [HttpGet("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -363,7 +334,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: category));
         }
 
-        /// <summary>Update category</summary>
         [HttpPut("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -376,7 +346,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: category));
         }
 
-        /// <summary>Delete category (soft delete)</summary>
         [HttpDelete("categories/{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -387,13 +356,10 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Category deleted successfully"));
         }
 
-        
+        #endregion
 
         #region Reports
 
-        /// <summary>
-        /// Get sales report for date range
-        /// </summary>
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(
             [FromQuery] DateTime startDate,
@@ -407,9 +373,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get sales breakdown by category
-        /// </summary>
         [HttpGet("reports/sales-by-category")]
         public async Task<IActionResult> GetSalesByCategory(
             [FromQuery] DateTime startDate,
@@ -422,9 +385,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get vendor performance metrics
-        /// </summary>
         [HttpGet("reports/vendor-performance/{vendorId}")]
         public async Task<IActionResult> GetVendorPerformance(int vendorId)
         {
@@ -432,9 +392,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get customer insights and analytics
-        /// </summary>
         [HttpGet("reports/customer-insights")]
         public async Task<IActionResult> GetCustomerInsights()
         {
@@ -442,9 +399,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get low stock products
-        /// </summary>
         [HttpGet("reports/low-stock")]
         public async Task<IActionResult> GetLowStockProducts([FromQuery] int threshold = 10)
         {
@@ -452,9 +406,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get revenue by vendor for date range
-        /// </summary>
         [HttpGet("reports/revenue-by-vendor")]
         public async Task<IActionResult> GetRevenueByVendor(
             [FromQuery] DateTime startDate,
@@ -468,11 +419,8 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get top selling products
-        /// </summary>
         [HttpGet("reports/top-products")]
-        public async Task<IActionResult> GetTopProducts(
+        public async Task<IActionResult> GetTopProductsReport(
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate,
             [FromQuery] int take = 10)
@@ -484,9 +432,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get order status summary
-        /// </summary>
         [HttpGet("reports/order-status-summary")]
         public async Task<IActionResult> GetOrderStatusSummary()
         {
@@ -494,9 +439,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        /// <summary>
-        /// Get user trends and engagement metrics
-        /// </summary>
         [HttpGet("reports/user-trends")]
         public async Task<IActionResult> GetUserTrends()
         {

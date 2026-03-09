@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
@@ -32,7 +31,6 @@ namespace Graduation.API.Controllers
         private readonly IGoogleAuthService _googleAuthService;
         private readonly IOtpService _otpService;
         private readonly IImageService _imageService;
-        private readonly IHostEnvironment _environment;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -43,8 +41,7 @@ namespace Graduation.API.Controllers
             DatabaseContext context,
             IGoogleAuthService googleAuthService,
             IOtpService otpService,
-            IImageService imageService,
-            IHostEnvironment environment)
+            IImageService imageService)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -54,11 +51,8 @@ namespace Graduation.API.Controllers
             _context = context;
             _googleAuthService = googleAuthService;
             _otpService = otpService;
-            this._imageService = imageService;
-            this._environment = environment;
+            _imageService = imageService;
         }
-
-        
 
         [HttpPost("register")]
         [EnableRateLimiting("otp")]
@@ -107,12 +101,23 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.AddToRoleAsync(user, "Customer");
-            await SendVerificationEmail(user);
+
+            
+            try
+            {
+                await SendVerificationEmail(user);
+            }
+            catch (Exception)
+            {
+                await _userManager.DeleteAsync(user);
+                throw new BadRequestException(
+                    "Registration failed because the verification email could not be sent. " +
+                    "Please try again later.");
+            }
 
             return StatusCode(201, new ApiResult(message: "Registration successful! Please verify your email."));
         }
 
-     
         [HttpPost("login")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -135,7 +140,7 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("Please verify your email first.");
 
             await _userManager.ResetAccessFailedCountAsync(user);
-            return await GenerateAuthResponse(user , loginDto.RememberMe);
+            return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
 
         public class GoogleLoginDto
@@ -196,9 +201,7 @@ namespace Graduation.API.Controllers
                 var roles = await _userManager.GetRolesAsync(user);
                 var accessToken = _jwtHandler.CreateToken(user, roles);
 
-                
                 var newToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
-
                 await _refreshTokenService.RevokeTokenAsync(oldToken.Token, ipAddress, newToken.Token);
                 await transaction.CommitAsync();
 
@@ -210,8 +213,6 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException("Token refresh failed");
             }
         }
-
-        
 
         [HttpPost("forgot-password")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -264,7 +265,6 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(message: "Password has been reset successfully."));
         }
-
 
         [HttpPost("resend-verification-email")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -335,35 +335,9 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("You are not authorized as admin.");
 
             await _userManager.ResetAccessFailedCountAsync(user);
-
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
-        /*
-        [HttpPost("upload-profile-picture")]
-        [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
 
-        public async Task<IActionResult> UploadProfilePicture(IFormFile file)
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-
-            if (user == null) throw new NotFoundException("User not found");
-
-            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
-            {
-                await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
-            }
-
-            var imageUrl = await _imageService.UploadImageAsync(file, "profiles");
-
-            user.ProfilePictureUrl = imageUrl;
-            await _userManager.UpdateAsync(user);
-
-            return Ok(new ApiResult(data: new { imageUrl }, message: "Profile picture updated successfully"));
-        }
-        */
         [HttpDelete("delete-profile-picture")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -378,7 +352,6 @@ namespace Graduation.API.Controllers
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
             {
                 await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
-
                 user.ProfilePictureUrl = null;
                 await _userManager.UpdateAsync(user);
             }
@@ -396,7 +369,6 @@ namespace Graduation.API.Controllers
             var user = await _userManager.FindByIdAsync(userId!);
             if (user == null) throw new NotFoundException("User not found");
 
-            // Generate full URL for frontend using the helper method
             var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl);
 
             return Ok(new ApiResult(data: new
@@ -405,8 +377,8 @@ namespace Graduation.API.Controllers
                 lastName = user.LastName,
                 email = user.Email,
                 phoneNumber = user.PhoneNumber,
-                profilePictureUrl = fullProfilePictureUrl, // Full URL for frontend
-                profilePictureRelativePath = user.ProfilePictureUrl // Optional relative path
+                profilePictureUrl = fullProfilePictureUrl,
+                profilePictureRelativePath = user.ProfilePictureUrl
             }));
         }
 
@@ -422,16 +394,13 @@ namespace Graduation.API.Controllers
             if (user == null) throw new NotFoundException("User not found");
 
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
-            {
                 await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
-            }
 
             var imageUrl = await _imageService.UploadImageAsync(file, "profiles");
 
-            user.ProfilePictureUrl = imageUrl; // This now stores RELATIVE path only
+            user.ProfilePictureUrl = imageUrl;
             await _userManager.UpdateAsync(user);
 
-            // Return both relative and full URL
             return Ok(new ApiResult(data: new
             {
                 relativePath = imageUrl,
@@ -448,8 +417,9 @@ namespace Graduation.API.Controllers
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
             var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) 
+            if (user == null)
                 throw new NotFoundException("User not found");
+
             var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to change password.");
@@ -458,14 +428,43 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Password updated. Other sessions revoked."));
         }
 
+        
+        [HttpPost("verify-email-otp")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
+                throw new BadRequestException("Email and code are required");
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            // FIX #9: Validate the OTP first for both branches so it is always consumed.
+            var isValid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
+            if (!isValid)
+                throw new BadRequestException("Invalid or expired verification code");
+
+            // Email already confirmed: OTP was valid but we must NOT issue tokens without
+            // a password — redirect client to the login page instead.
+            if (user.EmailConfirmed)
+                return Ok(new ApiResult(message: "Email already verified. Please log in."));
+
+            user.EmailConfirmed = true;
+            var updateResult = await _userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+                throw new BadRequestException("Failed to confirm email");
+
+            return await GenerateAuthResponse(user);
+        }
 
 
         private async Task<IActionResult> GenerateAuthResponse(AppUser user, bool rememberMe = false)
         {
             var roles = await _userManager.GetRolesAsync(user);
-
             var accessToken = _jwtHandler.CreateToken(user, roles);
-
             var refreshToken = await _refreshTokenService
                 .GenerateRefreshTokenAsync(user.Id, GetIpAddress(), rememberMe);
 
@@ -511,82 +510,5 @@ namespace Graduation.API.Controllers
             var code = await _otpService.GenerateOtpAsync(user.Email!);
             await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
         }
-
-        [HttpPost("verify-email-otp")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
-        {
-            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
-                throw new BadRequestException("Email and code are required");
-
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null)
-                throw new NotFoundException("User not found");
-
-            var isValid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
-            if (!isValid)
-                throw new BadRequestException("Invalid or expired verification code");
-
-            if (!user.EmailConfirmed)
-            {
-                user.EmailConfirmed = true;
-                var updateResult = await _userManager.UpdateAsync(user);
-                if (!updateResult.Succeeded)
-                    throw new BadRequestException("Failed to confirm email");
-            }
-
-            return await GenerateAuthResponse(user);
-        }
-        /*
-        [HttpPost("admin/login")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> AdminLogin([FromBody] UserForLoginDto loginDto)
-        {
-            var user = await _userManager.FindByEmailAsync(loginDto.Email!);
-
-            if (user == null)
-                throw new UnauthorizedException("Invalid credentials");
-
-            if (await _userManager.IsLockedOutAsync(user))
-                throw new BadRequestException("Account locked. Please try again later.");
-
-            if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
-            {
-                await _userManager.AccessFailedAsync(user);
-                throw new UnauthorizedException("Invalid credentials");
-            }
-
-            if (!user.EmailConfirmed)
-                throw new UnauthorizedException("Please verify your email first.");
-
-            var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
-            if (!isAdmin)
-                throw new UnauthorizedException("You are not authorized as admin.");
-
-            await _userManager.ResetAccessFailedCountAsync(user);
-
-            return await GenerateAuthResponse(user, loginDto.RememberMe);
-        }
-        */
-        /*
-        [HttpGet("debug/file-exists")]
-        [Authorize(Roles = "Admin")]
-        public IActionResult CheckFileExists([FromQuery] string path)
-        {
-            var fullPath = Path.Combine(_environment.ContentRootPath, "uploads", path.TrimStart('/'));
-            var exists = System.IO.File.Exists(fullPath);
-
-            return Ok(new
-            {
-                requestedPath = path,
-                fullPath = fullPath,
-                exists = exists,
-                contentRoot = _environment.ContentRootPath
-            });
-        }*/
     }
 }

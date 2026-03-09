@@ -173,7 +173,7 @@ namespace Graduation.API.Controllers
             }
         }
 
-        
+
         [HttpDelete("{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -191,22 +191,21 @@ namespace Graduation.API.Controllers
             try
             {
                 _context.UserAddresses.Remove(address);
-                await _context.SaveChangesAsync();
 
+                // FIX #11: Promote the next address BEFORE SaveChangesAsync so both
+                // the deletion and the promotion are committed atomically.
                 if (wasDefault)
                 {
                     var next = await _context.UserAddresses
-                        .Where(a => a.UserId == userId)
+                        .Where(a => a.UserId == userId && a.Id != id)
                         .OrderByDescending(a => a.CreatedAt)
                         .FirstOrDefaultAsync();
 
                     if (next != null)
-                    {
                         next.IsDefault = true;
-                        await _context.SaveChangesAsync();
-                    }
                 }
 
+                await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
             catch

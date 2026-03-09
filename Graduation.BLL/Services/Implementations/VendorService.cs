@@ -3,6 +3,7 @@ using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -12,39 +13,41 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly IEmailService _emailService;
+        private readonly UserManager<AppUser> _userManager;
         private readonly Shared.BackgroundTasks.IBackgroundTaskQueue? _taskQueue;
         private readonly ILogger<VendorService> _logger;
 
         public VendorService(
-                DatabaseContext context,
-                IEmailService emailService,
-                ILogger<VendorService> logger,
-                Shared.BackgroundTasks.IBackgroundTaskQueue? taskQueue = null)
+            DatabaseContext context,
+            IEmailService emailService,
+            UserManager<AppUser> userManager,
+            ILogger<VendorService> logger,
+            Shared.BackgroundTasks.IBackgroundTaskQueue? taskQueue = null)
         {
             _context = context;
             _emailService = emailService;
-            _logger = logger;
+            _userManager = userManager;
             _taskQueue = taskQueue;
+            _logger = logger;
         }
 
         public async Task<VendorDto> RegisterVendorAsync(string userId, VendorRegisterDto dto)
         {
-            // CRITICAL FIX: Verify user exists and email is confirmed
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 throw new NotFoundException("User not found");
 
             if (!user.EmailConfirmed)
-                throw new UnauthorizedException("Email must be verified before registering as a vendor. Please check your inbox for the verification link.");
+                throw new UnauthorizedException(
+                    "Email must be verified before registering as a vendor. " +
+                    "Please check your inbox for the verification link.");
 
-            // Check if user already has a vendor account
             var existingVendor = await _context.Vendors
                 .FirstOrDefaultAsync(v => v.UserId == userId);
 
             if (existingVendor != null)
                 throw new ConflictException("You already have a vendor account");
 
-            // Check if store name is unique
             var storeNameExists = await _context.Vendors
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
 
@@ -98,10 +101,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(v => v.Products)
                 .FirstOrDefaultAsync(v => v.UserId == userId);
 
-            if (vendor == null)
-                return null;
-
-            return MapToDto(vendor);
+            return vendor == null ? null : MapToDto(vendor);
         }
 
         public async Task<IEnumerable<VendorListDto>> GetAllVendorsAsync(bool? isApproved = null)
@@ -140,11 +140,9 @@ namespace Graduation.BLL.Services.Implementations
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
-            // Check if the user owns this vendor
             if (vendor.UserId != userId)
                 throw new UnauthorizedException("You are not authorized to update this vendor");
 
-            // Check if new store name conflicts with another vendor
             var storeNameExists = await _context.Vendors
                 .AnyAsync(v => v.Id != id && v.StoreName.ToLower() == dto.StoreName.ToLower());
 
@@ -170,6 +168,7 @@ namespace Graduation.BLL.Services.Implementations
             return await GetVendorByIdAsync(id);
         }
 
+
         public async Task<VendorDto> ApproveVendorAsync(int id, bool isApproved, string? rejectionReason = null)
         {
             var vendor = await _context.Vendors
@@ -184,10 +183,33 @@ namespace Graduation.BLL.Services.Implementations
 
             await _context.SaveChangesAsync();
 
-            // Send notification email
+            // FIX #7: Sync the Identity role so the user's next JWT reflects their vendor status.
+            if (vendor.User != null)
+            {
+                var appUser = await _userManager.FindByIdAsync(vendor.UserId);
+                if (appUser != null)
+                {
+                    var isInVendorRole = await _userManager.IsInRoleAsync(appUser, "Vendor");
+
+                    if (isApproved && !isInVendorRole)
+                    {
+                        await _userManager.AddToRoleAsync(appUser, "Vendor");
+                        _logger.LogInformation("User {UserId} added to Vendor role after approval", vendor.UserId);
+                    }
+                    else if (!isApproved && isInVendorRole)
+                    {
+                        await _userManager.RemoveFromRoleAsync(appUser, "Vendor");
+                        _logger.LogInformation("User {UserId} removed from Vendor role after rejection", vendor.UserId);
+                    }
+                }
+            }
+
+            // Send notification email via background queue (or fire-and-forget fallback)
             if (vendor.User != null && !string.IsNullOrEmpty(vendor.User.Email))
             {
-                // Enqueue email sending to background queue if available, else fall back to fire-and-forget
+                var emailCopy = vendor.User.Email;
+                var storeNameCopy = vendor.StoreName;
+
                 if (_taskQueue != null)
                 {
                     _taskQueue.QueueBackgroundWorkItem(async token =>
@@ -195,14 +217,11 @@ namespace Graduation.BLL.Services.Implementations
                         try
                         {
                             await _emailService.SendVendorApprovalEmailAsync(
-                                vendor.User.Email,
-                                vendor.StoreName,
-                                isApproved,
-                                rejectionReason);
+                                emailCopy, storeNameCopy, isApproved, rejectionReason);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", vendor.User.Email);
+                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", emailCopy);
                         }
                     });
                 }
@@ -213,21 +232,17 @@ namespace Graduation.BLL.Services.Implementations
                         try
                         {
                             await _emailService.SendVendorApprovalEmailAsync(
-                                vendor.User.Email,
-                                vendor.StoreName,
-                                isApproved,
-                                rejectionReason);
+                                emailCopy, storeNameCopy, isApproved, rejectionReason);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", vendor.User.Email);
+                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", emailCopy);
                         }
                     });
                 }
             }
 
-            _logger.LogInformation("Vendor {VendorId} approval status changed to {IsApproved}",
-                id, isApproved);
+            _logger.LogInformation("Vendor {VendorId} approval status changed to {IsApproved}", id, isApproved);
 
             return await GetVendorByIdAsync(id);
         }
@@ -263,32 +278,29 @@ namespace Graduation.BLL.Services.Implementations
             _logger.LogInformation("Vendor deleted: {VendorId} - {StoreName}", id, vendor.StoreName);
         }
 
-        private VendorDto MapToDto(Vendor vendor)
+        private VendorDto MapToDto(Vendor vendor) => new()
         {
-            return new VendorDto
-            {
-                Id = vendor.Id,
-                UserId = vendor.UserId,
-                UserEmail = vendor.User?.Email ?? string.Empty,
-                UserFullName = $"{vendor.User?.FirstName} {vendor.User?.LastName}",
-                StoreName = vendor.StoreName,
-                StoreNameAr = vendor.StoreNameAr,
-                StoreDescription = vendor.StoreDescription,
-                StoreDescriptionAr = vendor.StoreDescriptionAr,
-                LogoUrl = vendor.LogoUrl,
-                BannerUrl = vendor.BannerUrl,
-                PhoneNumber = vendor.PhoneNumber,
-                Address = vendor.Address,
-                City = vendor.City,
-                Governorate = vendor.Governorate.ToString(),
-                GovernorateId = (int)vendor.Governorate,
-                IsApproved = vendor.IsApproved,
-                IsActive = vendor.IsActive,
-                TotalProducts = vendor.Products?.Count ?? 0,
-                TotalOrders = 0,
-                CreatedAt = vendor.CreatedAt,
-                UpdatedAt = vendor.UpdatedAt
-            };
-        }
+            Id = vendor.Id,
+            UserId = vendor.UserId,
+            UserEmail = vendor.User?.Email ?? string.Empty,
+            UserFullName = $"{vendor.User?.FirstName} {vendor.User?.LastName}",
+            StoreName = vendor.StoreName,
+            StoreNameAr = vendor.StoreNameAr,
+            StoreDescription = vendor.StoreDescription,
+            StoreDescriptionAr = vendor.StoreDescriptionAr,
+            LogoUrl = vendor.LogoUrl,
+            BannerUrl = vendor.BannerUrl,
+            PhoneNumber = vendor.PhoneNumber,
+            Address = vendor.Address,
+            City = vendor.City,
+            Governorate = vendor.Governorate.ToString(),
+            GovernorateId = (int)vendor.Governorate,
+            IsApproved = vendor.IsApproved,
+            IsActive = vendor.IsActive,
+            TotalProducts = vendor.Products?.Count ?? 0,
+            TotalOrders = 0,
+            CreatedAt = vendor.CreatedAt,
+            UpdatedAt = vendor.UpdatedAt
+        };
     }
 }

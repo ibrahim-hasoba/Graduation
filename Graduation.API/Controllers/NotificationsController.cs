@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
 using Shared.DTOs.Notification;
-using System.Security.Claims;
 
 namespace Graduation.API.Controllers
 {
@@ -20,18 +19,15 @@ namespace Graduation.API.Controllers
             _notificationService = notificationService;
         }
 
-        /// <summary>
-        /// Get user's notifications with optional pagination and unread filter.
-        /// FIXED: Added pageNumber/pageSize query parameters to prevent unbounded result sets.
-        /// </summary>
+        
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetNotifications(
-          [FromQuery] bool unreadOnly = false,
-          [FromQuery] int pageNumber = 1,
-          [FromQuery] int pageSize = 20)
+            [FromQuery] bool unreadOnly = false,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 20)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -40,34 +36,16 @@ namespace Graduation.API.Controllers
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-            var notifications = await _notificationService.GetUserNotificationsAsync(userId, unreadOnly);
+            // FIX #7: pagination params passed into the service — no in-memory slicing
+            var result = await _notificationService.GetUserNotificationsAsync(
+                userId, unreadOnly, pageNumber, pageSize);
 
-
-            var totalCount = notifications.Count;
-            var paged = notifications
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            return Ok(new Errors.ApiResult(
-                data: new
-                {
-                    items = paged,
-                    totalCount,
-                    pageNumber,
-                    pageSize,
-                    totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-                },
-                count: totalCount));
+            return Ok(new ApiResult(data: result, count: result.TotalCount));
         }
 
-        /// <summary>
-        /// Get unread notification count
-        /// </summary>
         [HttpGet("unread/count")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> GetUnreadCount()
         {
             var userId = User.GetUserId();
@@ -78,14 +56,10 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: new { unreadCount = count }));
         }
 
-        /// <summary>
-        /// Mark notification as read
-        /// </summary>
         [HttpPatch("{notificationId}/read")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> MarkAsRead(int notificationId)
         {
             var userId = User.GetUserId();
@@ -94,7 +68,7 @@ namespace Graduation.API.Controllers
 
             try
             {
-                await _notificationService.MarkAsReadAsync(userId, notificationId);
+                await _notificationService.MarkAsReadAsync(notificationId, userId);
                 return Ok(new ApiResult(message: "Notification marked as read"));
             }
             catch (NotFoundException ex)
@@ -103,13 +77,9 @@ namespace Graduation.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Mark all notifications as read
-        /// </summary>
         [HttpPatch("read-all")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> MarkAllAsRead()
         {
             var userId = User.GetUserId();
@@ -120,14 +90,10 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "All notifications marked as read"));
         }
 
-        /// <summary>
-        /// Delete notification
-        /// </summary>
         [HttpDelete("{notificationId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> DeleteNotification(int notificationId)
         {
             var userId = User.GetUserId();
@@ -136,7 +102,7 @@ namespace Graduation.API.Controllers
 
             try
             {
-                await _notificationService.DeleteNotificationAsync(userId, notificationId);
+                await _notificationService.DeleteNotificationAsync(notificationId, userId);
                 return Ok(new ApiResult(message: "Notification deleted"));
             }
             catch (NotFoundException ex)
@@ -148,14 +114,14 @@ namespace Graduation.API.Controllers
         [HttpDelete("bulk")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-
         public async Task<IActionResult> BulkDelete([FromBody] BulkDeleteNotificationsDto dto)
         {
             var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             await _notificationService.BulkDeleteAsync(dto.Ids, userId);
-            return Ok(new ApiResult("Notifications deleted permanently"));
+            return Ok(new ApiResult(message: "Notifications deleted permanently"));
         }
     }
 }

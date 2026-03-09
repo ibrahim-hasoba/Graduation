@@ -24,7 +24,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetProductReviews(int productId)
         {
             var reviews = await _reviewService.GetProductReviewsAsync(productId);
-            return Ok(new Errors.ApiResult(data: reviews));
+            return Ok(new ApiResult(data: reviews));
         }
 
         [HttpGet("my-reviews")]
@@ -38,7 +38,7 @@ namespace Graduation.API.Controllers
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var reviews = await _reviewService.GetUserReviewsAsync(userId);
-            return Ok(new Errors.ApiResult(data: reviews));
+            return Ok(new ApiResult(data: reviews));
         }
 
         [HttpPost]
@@ -53,7 +53,7 @@ namespace Graduation.API.Controllers
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var review = await _reviewService.CreateReviewAsync(userId, dto);
-            return StatusCode(201, new Errors.ApiResult(
+            return StatusCode(201, new ApiResult(
                 data: review,
                 message: "Review submitted successfully. It will be visible after admin approval."));
         }
@@ -69,11 +69,12 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
+            // FIX: DeleteReviewAsync now returns bool instead of throwing
             var deleted = await _reviewService.DeleteReviewAsync(reviewId, userId);
             if (!deleted)
                 throw new NotFoundException("Review not found or you don't have permission to delete it");
 
-            return Ok(new Errors.ApiResult(message: "Review deleted successfully"));
+            return Ok(new ApiResult(message: "Review deleted successfully"));
         }
 
         [HttpPost("{reviewId}/approve")]
@@ -83,11 +84,26 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ApproveReview(int reviewId)
         {
+            // FIX: ApproveReviewAsync now returns bool and takes isApproved param (defaults to true)
             var approved = await _reviewService.ApproveReviewAsync(reviewId);
             if (!approved)
                 throw new NotFoundException("Review not found");
 
-            return Ok(new Errors.ApiResult(message: "Review approved successfully"));
+            return Ok(new ApiResult(message: "Review approved successfully"));
+        }
+
+        [HttpPost("{reviewId}/reject")]
+        [Authorize(Roles = "Admin")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> RejectReview(int reviewId)
+        {
+            var rejected = await _reviewService.ApproveReviewAsync(reviewId, isApproved: false);
+            if (!rejected)
+                throw new NotFoundException("Review not found");
+
+            return Ok(new ApiResult(message: "Review rejected successfully"));
         }
 
         [HttpGet("pending")]
@@ -96,8 +112,9 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetPendingReviews()
         {
+            // FIX: Admin calls the no-param overload — returns all pending reviews
             var reviews = await _reviewService.GetPendingReviewsAsync();
-            return Ok(new Errors.ApiResult(data: reviews, count: reviews.Count));
+            return Ok(new ApiResult(data: reviews, count: reviews.Count));
         }
     }
 }

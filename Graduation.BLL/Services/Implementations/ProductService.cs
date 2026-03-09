@@ -30,8 +30,8 @@ namespace Graduation.BLL.Services.Implementations
                 throw new ConflictException($"Product with SKU '{dto.SKU}' already exists");
 
             var category = await _context.Categories
-                            .Include(c => c.SubCategories)
-                            .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+                .Include(c => c.SubCategories)
+                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
 
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
@@ -72,14 +72,13 @@ namespace Graduation.BLL.Services.Implementations
             {
                 for (int i = 0; i < dto.ImageUrls.Count; i++)
                 {
-                    var image = new ProductImage
+                    _context.ProductImages.Add(new ProductImage
                     {
                         ProductId = product.Id,
                         ImageUrl = dto.ImageUrls[i],
                         IsPrimary = i == 0,
                         DisplayOrder = i
-                    };
-                    _context.ProductImages.Add(image);
+                    });
                 }
                 await _context.SaveChangesAsync();
             }
@@ -90,12 +89,12 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
             var product = await _context.Products
-                 .Include(p => p.Vendor)
-                 .Include(p => p.Category)
-                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
-                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                 .Include(p => p.Variants.Where(v => v.IsActive))
-                 .FirstOrDefaultAsync(p => p.Id == id);
+                .Include(p => p.Vendor)
+                .Include(p => p.Category)
+                .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
+                .Include(p => p.Reviews.Where(r => r.IsApproved))
+                .Include(p => p.Variants.Where(v => v.IsActive))
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
                 throw new NotFoundException("Product", id);
@@ -220,8 +219,8 @@ namespace Graduation.BLL.Services.Implementations
                 throw new UnauthorizedException("You can only update your own products");
 
             var category = await _context.Categories
-                                .Include(c => c.SubCategories)
-                                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+                .Include(c => c.SubCategories)
+                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
 
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
@@ -250,6 +249,7 @@ namespace Graduation.BLL.Services.Implementations
             return await GetProductByIdAsync(id);
         }
 
+
         public async Task DeleteProductAsync(int id, int vendorId)
         {
             var product = await _context.Products.FindAsync(id);
@@ -260,7 +260,8 @@ namespace Graduation.BLL.Services.Implementations
             if (product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only delete your own products");
 
-            _context.Products.Remove(product);
+            product.IsActive = false;
+            product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
 
@@ -286,10 +287,6 @@ namespace Graduation.BLL.Services.Implementations
             return true;
         }
 
-        // FIX #12: Replace read-modify-write (product.ViewCount++) with an atomic SQL UPDATE.
-        // The old approach had a race condition under concurrent requests: two threads both
-        // read ViewCount=5, both write 6, losing one increment. The UPDATE executes atomically
-        // in the database, so every view is counted exactly once regardless of concurrency.
         public async Task IncrementViewCountAsync(int id)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -299,16 +296,10 @@ namespace Graduation.BLL.Services.Implementations
         private ProductDto MapToDto(Product product)
         {
             var finalPrice = product.DiscountPrice ?? product.Price;
-
             var discountPercentage = product.DiscountPrice.HasValue
-                ? (int)Math.Round(
-                    ((product.Price - product.DiscountPrice.Value) / product.Price) * 100
-                  )
+                ? (int)Math.Round(((product.Price - product.DiscountPrice.Value) / product.Price) * 100)
                 : 0;
-
-            var avgRating = product.Reviews.Any()
-                ? product.Reviews.Average(r => r.Rating)
-                : 0;
+            var avgRating = product.Reviews.Any() ? product.Reviews.Average(r => r.Rating) : 0;
 
             return new ProductDto
             {
@@ -379,7 +370,6 @@ namespace Graduation.BLL.Services.Implementations
             var discountPercentage = product.DiscountPrice.HasValue
                 ? (int)Math.Round(((product.Price - product.DiscountPrice.Value) / product.Price) * 100)
                 : 0;
-
             var avgRating = product.Reviews.Any() ? product.Reviews.Average(r => r.Rating) : 0;
             var primaryImage = product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
                 ?? product.Images.FirstOrDefault()?.ImageUrl;
