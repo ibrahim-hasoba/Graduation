@@ -29,5 +29,7 @@
         public ICollection<ProductReview> Reviews { get; set; } = new List<ProductReview>();
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
         public ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
+        public ICollection<ProductVariant> Variants { get; set; } = new List<ProductVariant>();
+
     }
 }

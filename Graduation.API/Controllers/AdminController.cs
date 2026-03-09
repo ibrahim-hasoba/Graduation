@@ -212,8 +212,9 @@ namespace Graduation.API.Controllers
                 email = user.Email,
                 firstName = user.FirstName,
                 lastName = user.LastName,
-                phoneNumber = user.PhoneNumber
-                
+                phoneNumber = user.PhoneNumber,
+                lockoutEnabled = user.LockoutEnabled
+
             }, message: "User updated successfully"));
         }
         /// <summary>

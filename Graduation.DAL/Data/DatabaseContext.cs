@@ -24,6 +24,7 @@ namespace Graduation.DAL.Data
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<EmailOtp> EmailOtps { get; set; }
         public DbSet<UserAddress> UserAddresses { get; set; }
+        public DbSet<ProductVariant> ProductVariants { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);

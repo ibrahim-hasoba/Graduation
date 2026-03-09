@@ -90,11 +90,12 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
             var product = await _context.Products
-                .Include(p => p.Vendor)
-                .Include(p => p.Category)
-                .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
-                .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .FirstOrDefaultAsync(p => p.Id == id);
+                 .Include(p => p.Vendor)
+                 .Include(p => p.Category)
+                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
+                 .Include(p => p.Reviews.Where(r => r.IsApproved))
+                 .Include(p => p.Variants.Where(v => v.IsActive))
+                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
                 throw new NotFoundException("Product", id);
@@ -298,11 +299,16 @@ namespace Graduation.BLL.Services.Implementations
         private ProductDto MapToDto(Product product)
         {
             var finalPrice = product.DiscountPrice ?? product.Price;
+
             var discountPercentage = product.DiscountPrice.HasValue
-                ? (int)Math.Round(((product.Price - product.DiscountPrice.Value) / product.Price) * 100)
+                ? (int)Math.Round(
+                    ((product.Price - product.DiscountPrice.Value) / product.Price) * 100
+                  )
                 : 0;
 
-            var avgRating = product.Reviews.Any() ? product.Reviews.Average(r => r.Rating) : 0;
+            var avgRating = product.Reviews.Any()
+                ? product.Reviews.Average(r => r.Rating)
+                : 0;
 
             return new ProductDto
             {
@@ -334,13 +340,36 @@ namespace Graduation.BLL.Services.Implementations
                 CategoryId = product.CategoryId,
                 CategoryNameAr = product.Category.NameAr,
                 CategoryNameEn = product.Category.NameEn,
-                Images = product.Images.Select(i => new ProductImageDto
-                {
-                    Id = i.Id,
-                    ImageUrl = i.ImageUrl,
-                    IsPrimary = i.IsPrimary,
-                    DisplayOrder = i.DisplayOrder
-                }).ToList()
+                Images = product.Images
+                    .Select(i => new ProductImageDto
+                    {
+                        Id = i.Id,
+                        ImageUrl = i.ImageUrl,
+                        IsPrimary = i.IsPrimary,
+                        DisplayOrder = i.DisplayOrder
+                    }).ToList(),
+                Variants = product.Variants
+                    .GroupBy(v => v.TypeName)
+                    .OrderBy(g => g.Key)
+                    .Select(g => new ProductVariantGroupDto
+                    {
+                        TypeName = g.Key,
+                        Options = g.OrderBy(v => v.DisplayOrder)
+                            .ThenBy(v => v.Value)
+                            .Select(v => new ProductVariantDto
+                            {
+                                Id = v.Id,
+                                TypeName = v.TypeName,
+                                Value = v.Value,
+                                ColorHex = v.ColorHex,
+                                PriceAdjustment = v.PriceAdjustment,
+                                StockQuantity = v.StockQuantity,
+                                DisplayOrder = v.DisplayOrder,
+                                IsActive = v.IsActive
+                            })
+                            .ToList()
+                    })
+                    .ToList()
             };
         }
 

@@ -15,7 +15,7 @@ namespace Shared.DTOs.Product
         public int? GovernorateId { get; set; }
         public bool? InStock { get; set; }
         public bool? IsFeatured { get; set; }
-        public string? SortBy { get; set; } // price_asc, price_desc, rating, newest, popular
+        public string? SortBy { get; set; } 
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

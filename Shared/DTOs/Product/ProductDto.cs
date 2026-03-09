@@ -29,17 +29,19 @@ namespace Shared.DTOs.Product
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
-        // Vendor Info
+        
         public int VendorId { get; set; }
         public string VendorName { get; set; } = string.Empty;
         public string VendorNameAr { get; set; } = string.Empty;
 
-        // Category Info
+        
         public int CategoryId { get; set; }
         public string CategoryNameAr { get; set; } = string.Empty;
         public string CategoryNameEn { get; set; } = string.Empty;
 
-        // Images
+        
         public List<ProductImageDto> Images { get; set; } = new();
+        public List<ProductVariantGroupDto> Variants { get; set; } = new();
+
     }
 }

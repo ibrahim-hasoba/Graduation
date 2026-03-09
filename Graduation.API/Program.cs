@@ -221,6 +221,7 @@ namespace Graduation.API
                 builder.Services.AddScoped<IWishlistService, WishlistService>();
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
+                builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
                 builder.Services.Configure<FormOptions>(options =>
                 {
                     options.MultipartBodyLengthLimit = 5 * 1024 * 1024;
@@ -274,7 +275,7 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

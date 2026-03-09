@@ -23,7 +23,7 @@ namespace Graduation.API.Controllers
             _context = context;
         }
 
-        
+
         [HttpGet("my-stats")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -52,7 +52,7 @@ namespace Graduation.API.Controllers
             var outOfStockProducts = await _context.Products
                 .CountAsync(p => p.VendorId == vendorId && p.IsActive && p.StockQuantity == 0);
 
-            
+
             var vendorOrderIdsQuery = _context.OrderItems
                 .Where(oi => oi.Product.VendorId == vendorId)
                 .Select(oi => oi.OrderId)

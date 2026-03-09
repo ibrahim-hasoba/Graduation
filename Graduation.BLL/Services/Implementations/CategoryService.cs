@@ -139,7 +139,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Where(c => c.ParentCategoryId == null)
                 .ToListAsync();
 
-            
+
             var allCategoryIds = categories
                 .SelectMany(c => GetAllIds(c))
                 .Distinct()
@@ -183,7 +183,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        
+
         private CategoryHierarchyDto MapToCategoryHierarchyDto(
             Category category,
             Dictionary<int, int> productCounts)

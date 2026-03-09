@@ -42,8 +42,7 @@ namespace Graduation.API.Controllers
 
             var notifications = await _notificationService.GetUserNotificationsAsync(userId, unreadOnly);
 
-            // Apply pagination in-memory (service returns all; pagination keeps API contract stable
-            // without requiring a service-layer breaking change)
+
             var totalCount = notifications.Count;
             var paged = notifications
                 .Skip((pageNumber - 1) * pageSize)
@@ -147,16 +146,16 @@ namespace Graduation.API.Controllers
         }
 
         [HttpDelete("bulk")]
-        [ProducesResponseType( StatusCodes.Status200OK)]
-        [ProducesResponseType( StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 
         public async Task<IActionResult> BulkDelete([FromBody] BulkDeleteNotificationsDto dto)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
-            await _notificationService.BulkDeleteAsync(dto.Ids , userId);
-            return Ok(new ApiResult ( "Notifications deleted permanently" ));
+            await _notificationService.BulkDeleteAsync(dto.Ids, userId);
+            return Ok(new ApiResult("Notifications deleted permanently"));
         }
     }
 }
