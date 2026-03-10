@@ -254,13 +254,12 @@ namespace Graduation.API
 
                 builder.Services.AddCors(options =>
                 {
-                    options.AddPolicy("AllowAll", policy =>
+                    options.AddPolicy("AllowFrontend", policy =>
                     {
                         policy
-                              .AllowAnyMethod()
-                              .AllowAnyHeader()
-                              .AllowAnyOrigin()
-                              ;
+                            .WithOrigins("http://localhost:3000")
+                            .AllowAnyMethod()
+                            .AllowAnyHeader();
                     });
                 });
 
@@ -305,7 +304,7 @@ namespace Graduation.API
                     Directory.CreateDirectory(profilesPath);
                     Log.Information("Created profiles folder at: {Path}", profilesPath);
                 }
-                app.UseCors("AllowAll");
+                app.UseCors("AllowFrontend");
                 app.UseRateLimiter();
                 app.UseAuthentication();
                 app.UseAuthorization();

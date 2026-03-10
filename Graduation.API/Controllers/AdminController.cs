@@ -104,8 +104,9 @@ namespace Graduation.API.Controllers
 
             var totalCount = await query.CountAsync();
 
-            var users = await query
-                .OrderByDescending(u => u.Id)
+           
+            var rawUsers = await query
+                .OrderByDescending(u => u.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .Select(u => new
@@ -116,9 +117,26 @@ namespace Graduation.API.Controllers
                     lastName = u.LastName,
                     emailConfirmed = u.EmailConfirmed,
                     phoneNumber = u.PhoneNumber,
-                    lockoutEnabled = u.LockoutEnabled
+                    profilePictureUrl = u.ProfilePictureUrl,
+                    createdAt = u.CreatedAt,
+                    updatedAt = u.UpdatedAt,
+                    lockoutEnabled = u.LockoutEnabled,
+                    isLocked = u.LockoutEnd != null && u.LockoutEnd > DateTimeOffset.UtcNow
                 })
                 .ToListAsync();
+
+           
+            var users = rawUsers.Select(u => new
+            {
+                
+                u.email,
+                u.firstName,
+                u.lastName,
+                u.emailConfirmed,
+                u.phoneNumber,
+                createdAt = u.createdAt == DateTime.MinValue ? (DateTime?)null : u.createdAt,
+                updatedAt = u.updatedAt == DateTime.MinValue ? (DateTime?)null : u.updatedAt,
+            }).ToList();
 
             return Ok(new ApiResult(data: new
             {
@@ -180,6 +198,7 @@ namespace Graduation.API.Controllers
             user.FirstName = dto.FirstName ?? user.FirstName;
             user.LastName = dto.LastName ?? user.LastName;
             user.PhoneNumber = dto.PhoneNumber ?? user.PhoneNumber;
+            user.UpdatedAt = DateTime.UtcNow;
 
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
@@ -192,7 +211,11 @@ namespace Graduation.API.Controllers
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 phoneNumber = user.PhoneNumber,
-                lockoutEnabled = user.LockoutEnabled
+                profilePictureUrl = user.ProfilePictureUrl,
+                createdAt = user.CreatedAt,
+                updatedAt = user.UpdatedAt,
+                lockoutEnabled = user.LockoutEnabled,
+                isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
             }, message: "User updated successfully"));
         }
 
