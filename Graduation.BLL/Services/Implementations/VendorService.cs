@@ -6,6 +6,7 @@ using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Shared.BackgroundTasks;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -15,6 +16,7 @@ namespace Graduation.BLL.Services.Implementations
         private readonly IEmailService _emailService;
         private readonly UserManager<AppUser> _userManager;
         private readonly Shared.BackgroundTasks.IBackgroundTaskQueue? _taskQueue;
+        private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
 
         public VendorService(
@@ -22,12 +24,15 @@ namespace Graduation.BLL.Services.Implementations
             IEmailService emailService,
             UserManager<AppUser> userManager,
             ILogger<VendorService> logger,
-            Shared.BackgroundTasks.IBackgroundTaskQueue? taskQueue = null)
+            ICodeAssignmentService codeAssignment,
+            IBackgroundTaskQueue? taskQueue = null
+            )
         {
             _context = context;
             _emailService = emailService;
             _userManager = userManager;
             _taskQueue = taskQueue;
+            _codeAssignment = codeAssignment;
             _logger = logger;
         }
 
@@ -77,6 +82,8 @@ namespace Graduation.BLL.Services.Implementations
 
             _logger.LogInformation("Vendor registration submitted: {StoreName} by user {UserId}",
                 dto.StoreName, userId);
+
+            await _codeAssignment.AssignVendorCodeAsync(vendor);
 
             return await GetVendorByIdAsync(vendor.Id);
         }
@@ -300,7 +307,8 @@ namespace Graduation.BLL.Services.Implementations
             TotalProducts = vendor.Products?.Count ?? 0,
             TotalOrders = 0,
             CreatedAt = vendor.CreatedAt,
-            UpdatedAt = vendor.UpdatedAt
+            UpdatedAt = vendor.UpdatedAt,
+            Code = vendor.Code,
         };
     }
 }

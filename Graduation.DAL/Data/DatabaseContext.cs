@@ -1,6 +1,7 @@
 ﻿using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection.Emit;
 
 namespace Graduation.DAL.Data
 {
@@ -52,6 +53,25 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(v => new { v.IsApproved, v.IsActive });
                 entity.HasIndex(v => v.Governorate);
                 entity.HasIndex(v => v.CreatedAt);
+
+                entity.Property(v => v.Code)
+                    .HasMaxLength(12)
+                    .IsRequired(false);
+
+                entity.HasIndex(v => v.Code)
+                 .IsUnique()
+                 .HasFilter("[Code] IS NOT NULL");
+            });
+
+            builder.Entity<AppUser>(b =>
+            {
+                b.Property(u => u.Code)
+                 .HasMaxLength(12)
+                 .IsRequired(false);
+
+                b.HasIndex(u => u.Code)
+                 .IsUnique()
+                 .HasFilter("[Code] IS NOT NULL");
             });
 
             // Category Configuration
@@ -76,6 +96,14 @@ namespace Graduation.DAL.Data
             // Product Configuration
             builder.Entity<Product>(entity =>
             {
+                entity.Property(p => p.Code)
+                    .HasMaxLength(12)
+                    .IsRequired(false);
+
+                entity.HasIndex(p => p.Code)
+                 .IsUnique()
+                 .HasFilter("[Code] IS NOT NULL");
+
                 entity.HasKey(p => p.Id);
 
                 entity.Property(p => p.Price).HasPrecision(18, 2);
@@ -362,6 +390,17 @@ namespace Graduation.DAL.Data
                 entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
                 entity.HasIndex(e => new { e.Email, e.Purpose });
                 entity.HasIndex(e => e.ExpiresAt);
+            });
+
+            builder.Entity<Category>(b =>
+            {
+                b.Property(c => c.Code)
+                 .HasMaxLength(12)
+                 .IsRequired(false);
+
+                b.HasIndex(c => c.Code)
+                 .IsUnique()
+                 .HasFilter("[Code] IS NOT NULL");
             });
         }
     }

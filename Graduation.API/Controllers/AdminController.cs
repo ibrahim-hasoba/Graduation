@@ -23,19 +23,25 @@ namespace Graduation.API.Controllers
         private readonly IReportService _reportService;
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
+        private readonly ICodeLookupService _codeLookup;
+        private readonly ICodeAssignmentService _codeAssignment;
 
         public AdminController(
             IAdminService adminService,
             ICategoryService categoryService,
             IReportService reportService,
             DatabaseContext context,
-            UserManager<AppUser> userManager)
+            UserManager<AppUser> userManager,
+            ICodeLookupService codeLookup,
+            ICodeAssignmentService codeAssignment)
         {
             _adminService = adminService;
             _categoryService = categoryService;
             _reportService = reportService;
             _context = context;
             _userManager = userManager;
+            _codeLookup = codeLookup;
+            _codeAssignment = codeAssignment;
         }
 
         [HttpGet("dashboard/stats")]
@@ -80,6 +86,27 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: stats));
         }
 
+        [HttpGet("users/{userCode}")]
+        public async Task<IActionResult> GetUser(string userCode)
+        {
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException("User not found");
+
+            return Ok(new ApiResult(data: new
+            {
+                id = user.Id,
+                userCode = user.Code,
+                email = user.Email,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                emailConfirmed = user.EmailConfirmed,
+                phoneNumber = user.PhoneNumber,
+                createdAt = user.CreatedAt,
+                isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
+            }));
+        }
+
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers(
             [FromQuery] int pageNumber = 1,
@@ -113,6 +140,7 @@ namespace Graduation.API.Controllers
                 {
                     id = u.Id,
                     email = u.Email,
+                    code = u.Code,
                     firstName = u.FirstName,
                     lastName = u.LastName,
                     emailConfirmed = u.EmailConfirmed,
@@ -129,6 +157,7 @@ namespace Graduation.API.Controllers
             var users = rawUsers.Select(u => new
             {
                 
+                u.code,
                 u.email,
                 u.firstName,
                 u.lastName,
@@ -148,19 +177,20 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        
-        [HttpDelete("users/{userId}")]
-        public async Task<IActionResult> DeleteUser(string userId)
+
+        [HttpDelete("users/{userCode}")]
+        public async Task<IActionResult> DeleteUser(string userCode)
         {
-            // FIX #10: Prevent self-deletion
             var requestingAdminId = User.FindFirstValue(ClaimTypes.NameIdentifier)
                                  ?? User.FindFirstValue("userId");
+
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
+
             if (requestingAdminId == userId)
                 throw new BadRequestException("You cannot delete your own admin account.");
 
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+            if (user == null) throw new NotFoundException("User not found");
 
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
@@ -169,12 +199,12 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "User deleted successfully"));
         }
 
-        [HttpPost("users/{userId}/toggle-lock")]
-        public async Task<IActionResult> ToggleUserLock(string userId)
+        [HttpPost("users/{userCode}/toggle-lock")]
+        public async Task<IActionResult> ToggleUserLock(string userCode)
         {
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+            if (user == null) throw new NotFoundException("User not found");
 
             if (user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
@@ -188,12 +218,12 @@ namespace Graduation.API.Controllers
             }
         }
 
-        [HttpPut("users/{userId}")]
-        public async Task<IActionResult> UpdateUser(string userId, [FromBody] UpdateUserDto dto)
+        [HttpPut("users/{userCode}")]
+        public async Task<IActionResult> UpdateUser(string userCode, [FromBody] UpdateUserDto dto)
         {
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+            if (user == null) throw new NotFoundException("User not found");
 
             user.FirstName = dto.FirstName ?? user.FirstName;
             user.LastName = dto.LastName ?? user.LastName;
@@ -206,25 +236,22 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(data: new
             {
-                id = user.Id,
+                userCode = user.Code,
                 email = user.Email,
                 firstName = user.FirstName,
                 lastName = user.LastName,
                 phoneNumber = user.PhoneNumber,
-                profilePictureUrl = user.ProfilePictureUrl,
-                createdAt = user.CreatedAt,
                 updatedAt = user.UpdatedAt,
-                lockoutEnabled = user.LockoutEnabled,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
             }, message: "User updated successfully"));
         }
 
-        [HttpPost("users/{userId}/reset-password")]
-        public async Task<IActionResult> ResetUserPassword(string userId, [FromBody] AdminResetPasswordDto dto)
+        [HttpPost("users/{userCode}/reset-password")]
+        public async Task<IActionResult> ResetUserPassword(string userCode, [FromBody] AdminResetPasswordDto dto)
         {
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                throw new NotFoundException("User not found");
+            if (user == null) throw new NotFoundException("User not found");
 
             var isTargetAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (isTargetAdmin)
@@ -232,7 +259,6 @@ namespace Graduation.API.Controllers
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
-
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
@@ -240,7 +266,7 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Password reset successfully"));
         }
 
-        
+
         [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders(
             [FromQuery] int pageNumber = 1,
@@ -269,8 +295,6 @@ namespace Graduation.API.Controllers
                     orderNumber = o.OrderNumber,
                     customerName = $"{o.User.FirstName} {o.User.LastName}",
                     customerEmail = o.User.Email,
-                    // FIX #13: Return all distinct vendor names so multi-vendor orders are not
-                    // misrepresented as belonging to only one vendor.
                     vendorNames = o.OrderItems
                         .Select(oi => oi.Product.Vendor.StoreName)
                         .Distinct()
@@ -323,74 +347,64 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        #region Categories
+        
 
         [HttpPost("categories")]
         [ProducesResponseType(StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             var category = await _categoryService.CreateCategoryAsync(dto);
-            return CreatedAtAction(nameof(GetCategoryById), new { id = category.Id },
+            var entity = await _context.Categories.FindAsync(category.Id);
+            if (entity != null) await _codeAssignment.AssignCategoryCodeAsync(entity);
+
+            category = await _categoryService.GetCategoryByIdAsync(category.Id);
+            return CreatedAtAction(nameof(GetCategoryById), new { categoryCode = category.Code },
                 new ApiResult(data: category));
         }
 
         [HttpGet("categories")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
         {
             var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
             return Ok(new ApiResult(data: categories));
         }
 
-        [HttpGet("categories/{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetCategoryById(int id)
+        [HttpGet("categories/{categoryCode}")]
+        public async Task<IActionResult> GetCategoryById(string categoryCode)
         {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
             var category = await _categoryService.GetCategoryByIdAsync(id);
             return Ok(new ApiResult(data: category));
         }
 
-        [HttpPut("categories/{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> UpdateCategory(int id, [FromBody] UpdateCategoryDto dto)
+        [HttpPut("categories/{categoryCode}")]
+        public async Task<IActionResult> UpdateCategory(string categoryCode, [FromBody] UpdateCategoryDto dto)
         {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
             var category = await _categoryService.UpdateCategoryAsync(id, dto);
             return Ok(new ApiResult(data: category));
         }
 
-        [HttpDelete("categories/{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> DeleteCategory(int id)
+        [HttpDelete("categories/{categoryCode}")]
+        public async Task<IActionResult> DeleteCategory(string categoryCode)
         {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
             await _categoryService.DeleteCategoryAsync(id);
             return Ok(new ApiResult(message: "Category deleted successfully"));
         }
-
-        #endregion
-
-        #region Reports
-
+       
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate,
-            [FromQuery] int? vendorId = null)
+            [FromQuery] string? vendorCode = null)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
                 return BadRequest(new ApiResponse(400, "Start date and end date are required"));
+
+            int? vendorId = null;
+            if (!string.IsNullOrEmpty(vendorCode))
+                vendorId = await _codeLookup.ResolveVendorIdAsync(vendorCode);
 
             var report = await _reportService.GetSalesReportAsync(startDate, endDate, vendorId);
             return Ok(new ApiResult(data: report));
@@ -408,9 +422,10 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        [HttpGet("reports/vendor-performance/{vendorId}")]
-        public async Task<IActionResult> GetVendorPerformance(int vendorId)
+        [HttpGet("reports/vendor-performance/{vendorCode}")]
+        public async Task<IActionResult> GetVendorPerformance(string vendorCode)
         {
+            var vendorId = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var report = await _reportService.GetVendorPerformanceAsync(vendorId);
             return Ok(new ApiResult(data: report));
         }
@@ -469,6 +484,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: report));
         }
 
-        #endregion
+        
     }
 }

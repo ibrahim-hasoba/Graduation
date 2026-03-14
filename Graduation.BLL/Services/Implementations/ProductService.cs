@@ -331,6 +331,7 @@ namespace Graduation.BLL.Services.Implementations
                 CategoryId = product.CategoryId,
                 CategoryNameAr = product.Category.NameAr,
                 CategoryNameEn = product.Category.NameEn,
+                Code = product.Code,
                 Images = product.Images
                     .Select(i => new ProductImageDto
                     {
@@ -390,7 +391,8 @@ namespace Graduation.BLL.Services.Implementations
                 TotalReviews = product.Reviews.Count,
                 VendorName = product.Vendor.StoreName,
                 CategoryNameEn = product.Category.NameEn,
-                CategoryNameAr = product.Category.NameAr
+                CategoryNameAr = product.Category.NameAr,
+                Code = product.Code,
             };
         }
     }

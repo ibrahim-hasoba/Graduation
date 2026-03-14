@@ -12,11 +12,13 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly ILogger<CategoryService> _logger;
+        private readonly ICodeAssignmentService _codeAssignment;
 
-        public CategoryService(DatabaseContext context, ILogger<CategoryService> logger)
+        public CategoryService(DatabaseContext context, ILogger<CategoryService> logger , ICodeAssignmentService codeAssignment)
         {
             _context = context;
             _logger = logger;
+            _codeAssignment = codeAssignment;
         }
 
         public async Task<CategoryDto> CreateCategoryAsync(CreateCategoryDto dto)
@@ -58,6 +60,8 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Category created: {Name} (ID: {Id})", dto.NameEn, category.Id);
+
+            await _codeAssignment.AssignCategoryCodeAsync(category);
 
             return await GetCategoryByIdAsync(category.Id);
         }

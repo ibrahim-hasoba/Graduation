@@ -222,6 +222,8 @@ namespace Graduation.API
                 builder.Services.AddScoped<INotificationService, NotificationService>();
                 builder.Services.AddScoped<IReportService, ReportService>();
                 builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
+                builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
+                builder.Services.AddScoped<ICodeAssignmentService, CodeAssignmentService>();
                 builder.Services.Configure<FormOptions>(options =>
                 {
                     options.MultipartBodyLengthLimit = 5 * 1024 * 1024;
@@ -247,10 +249,9 @@ namespace Graduation.API
                 builder.Services.AddHostedService<BackgroundProcessingService>();
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
+                builder.Services.AddHostedService<BusinessCodeBackfillService>();
 
-                // CORS Configuration
-                //var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-                //    ?? new[] { "http://localhost:3000", "http://localhost:4200" };
+                
 
                 builder.Services.AddCors(options =>
                 {
@@ -259,7 +260,8 @@ namespace Graduation.API
                         policy
                             .WithOrigins("http://localhost:3000")
                             .AllowAnyMethod()
-                            .AllowAnyHeader();
+                            .AllowAnyHeader()
+                            .AllowCredentials(); 
                     });
                 });
 
@@ -273,7 +275,7 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
