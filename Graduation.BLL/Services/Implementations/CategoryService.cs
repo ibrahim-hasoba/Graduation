@@ -1,95 +1,111 @@
-using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs.Category;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
     public class CategoryService : ICategoryService
     {
         private readonly DatabaseContext _context;
-        private readonly ILogger<CategoryService> _logger;
         private readonly ICodeAssignmentService _codeAssignment;
+        private readonly ICodeLookupService _codeLookup;
+        private readonly ILogger<CategoryService> _logger;
 
-        public CategoryService(DatabaseContext context, ILogger<CategoryService> logger , ICodeAssignmentService codeAssignment)
+        public CategoryService(
+            DatabaseContext context,
+            ICodeAssignmentService codeAssignment,
+            ICodeLookupService codeLookup,
+            ILogger<CategoryService> logger)
         {
             _context = context;
-            _logger = logger;
             _codeAssignment = codeAssignment;
+            _codeLookup = codeLookup;
+            _logger = logger;
         }
+
 
         public async Task<CategoryDto> CreateCategoryAsync(CreateCategoryDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.NameEn) || string.IsNullOrWhiteSpace(dto.NameAr))
                 throw new BadRequestException("Category names in both English and Arabic are required");
 
-            if (dto.ParentCategoryId.HasValue)
+            if (dto.ParentCategoryId.HasValue && dto.ParentCategoryId.Value > 0)
             {
-                if (dto.ParentCategoryId.Value <= 0)
-                    dto.ParentCategoryId = null;
-                else
-                {
-                    var parentExists = await _context.Categories
-                        .AnyAsync(c => c.Id == dto.ParentCategoryId && c.IsActive);
-                    if (!parentExists)
-                        throw new NotFoundException("Parent category not found");
-                }
+                var parentExists = await _context.Categories
+                    .AnyAsync(c => c.Id == dto.ParentCategoryId
+                               && c.Status == CategoryStatus.Active);
+                if (!parentExists)
+                    throw new NotFoundException("Parent category not found");
+            }
+            else
+            {
+                dto.ParentCategoryId = null;
             }
 
             var duplicateName = await _context.Categories
                 .AnyAsync(c =>
                     (c.NameEn.ToLower() == dto.NameEn.ToLower() || c.NameAr == dto.NameAr)
-                    && c.IsActive);
+                    && c.Status == CategoryStatus.Active);
             if (duplicateName)
-                throw new ConflictException("Category with this name already exists");
+                throw new ConflictException("A category with this name already exists");
 
             var category = new Category
             {
-                NameEn = dto.NameEn,
-                NameAr = dto.NameAr,
-                Description = dto.Description,
-                ImageUrl = dto.ImageUrl,
+                NameEn = dto.NameEn.Trim(),
+                NameAr = dto.NameAr.Trim(),
+                Description = dto.Description?.Trim(),
+                ImageUrl = dto.ImageUrl?.Trim(),
                 ParentCategoryId = dto.ParentCategoryId,
-                IsActive = true
+                Status = CategoryStatus.Active,
+                CreatedAt = DateTime.UtcNow
             };
 
             _context.Categories.Add(category);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Category created: {Name} (ID: {Id})", dto.NameEn, category.Id);
-
             await _codeAssignment.AssignCategoryCodeAsync(category);
 
-            return await GetCategoryByIdAsync(category.Id);
+            _logger.LogInformation("Category created: {Name} (Code: {Code})",
+                dto.NameEn, category.Code);
+
+            return await GetCategoryByCodeAsync(category.Code!);
         }
 
-        public async Task<CategoryDto> UpdateCategoryAsync(int id, UpdateCategoryDto dto)
+
+        public async Task<CategoryDto> UpdateCategoryAsync(string categoryCode, UpdateCategoryDto dto)
         {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
             var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
             if (category == null)
                 throw new NotFoundException("Category not found");
 
-            if (!string.IsNullOrWhiteSpace(dto.NameEn))
+            if (!string.IsNullOrWhiteSpace(dto.NameEn) &&
+                !dto.NameEn.Equals(category.NameEn, StringComparison.OrdinalIgnoreCase))
             {
                 var dup = await _context.Categories
-                    .AnyAsync(c => c.Id != id && c.NameEn.ToLower() == dto.NameEn.ToLower() && c.IsActive);
-                if (dup) throw new ConflictException("Another category with this English name already exists");
-                category.NameEn = dto.NameEn;
+                    .AnyAsync(c => c.Id != id
+                               && c.NameEn.ToLower() == dto.NameEn.ToLower()
+                               && c.Status == CategoryStatus.Active);
+                if (dup) throw new ConflictException("Another active category has this English name");
+                category.NameEn = dto.NameEn.Trim();
             }
 
-            if (!string.IsNullOrWhiteSpace(dto.NameAr))
+            if (!string.IsNullOrWhiteSpace(dto.NameAr) && dto.NameAr != category.NameAr)
             {
                 var dup = await _context.Categories
-                    .AnyAsync(c => c.Id != id && c.NameAr == dto.NameAr && c.IsActive);
-                if (dup) throw new ConflictException("Another category with this Arabic name already exists");
-                category.NameAr = dto.NameAr;
+                    .AnyAsync(c => c.Id != id
+                               && c.NameAr == dto.NameAr
+                               && c.Status == CategoryStatus.Active);
+                if (dup) throw new ConflictException("Another active category has this Arabic name");
+                category.NameAr = dto.NameAr.Trim();
             }
 
-            if (dto.Description != null) category.Description = dto.Description;
-            if (dto.ImageUrl != null) category.ImageUrl = dto.ImageUrl;
+            if (dto.Description != null) category.Description = dto.Description.Trim();
+            if (dto.ImageUrl != null) category.ImageUrl = dto.ImageUrl.Trim();
 
             int? newParentId = dto.ParentCategoryId.HasValue && dto.ParentCategoryId.Value > 0
                 ? dto.ParentCategoryId : null;
@@ -99,132 +115,238 @@ namespace Graduation.BLL.Services.Implementations
                 if (newParentId.HasValue)
                 {
                     var parentExists = await _context.Categories
-                        .AnyAsync(c => c.Id == newParentId && c.IsActive);
-                    if (!parentExists) throw new NotFoundException("Parent category not found");
+                        .AnyAsync(c => c.Id == newParentId && c.Status == CategoryStatus.Active);
+                    if (!parentExists)
+                        throw new NotFoundException("Parent category not found");
 
-                    if (await HasCircularReference(id, newParentId.Value))
+                    if (await HasCircularReferenceAsync(id, newParentId.Value))
                         throw new BusinessException("Cannot set this as parent — circular reference detected");
                 }
                 category.ParentCategoryId = newParentId;
             }
 
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("Category updated: {Name} (ID: {Id})", category.NameEn, id);
-            return await GetCategoryByIdAsync(id);
-        }
-
-        public async Task DeleteCategoryAsync(int id)
-        {
-            var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
-            if (category == null) throw new NotFoundException("Category not found");
-
-            category.IsActive = false;
-            await DeactivateSubcategoriesAsync(id);
+            category.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Category soft-deleted: {Name} (ID: {Id})", category.NameEn, id);
+            _logger.LogInformation("Category updated: {Name} (Code: {Code})",
+                category.NameEn, category.Code);
+
+            return await GetCategoryByCodeAsync(categoryCode);
         }
 
-        public async Task<CategoryDto> GetCategoryByIdAsync(int id)
+
+        public async Task<CategoryDto> ToggleActivationAsync(string categoryCode)
         {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
             var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
-            if (category == null) throw new NotFoundException("Category not found");
+            if (category == null)
+                throw new NotFoundException("Category not found");
 
-            return await MapToCategoryDtoAsync(category);
+            if (category.Status == CategoryStatus.Active)
+            {
+                // Deactivate — cascade to subcategories
+                category.Status = CategoryStatus.Inactive;
+                await DeactivateSubcategoriesAsync(id);
+            }
+            else
+            {
+                // Re-activate — do NOT auto-activate subcategories;
+                // admin can toggle each one individually
+                category.Status = CategoryStatus.Active;
+            }
+
+            category.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            var action = category.Status == CategoryStatus.Active ? "activated" : "deactivated";
+            _logger.LogInformation("Category {Action}: {Name} (Code: {Code})",
+                action, category.NameEn, category.Code);
+
+            return await GetCategoryByCodeAsync(categoryCode);
         }
 
-        public async Task<List<CategoryHierarchyDto>> GetAllCategoriesAsync(bool includeInactive = false)
-        {
-            var query = _context.Categories.AsQueryable();
-            if (!includeInactive) query = query.Where(c => c.IsActive);
 
-            var categories = await query
+        public async Task DeleteCategoryAsync(string categoryCode)
+        {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
+            var category = await _context.Categories
                 .Include(c => c.SubCategories)
-                .Where(c => c.ParentCategoryId == null)
+                .Include(c => c.Products)
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (category == null)
+                throw new NotFoundException("Category not found");
+
+            if (category.Products.Any())
+                throw new BadRequestException(
+                    $"Cannot delete category '{category.NameEn}' — it has {category.Products.Count} " +
+                    "product(s) assigned to it. Reassign or remove those products first.");
+
+            if (category.SubCategories.Any())
+                throw new BadRequestException(
+                    $"Cannot delete category '{category.NameEn}' — it has " +
+                    $"{category.SubCategories.Count} subcategory(ies). Delete them first.");
+
+            _context.Categories.Remove(category);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Category hard-deleted: {Name} (Code: {Code})",
+                category.NameEn, category.Code);
+        }
+
+
+        public async Task<PagedCategoryResultDto> GetAllCategoriesAsync(CategoryQueryDto query)
+        {
+            // Clamp pagination
+            if (query.PageNumber < 1) query.PageNumber = 1;
+            if (query.PageSize < 1 || query.PageSize > 100) query.PageSize = 20;
+
+            // Build base query — root categories only (parent = null) unless a specific
+            // parent is requested. Sub-categories are returned nested inside their parent.
+            var dbQuery = _context.Categories
+                .Include(c => c.SubCategories)
+                .AsQueryable();
+
+            // Status filter
+            if (!string.IsNullOrWhiteSpace(query.Status))
+            {
+                if (Enum.TryParse<CategoryStatus>(query.Status, ignoreCase: true, out var statusEnum))
+                    dbQuery = dbQuery.Where(c => c.Status == statusEnum);
+            }
+
+            // Parent filter: 0 or not supplied → root only
+            if (query.ParentId.HasValue)
+                dbQuery = query.ParentId.Value == 0
+                    ? dbQuery.Where(c => c.ParentCategoryId == null)
+                    : dbQuery.Where(c => c.ParentCategoryId == query.ParentId.Value);
+            else
+                dbQuery = dbQuery.Where(c => c.ParentCategoryId == null);
+
+            // Search filter (applied after parent filter to search within the level)
+            if (!string.IsNullOrWhiteSpace(query.Search))
+            {
+                var s = query.Search.ToLower();
+                dbQuery = dbQuery.Where(c =>
+                    c.NameEn.ToLower().Contains(s) ||
+                    c.NameAr.Contains(query.Search));
+            }
+
+            var totalCount = await dbQuery.CountAsync();
+
+            var categories = await dbQuery
+                .OrderBy(c => c.NameEn)
+                .Skip((query.PageNumber - 1) * query.PageSize)
+                .Take(query.PageSize)
                 .ToListAsync();
 
-
-            var allCategoryIds = categories
-                .SelectMany(c => GetAllIds(c))
+            // Collect all IDs in the result (including subcategory IDs) for a single product count query
+            var allIds = categories
+                .SelectMany(c => GetAllIdsFromTree(c))
                 .Distinct()
                 .ToList();
 
             var productCounts = await _context.Products
-                .Where(p => allCategoryIds.Contains(p.CategoryId) && p.IsActive)
+                .Where(p => allIds.Contains(p.CategoryId) && p.IsActive)
                 .GroupBy(p => p.CategoryId)
                 .Select(g => new { CategoryId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.CategoryId, x => x.Count);
 
-            return categories
-                .Select(c => MapToCategoryHierarchyDto(c, productCounts))
-                .OrderBy(c => c.NameEn)
-                .ToList();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize);
+
+            return new PagedCategoryResultDto
+            {
+                Categories = categories.Select(c => MapToHierarchyDto(c, productCounts)).ToList(),
+                TotalCount = totalCount,
+                PageNumber = query.PageNumber,
+                PageSize = query.PageSize,
+                TotalPages = totalPages
+            };
         }
 
+
+        public async Task<CategoryDto> GetCategoryByCodeAsync(string categoryCode)
+        {
+            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
+            var category = await _context.Categories
+                .Include(c => c.SubCategories)
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (category == null)
+                throw new NotFoundException("Category not found");
+
+            var productCount = await _context.Products
+                .CountAsync(p => p.CategoryId == id && p.IsActive);
+
+            return MapToDto(category, productCount);
+        }
+
+        // ── Helper queries ────────────────────────────────────────────────────
+
         public async Task<bool> CategoryExistsAsync(int id)
-            => await _context.Categories.AnyAsync(c => c.Id == id && c.IsActive);
+            => await _context.Categories
+                .AnyAsync(c => c.Id == id && c.Status == CategoryStatus.Active);
 
         public async Task<bool> ValidateParentCategoryAsync(int? parentCategoryId)
         {
             if (!parentCategoryId.HasValue || parentCategoryId.Value <= 0) return true;
-            return await _context.Categories.AnyAsync(c => c.Id == parentCategoryId && c.IsActive);
-        }
-
-        private async Task<CategoryDto> MapToCategoryDtoAsync(Category category)
-        {
-            var count = await _context.Products
-                .CountAsync(p => p.CategoryId == category.Id && p.IsActive);
-
-            return new CategoryDto
-            {
-                Id = category.Id,
-                NameEn = category.NameEn,
-                NameAr = category.NameAr,
-                Description = category.Description,
-                ImageUrl = category.ImageUrl,
-                ParentCategoryId = category.ParentCategoryId,
-                ProductCount = count
-            };
+            return await _context.Categories
+                .AnyAsync(c => c.Id == parentCategoryId && c.Status == CategoryStatus.Active);
         }
 
 
-        private CategoryHierarchyDto MapToCategoryHierarchyDto(
-            Category category,
-            Dictionary<int, int> productCounts)
+        private CategoryDto MapToDto(Category c, int productCount) => new()
         {
-            return new CategoryHierarchyDto
+            Code = c.Code,
+            Id = c.Id,
+            NameAr = c.NameAr,
+            NameEn = c.NameEn,
+            Description = c.Description,
+            ImageUrl = c.ImageUrl,
+            ParentCategoryId = c.ParentCategoryId,
+            ProductCount = productCount,
+            Status = c.Status.ToString(),
+            CreatedAt = c.CreatedAt,
+            UpdatedAt = c.UpdatedAt
+        };
+
+        private CategoryHierarchyDto MapToHierarchyDto(
+            Category category, Dictionary<int, int> productCounts) => new()
             {
+                Code = category.Code,
                 Id = category.Id,
-                NameEn = category.NameEn,
                 NameAr = category.NameAr,
+                NameEn = category.NameEn,
                 Description = category.Description,
                 ImageUrl = category.ImageUrl,
                 ParentCategoryId = category.ParentCategoryId,
                 ProductCount = productCounts.GetValueOrDefault(category.Id, 0),
+                Status = category.Status.ToString(),
+                CreatedAt = category.CreatedAt,
+                UpdatedAt = category.UpdatedAt,
                 SubCategories = category.SubCategories
-                    .Where(s => s.IsActive)
-                    .Select(s => MapToCategoryHierarchyDto(s, productCounts))
-                    .OrderBy(s => s.NameEn)
-                    .ToList()
+                .OrderBy(s => s.NameEn)
+                .Select(s => MapToHierarchyDto(s, productCounts))
+                .ToList()
             };
-        }
 
-        private IEnumerable<int> GetAllIds(Category category)
+        private IEnumerable<int> GetAllIdsFromTree(Category category)
         {
             yield return category.Id;
             foreach (var sub in category.SubCategories ?? new List<Category>())
-                foreach (var id in GetAllIds(sub))
+                foreach (var id in GetAllIdsFromTree(sub))
                     yield return id;
         }
 
-        private async Task<bool> HasCircularReference(int categoryId, int potentialParentId)
+        private async Task<bool> HasCircularReferenceAsync(int categoryId, int potentialParentId)
         {
-            var parent = await _context.Categories.FirstOrDefaultAsync(c => c.Id == potentialParentId);
+            var parent = await _context.Categories
+                .FirstOrDefaultAsync(c => c.Id == potentialParentId);
             while (parent != null)
             {
                 if (parent.Id == categoryId) return true;
                 if (parent.ParentCategoryId == null) return false;
-                parent = await _context.Categories.FirstOrDefaultAsync(c => c.Id == parent.ParentCategoryId);
+                parent = await _context.Categories
+                    .FirstOrDefaultAsync(c => c.Id == parent.ParentCategoryId);
             }
             return false;
         }
@@ -237,7 +359,8 @@ namespace Graduation.BLL.Services.Implementations
 
             foreach (var sub in subcategories)
             {
-                sub.IsActive = false;
+                sub.Status = CategoryStatus.Inactive;
+                sub.UpdatedAt = DateTime.UtcNow;
                 await DeactivateSubcategoriesAsync(sub.Id);
             }
         }

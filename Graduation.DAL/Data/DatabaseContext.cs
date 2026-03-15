@@ -88,9 +88,8 @@ namespace Graduation.DAL.Data
                 entity.Property(c => c.NameEn).IsRequired().HasMaxLength(200);
 
                 // Performance Indexes
-                entity.HasIndex(c => c.IsActive);
-                entity.HasIndex(c => c.ParentCategoryId);
-                entity.HasIndex(c => new { c.IsActive, c.ParentCategoryId });
+                entity.HasIndex(c => c.Status);
+                entity.HasIndex(c => new { c.Status, c.ParentCategoryId });
             });
 
             // Product Configuration

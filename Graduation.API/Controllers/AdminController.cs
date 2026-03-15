@@ -347,52 +347,86 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        
+
 
         [HttpPost("categories")]
         [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             var category = await _categoryService.CreateCategoryAsync(dto);
-            var entity = await _context.Categories.FindAsync(category.Id);
-            if (entity != null) await _codeAssignment.AssignCategoryCodeAsync(entity);
-
-            category = await _categoryService.GetCategoryByIdAsync(category.Id);
-            return CreatedAtAction(nameof(GetCategoryById), new { categoryCode = category.Code },
+            return CreatedAtAction(
+                nameof(GetCategoryByCode),
+                new { categoryCode = category.Code },
                 new ApiResult(data: category));
         }
 
         [HttpGet("categories")]
-        public async Task<IActionResult> GetAllCategories([FromQuery] bool includeInactive = false)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllCategories([FromQuery] CategoryQueryDto query)
         {
-            var categories = await _categoryService.GetAllCategoriesAsync(includeInactive);
-            return Ok(new ApiResult(data: categories));
+            var result = await _categoryService.GetAllCategoriesAsync(query);
+            return Ok(new ApiResult(
+                data: new
+                {
+                    categories = result.Categories,
+                    totalCount = result.TotalCount,
+                    pageNumber = result.PageNumber,
+                    pageSize = result.PageSize,
+                    totalPages = result.TotalPages,
+                    hasPreviousPage = result.HasPreviousPage,
+                    hasNextPage = result.HasNextPage
+                },
+                count: result.TotalCount));
         }
 
+        
         [HttpGet("categories/{categoryCode}")]
-        public async Task<IActionResult> GetCategoryById(string categoryCode)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetCategoryByCode(string categoryCode)
         {
-            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _categoryService.GetCategoryByIdAsync(id);
+            var category = await _categoryService.GetCategoryByCodeAsync(categoryCode);
             return Ok(new ApiResult(data: category));
         }
 
         [HttpPut("categories/{categoryCode}")]
-        public async Task<IActionResult> UpdateCategory(string categoryCode, [FromBody] UpdateCategoryDto dto)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> UpdateCategory(
+            string categoryCode, [FromBody] UpdateCategoryDto dto)
         {
-            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _categoryService.UpdateCategoryAsync(id, dto);
-            return Ok(new ApiResult(data: category));
+            var category = await _categoryService.UpdateCategoryAsync(categoryCode, dto);
+            return Ok(new ApiResult(data: category, message: "Category updated successfully"));
         }
 
+        
+        [HttpPost("categories/{categoryCode}/toggle-activation")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ToggleCategoryActivation(string categoryCode)
+        {
+            var category = await _categoryService.ToggleActivationAsync(categoryCode);
+            var msg = category.Status == "Active"
+                ? "Category activated successfully"
+                : "Category deactivated successfully";
+            return Ok(new ApiResult(data: category, message: msg));
+        }
+
+        
         [HttpDelete("categories/{categoryCode}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteCategory(string categoryCode)
         {
-            var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            await _categoryService.DeleteCategoryAsync(id);
+            await _categoryService.DeleteCategoryAsync(categoryCode);
             return Ok(new ApiResult(message: "Category deleted successfully"));
         }
-       
+
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(
             [FromQuery] DateTime startDate,

@@ -11,9 +11,17 @@
         public string? ImageUrl { get; set; }
         public int? ParentCategoryId { get; set; }
         public Category? ParentCategory { get; set; }
-        public bool IsActive { get; set; } = true;
-
+        public bool IsActive => Status == CategoryStatus.Active;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedAt { get; set; }
+        public CategoryStatus Status { get; set; } = CategoryStatus.Active;
         public ICollection<Category> SubCategories { get; set; } = new List<Category>();
         public ICollection<Product> Products { get; set; } = new List<Product>();
+    }
+
+    public enum CategoryStatus
+    {
+        Active = 1,
+        Inactive = 2
     }
 }
