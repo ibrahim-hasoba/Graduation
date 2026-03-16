@@ -25,6 +25,7 @@ namespace Graduation.API.Controllers
         private readonly UserManager<AppUser> _userManager;
         private readonly ICodeLookupService _codeLookup;
         private readonly ICodeAssignmentService _codeAssignment;
+        private readonly IImageService _imageService;
 
         public AdminController(
             IAdminService adminService,
@@ -33,7 +34,8 @@ namespace Graduation.API.Controllers
             DatabaseContext context,
             UserManager<AppUser> userManager,
             ICodeLookupService codeLookup,
-            ICodeAssignmentService codeAssignment)
+            ICodeAssignmentService codeAssignment, 
+            IImageService imageService)
         {
             _adminService = adminService;
             _categoryService = categoryService;
@@ -42,6 +44,7 @@ namespace Graduation.API.Controllers
             _userManager = userManager;
             _codeLookup = codeLookup;
             _codeAssignment = codeAssignment;
+            _imageService = imageService;
         }
 
         [HttpGet("dashboard/stats")]
@@ -92,6 +95,7 @@ namespace Graduation.API.Controllers
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null) throw new NotFoundException("User not found");
+            var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl!);
 
             return Ok(new ApiResult(data: new
             {
@@ -102,8 +106,10 @@ namespace Graduation.API.Controllers
                 lastName = user.LastName,
                 emailConfirmed = user.EmailConfirmed,
                 phoneNumber = user.PhoneNumber,
+                ProfilePicture  = fullProfilePictureUrl,
                 createdAt = user.CreatedAt,
-                isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
+                isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow,
+                
             }));
         }
 
@@ -168,6 +174,7 @@ namespace Graduation.API.Controllers
                 u.emailConfirmed,
                 u.phoneNumber,
                 u.isLocked,
+                profilePicture = _imageService.GetFullImageUrl(u.profilePictureUrl!),
                 createdAt = u.createdAt == DateTime.MinValue ? (DateTime?)null : u.createdAt,
                 updatedAt = u.updatedAt == DateTime.MinValue ? (DateTime?)null : u.updatedAt,
             }).ToList();
