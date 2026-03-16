@@ -117,7 +117,11 @@ namespace Graduation.API.Controllers
 
             if (!string.IsNullOrEmpty(role))
             {
-                var roleEntity = await _context.Roles.FirstOrDefaultAsync(r => r.Name == role);
+                var normalizedRole = role.ToUpper();
+
+                var roleEntity = await _context.Roles
+                    .FirstOrDefaultAsync(r => r.NormalizedName == normalizedRole);
+
                 if (roleEntity != null)
                 {
                     var userIds = await _context.UserRoles
@@ -163,6 +167,7 @@ namespace Graduation.API.Controllers
                 u.lastName,
                 u.emailConfirmed,
                 u.phoneNumber,
+                u.isLocked,
                 createdAt = u.createdAt == DateTime.MinValue ? (DateTime?)null : u.createdAt,
                 updatedAt = u.updatedAt == DateTime.MinValue ? (DateTime?)null : u.updatedAt,
             }).ToList();
@@ -177,7 +182,7 @@ namespace Graduation.API.Controllers
             }));
         }
 
-
+        /*
         [HttpDelete("users/{userCode}")]
         public async Task<IActionResult> DeleteUser(string userCode)
         {
@@ -195,6 +200,41 @@ namespace Graduation.API.Controllers
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
                 throw new BadRequestException("Failed to delete user");
+
+            return Ok(new ApiResult(message: "User deleted successfully"));
+        }
+        */
+
+        [HttpDelete("users/{userCode}")]
+        public async Task<IActionResult> DeleteUser(string userCode)
+        {
+            var requestingAdminId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                                 ?? User.FindFirstValue("userId");
+
+            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
+
+            if (requestingAdminId == userId)
+                throw new BadRequestException("You cannot delete your own admin account.");
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new NotFoundException("User not found");
+
+            
+            var roles = await _userManager.GetRolesAsync(user);
+            if (roles.Any())
+                await _userManager.RemoveFromRolesAsync(user, roles);
+
+            
+            var claims = await _userManager.GetClaimsAsync(user);
+            if (claims.Any())
+                await _userManager.RemoveClaimsAsync(user, claims);
+
+            var result = await _userManager.DeleteAsync(user);
+
+            if (!result.Succeeded)
+                throw new BadRequestException(
+                    string.Join(", ", result.Errors.Select(e => e.Description)));
 
             return Ok(new ApiResult(message: "User deleted successfully"));
         }
@@ -216,6 +256,54 @@ namespace Graduation.API.Controllers
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
                 return Ok(new ApiResult(data: new { locked = true }, message: "User locked successfully"));
             }
+        }
+
+        [HttpPost("users")]
+        public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserDto dto)
+        {
+            var existingUser = await _userManager.FindByEmailAsync(dto.Email);
+            if (existingUser != null)
+                throw new BadRequestException("Email already exists");
+
+            var user = new AppUser
+            {
+                UserName = dto.Email,
+                Email = dto.Email,
+                FirstName = dto.FirstName,
+                LastName = dto.LastName,
+                PhoneNumber = dto.PhoneNumber,
+                EmailConfirmed = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+
+            var result = await _userManager.CreateAsync(user, dto.Password);
+
+            if (!result.Succeeded)
+                throw new BadRequestException(
+                    string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            if (!await _context.Roles.AnyAsync(r => r.Name == dto.Role))
+                throw new NotFoundException("Role not found");
+
+            await _userManager.AddToRoleAsync(user, dto.Role);
+
+            
+            await _codeAssignment.AssignUserCodeAsync(user);
+
+            return Ok(new ApiResult(data: new
+            {
+                userCode = user.Code,
+                email = user.Email,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                phone = user.PhoneNumber,
+                createdAt = user.CreatedAt,
+                updatedAt = user.UpdatedAt,
+                role = dto.Role,
+                isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
+
+            }, message: "User created successfully"));
         }
 
         [HttpPut("users/{userCode}")]

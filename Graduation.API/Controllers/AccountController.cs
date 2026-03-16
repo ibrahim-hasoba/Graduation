@@ -1,18 +1,4 @@
-﻿// ─────────────────────────────────────────────────────────────────────────────
-// CHANGES to AccountController.cs
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// 1. Inject ICodeAssignmentService
-// 2. After creating a user, call AssignUserCodeAsync
-// 3. GET /api/account/profile  → include user.Code in response
-// 4. DELETE /api/account/{code}/profile-picture  → resolve code → internal id
-//    (profile picture delete stays on the *current* user via JWT, so no code
-//     change needed there — but the response now includes the code)
-//
-// Full replacement for AccountController.cs
-// ─────────────────────────────────────────────────────────────────────────────
-
-using Auth.DTOs;
+﻿using Auth.DTOs;
 using Shared.Errors;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
@@ -386,7 +372,7 @@ namespace Graduation.API.Controllers
             var user = await _userManager.FindByIdAsync(userId!);
             if (user == null) throw new NotFoundException("User not found");
 
-            var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl);
+            var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl!);
 
             return Ok(new ApiResult(data: new
             {
@@ -520,7 +506,7 @@ namespace Graduation.API.Controllers
                     LastName = user.LastName,
                     Roles = roles,
                     HasAddress = hasAddress,
-                    ProfilePictureUrl = user.ProfilePictureUrl
+                    ProfilePictureUrl = user.ProfilePictureUrl!
                 }
             };
 
