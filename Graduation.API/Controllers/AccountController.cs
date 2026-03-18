@@ -120,8 +120,7 @@ namespace Graduation.API.Controllers
             }
 
             return StatusCode(201, new ApiResult(
-                message: "Registration successful! Please verify your email.",
-                data: new { userCode = user.Code }));
+                message: "Registration successful! Please verify your email."));
         }
 
 
@@ -263,13 +262,6 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordWithOtpDto dto)
         {
-            if (string.IsNullOrEmpty(dto.Email) || string.IsNullOrEmpty(dto.Code)
-                || string.IsNullOrEmpty(dto.NewPassword))
-                throw new BadRequestException("Email, code, and new password are required");
-
-            if (dto.NewPassword != dto.ConfirmPassword)
-                throw new BadRequestException("Passwords do not match");
-
             var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null) throw new BadRequestException("Invalid request");
 
@@ -477,6 +469,18 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException("Failed to confirm email");
 
             return await GenerateAuthResponse(user);
+        }
+
+        [HttpPost("verify-reset-code")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> VerifyResetCode([FromBody] VerifyResetCodeDto dto)
+        {
+            var isValid = await _otpService.PeekOtpAsync(dto.Email, dto.Code, purpose: "password_reset");
+            if (!isValid)
+                throw new BadRequestException("Invalid or expired verification code");
+
+            return Ok(new ApiResult(message: "Code is valid. You may now reset your password."));
         }
 
 

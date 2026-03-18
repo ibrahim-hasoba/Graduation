@@ -49,6 +49,21 @@ namespace Graduation.BLL.Services.Implementations
             return code;
         }
 
+        public async Task<bool> PeekOtpAsync(string email, string code, string purpose = "password_reset")
+        {
+            var otp = await _context.EmailOtps
+                .Where(e => e.Email == email && e.Purpose == purpose && !e.Consumed)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (otp == null) return false;
+            if (otp.ExpiresAt < DateTime.UtcNow) return false;
+
+            return CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(otp.Code),
+                System.Text.Encoding.UTF8.GetBytes(code));
+        }
+
         public async Task<bool> ValidateOtpAsync(string email, string code, string purpose = "email_verification")
         {
             var otp = await _context.EmailOtps

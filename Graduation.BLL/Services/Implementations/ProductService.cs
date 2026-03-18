@@ -10,10 +10,12 @@ namespace Graduation.BLL.Services.Implementations
     public class ProductService : IProductService
     {
         private readonly DatabaseContext _context;
+        private readonly ICodeAssignmentService _codeAssignment;
 
-        public ProductService(DatabaseContext context)
+        public ProductService(DatabaseContext context, ICodeAssignmentService codeAssignment)
         {
             _context = context;
+            _codeAssignment = codeAssignment;
         }
 
         public async Task<ProductDto> CreateProductAsync(int vendorId, ProductCreateDto dto)
@@ -31,7 +33,7 @@ namespace Graduation.BLL.Services.Implementations
 
             var category = await _context.Categories
                 .Include(c => c.SubCategories)
-                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.Status == CategoryStatus.Active);
 
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
@@ -67,6 +69,7 @@ namespace Graduation.BLL.Services.Implementations
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
+            await _codeAssignment.AssignProductCodeAsync(product);
 
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
@@ -206,6 +209,7 @@ namespace Graduation.BLL.Services.Implementations
             return products.Select(MapToListDto).ToList();
         }
 
+        // Vendor update — enforces ownership
         public async Task<ProductDto> UpdateProductAsync(int id, int vendorId, ProductUpdateDto dto)
         {
             var product = await _context.Products
@@ -218,9 +222,27 @@ namespace Graduation.BLL.Services.Implementations
             if (product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only update your own products");
 
+            await ApplyProductUpdate(product, dto);
+            return await GetProductByIdAsync(id);
+        }
+
+        // Admin update — no ownership check
+        public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                throw new NotFoundException("Product", id);
+
+            await ApplyProductUpdate(product, dto);
+            return await GetProductByIdAsync(id);
+        }
+
+        // Shared update logic used by both vendor and admin
+        private async Task ApplyProductUpdate(Product product, ProductUpdateDto dto)
+        {
             var category = await _context.Categories
                 .Include(c => c.SubCategories)
-                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.IsActive);
+                .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.Status == CategoryStatus.Active);
 
             if (category == null)
                 throw new NotFoundException("Category", dto.CategoryId);
@@ -246,9 +268,7 @@ namespace Graduation.BLL.Services.Implementations
             product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            return await GetProductByIdAsync(id);
         }
-
 
         public async Task DeleteProductAsync(int id, int vendorId)
         {
@@ -260,8 +280,20 @@ namespace Graduation.BLL.Services.Implementations
             if (product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only delete your own products");
 
+            // Soft delete for vendor
             product.IsActive = false;
             product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        // Admin hard delete
+        public async Task AdminDeleteProductAsync(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                throw new NotFoundException("Product", id);
+
+            _context.Products.Remove(product);
             await _context.SaveChangesAsync();
         }
 
@@ -287,11 +319,39 @@ namespace Graduation.BLL.Services.Implementations
             return true;
         }
 
+        public async Task AdminUpdateStockAsync(int id, int quantity)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                throw new NotFoundException("Product", id);
+
+            if (quantity < 0)
+                throw new BadRequestException("Stock quantity cannot be negative");
+
+            product.StockQuantity = quantity;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<ProductDto> AdminToggleProductStatusAsync(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+                throw new NotFoundException("Product", id);
+
+            product.IsActive = !product.IsActive;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return await GetProductByIdAsync(id);
+        }
+
         public async Task IncrementViewCountAsync(int id)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
+
+        // ── Mappers ────────────────────────────────────────────────────────────────
 
         private ProductDto MapToDto(Product product)
         {
@@ -373,7 +433,7 @@ namespace Graduation.BLL.Services.Implementations
                 : 0;
             var avgRating = product.Reviews.Any() ? product.Reviews.Average(r => r.Rating) : 0;
             var primaryImage = product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                ?? product.Images.FirstOrDefault()?.ImageUrl;
+                               ?? product.Images.FirstOrDefault()?.ImageUrl;
 
             return new ProductListDto
             {

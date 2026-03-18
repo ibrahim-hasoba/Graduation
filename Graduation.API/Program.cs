@@ -7,6 +7,7 @@ using Graduation.API.Middlewares;
 using Graduation.API.Swagger;
 using Graduation.API.Swagger.Filters;
 using Graduation.BLL.JwtFeatures;
+using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
@@ -71,6 +72,7 @@ namespace Graduation.API
 
 
                 builder.Services.AddValidatorsFromAssemblies(Assembly.GetExecutingAssembly());
+
 
                 builder.Services.AddControllers(options =>
                 {
@@ -224,6 +226,9 @@ namespace Graduation.API
                 builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
                 builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
                 builder.Services.AddScoped<ICodeAssignmentService, CodeAssignmentService>();
+                builder.Services.Configure<PaymobSettings>(builder.Configuration.GetSection("PaymobSettings"));
+                builder.Services.AddHttpClient<IPaymobService, PaymobService>();
+                builder.Services.AddScoped<IPaymentService, PaymentService>();
                 builder.Services.Configure<FormOptions>(options =>
                 {
                     options.MultipartBodyLengthLimit = 5 * 1024 * 1024;
@@ -250,8 +255,13 @@ namespace Graduation.API
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
-
-                
+                /*
+                builder.Services.AddRouting(options =>
+                {
+                    options.LowercaseUrls = true;
+                    options.AppendTrailingSlash = false;
+                });
+                */
 
                 builder.Services.AddCors(options =>
                 {
@@ -270,12 +280,21 @@ namespace Graduation.API
                 using (var scope = app.Services.CreateScope())
                 {
                     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-                    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+                    UserManager<AppUser>? userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
                     await SeedRolesAndAdmin(roleManager, userManager);
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
-                if (app.Environment.IsProduction())
+                app.Use(async (context, next) =>
+                {
+                    var path = context.Request.Path.Value;
+                    if (path != null && path.Length > 1 && path.EndsWith("/"))
+                    {
+                        context.Request.Path = path.TrimEnd('/');
+                    }
+                    await next();
+                });
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -311,6 +330,7 @@ namespace Graduation.API
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapControllers();
+                
 
                 Log.Information("API started successfully on {Environment}", app.Environment.EnvironmentName);
 

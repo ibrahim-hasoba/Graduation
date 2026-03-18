@@ -1,4 +1,5 @@
-﻿using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.BLL.Services.Implementations;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -8,8 +9,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Admin;
 using Shared.DTOs.Category;
+using Shared.DTOs.Product;
 using Shared.Errors;
 using System.Security.Claims;
+using System.Text;
 
 namespace Graduation.API.Controllers
 {
@@ -26,6 +29,7 @@ namespace Graduation.API.Controllers
         private readonly ICodeLookupService _codeLookup;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IImageService _imageService;
+        private readonly IProductService _productService;
 
         public AdminController(
             IAdminService adminService,
@@ -35,7 +39,8 @@ namespace Graduation.API.Controllers
             UserManager<AppUser> userManager,
             ICodeLookupService codeLookup,
             ICodeAssignmentService codeAssignment, 
-            IImageService imageService)
+            IImageService imageService,
+            IProductService productService)
         {
             _adminService = adminService;
             _categoryService = categoryService;
@@ -45,6 +50,7 @@ namespace Graduation.API.Controllers
             _codeLookup = codeLookup;
             _codeAssignment = codeAssignment;
             _imageService = imageService;
+            _productService = productService;
         }
 
         [HttpGet("dashboard/stats")]
@@ -361,8 +367,65 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Password reset successfully"));
         }
 
+        [HttpGet("users/export")]
+        public async Task<IActionResult> ExportUsers([FromQuery] string? role = null)
+        {
+            var query = _context.Users.AsQueryable();
 
-        [HttpGet("orders")]
+            if (!string.IsNullOrEmpty(role))
+            {
+                var normalizedRole = role.ToUpper();
+                var roleEntity = await _context.Roles
+                    .FirstOrDefaultAsync(r => r.NormalizedName == normalizedRole);
+
+                if (roleEntity != null)
+                {
+                    var userIds = await _context.UserRoles
+                        .Where(ur => ur.RoleId == roleEntity.Id)
+                        .Select(ur => ur.UserId)
+                        .ToListAsync();
+
+                    query = query.Where(u => userIds.Contains(u.Id));
+                }
+            }
+
+            var users = await query
+                .OrderByDescending(u => u.CreatedAt)
+                .Select(u => new
+                {
+                    u.FirstName,
+                    u.LastName,
+                    u.Email,
+                    u.PhoneNumber,
+                    u.EmailConfirmed,
+                    u.CreatedAt,
+                    u.UpdatedAt
+                })
+                .ToListAsync();
+
+            // Build CSV
+            var csv = new StringBuilder();
+            csv.AppendLine("First Name,Last Name,Email,Phone,Verified,Created At,Updated At");
+
+            foreach (var u in users)
+            {
+                csv.AppendLine(
+                    $"{u.FirstName}," +
+                    $"{u.LastName}," +
+                    $"{u.Email}," +
+                    $"{u.PhoneNumber ?? "--"}," +
+                    $"{(u.EmailConfirmed ? "Yes" : "No")}," +
+                    $"{u.CreatedAt:dd-MM-yyyy}," +
+                    $"{(u.UpdatedAt == DateTime.MinValue ? "--" : u.UpdatedAt.ToString("dd-MM-yyyy"))}");
+            }
+
+            var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+            return File(bytes, "text/csv", $"users-export-{DateTime.UtcNow:yyyyMMdd}.csv");
+        }
+
+
+
+    [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20,
@@ -521,6 +584,91 @@ namespace Graduation.API.Controllers
             await _categoryService.DeleteCategoryAsync(categoryCode);
             return Ok(new ApiResult(message: "Category deleted successfully"));
         }
+
+
+        [HttpGet("products")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllProducts([FromQuery] ProductSearchDto searchDto)
+        {
+            var result = await _productService.SearchProductsAsync(searchDto);
+            return Ok(new ApiResult(data: result));
+        }
+
+        
+        [HttpGet("products/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetProductById(int id)
+        {
+            var product = await _productService.GetProductByIdAsync(id);
+            return Ok(new ApiResult(data: product));
+        }
+
+        
+        [HttpPost("products")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
+        {
+            if (!dto.VendorId.HasValue)
+                throw new BadRequestException("vendorId is required when admin creates a product.");
+
+            var vendorExists = await _context.Vendors
+                .AnyAsync(v => v.Id == dto.VendorId.Value && v.IsApproved && v.IsActive);
+
+            if (!vendorExists)
+                throw new BadRequestException(
+                    $"Vendor with ID {dto.VendorId.Value} not found, not approved, or inactive.");
+
+            var product = await _productService.CreateProductAsync(dto.VendorId.Value, dto);
+            return StatusCode(201, new ApiResult(data: product, message: "Product created successfully"));
+        }
+
+        
+        [HttpPut("products/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
+        {
+            // Pass vendorId = 0 → service must treat 0 as "admin override, skip vendor check"
+            // See note below if your ProductService enforces vendorId ownership
+            var product = await _productService.AdminUpdateProductAsync(id, dto);
+            return Ok(new ApiResult(data: product, message: "Product updated successfully"));
+        }
+
+        
+        [HttpDelete("products/{id}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            await _productService.AdminDeleteProductAsync(id);
+            return Ok(new ApiResult(message: "Product deleted successfully"));
+        }
+
+        
+        [HttpPatch("products/{id}/stock")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateProductStock(int id, [FromBody] UpdateStockDto dto)
+        {
+            await _productService.AdminUpdateStockAsync(id, dto.Quantity);
+            return Ok(new ApiResult(message: "Stock updated successfully"));
+        }
+
+        
+        [HttpPost("products/{id}/toggle-status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ToggleProductStatus(int id)
+        {
+            var product = await _productService.AdminToggleProductStatusAsync(id);
+            var msg = product.IsActive ? "Product activated successfully" : "Product deactivated successfully";
+            return Ok(new ApiResult(data: product, message: msg));
+        }
+
 
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(

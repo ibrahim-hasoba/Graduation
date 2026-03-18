@@ -58,5 +58,7 @@ namespace Shared.DTOs.Product
         public bool IsFeatured { get; set; } = false;
 
         public List<string>? ImageUrls { get; set; }
+
+        public int? VendorId { get; set; }
     }
 }

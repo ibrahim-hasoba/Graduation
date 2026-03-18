@@ -1,10 +1,11 @@
-﻿using Shared.Errors;
-using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs.Order;
+using Shared.DTOs.Payment;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -13,21 +14,22 @@ namespace Graduation.BLL.Services.Implementations
         private readonly DatabaseContext _context;
         private readonly IEmailService _emailService;
         private readonly ILogger<OrderService> _logger;
+        private readonly IPaymentService _paymentService;
 
         public OrderService(
             DatabaseContext context,
             IEmailService emailService,
-            ILogger<OrderService> logger)
+            ILogger<OrderService> logger,
+            IPaymentService paymentService)
         {
             _context = context;
             _emailService = emailService;
             _logger = logger;
+            _paymentService = paymentService;
         }
 
         public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
-            // FIX #4: Use a single Serializable transaction and defer ALL SaveChangesAsync calls
-            // to after the full loop so partial-commit state can never leak out of the transaction.
             using var transaction = await _context.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable);
 
@@ -42,8 +44,6 @@ namespace Graduation.BLL.Services.Implementations
                 if (!cartItems.Any())
                     throw new BadRequestException("Your cart is empty");
 
-                // FIX #13 (CartService equivalent): Reject cart items whose vendor is
-                // suspended or unapproved before creating the order.
                 var invalidItems = cartItems
                     .Where(ci => !ci.Product.Vendor.IsApproved || !ci.Product.Vendor.IsActive)
                     .Select(ci => ci.Product.Vendor.StoreName)
@@ -64,7 +64,6 @@ namespace Graduation.BLL.Services.Implementations
                 {
                     var items = vendorGroup.ToList();
 
-                    // Atomic stock decrement per item — participates in the ambient transaction.
                     foreach (var item in items)
                     {
                         var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
@@ -123,7 +122,7 @@ namespace Graduation.BLL.Services.Implementations
                         var unitPrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
                         allOrderItems.Add(new OrderItem
                         {
-                            Order = order,   // navigation property — EF resolves Id after SaveChanges
+                            Order = order,
                             ProductId = cartItem.ProductId,
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
@@ -132,7 +131,6 @@ namespace Graduation.BLL.Services.Implementations
                     }
                 }
 
-                // FIX #4: Single SaveChangesAsync for all orders + items + cart removal.
                 _context.OrderItems.AddRange(allOrderItems);
                 _context.CartItems.RemoveRange(allCartItemsToRemove);
                 await _context.SaveChangesAsync();
@@ -143,23 +141,56 @@ namespace Graduation.BLL.Services.Implementations
                     "Order(s) created: {OrderNumbers} for user {UserId}",
                     string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                // Fire-and-forget confirmation email AFTER commit
-                var user = await _context.Users.FindAsync(userId);
-                if (user?.Email != null)
+                // ── Email: ONLY for Cash on Delivery ───────────────────────────────
+                // For card payments, email is sent from webhook AFTER Paymob confirms payment
+                if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
                 {
-                    var firstOrder = createdOrders.First();
-                    _ = Task.Run(async () =>
+                    var user = await _context.Users.FindAsync(userId);
+                    if (user?.Email != null)
+                    {
+                        var firstOrder = createdOrders.First();
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await _emailService.SendOrderConfirmationEmailAsync(
+                                    user.Email, firstOrder.OrderNumber, firstOrder.TotalAmount);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Failed to send order confirmation email");
+                            }
+                        });
+                    }
+                }
+
+                // ── Initiate Paymob payment for card orders ────────────────────────
+                PaymentDto? paymentInfo = null;
+
+                if (dto.PaymentMethod != PaymentMethod.CashOnDelivery)
+                {
+                    foreach (var o in createdOrders)
                     {
                         try
                         {
-                            await _emailService.SendOrderConfirmationEmailAsync(
-                                user.Email, firstOrder.OrderNumber, firstOrder.TotalAmount);
+                            await _paymentService.InitiatePaymentAsync(o.Id);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to send order confirmation email");
+                            _logger.LogError(ex,
+                                "Failed to initiate Paymob payment for order {OrderNumber}", o.OrderNumber);
                         }
-                    });
+                    }
+
+                    try
+                    {
+                        paymentInfo = await _paymentService
+                            .GetByOrderNumberAsync(createdOrders.First().OrderNumber, userId);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to retrieve payment info after initiation");
+                    }
                 }
 
                 var orderDtos = new List<OrderDto>();
@@ -169,7 +200,8 @@ namespace Graduation.BLL.Services.Implementations
                 return new CreateOrderResultDto
                 {
                     Orders = orderDtos,
-                    TotalOrdersCreated = orderDtos.Count
+                    TotalOrdersCreated = orderDtos.Count,
+                    Payment = paymentInfo
                 };
             }
             catch
@@ -268,10 +300,6 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
-        /// <summary>
-        /// FIX #6: Guard against double-cancellation so stock is never restored twice.
-        /// Only Pending or Confirmed orders may be cancelled.
-        /// </summary>
         public async Task<OrderDto> CancelOrderAsync(int id, string userId, string reason)
         {
             var order = await _context.Orders
@@ -284,7 +312,6 @@ namespace Graduation.BLL.Services.Implementations
             if (order == null)
                 throw new NotFoundException("Order", id);
 
-            // FIX #6: Reject already-cancelled orders before touching stock.
             if (order.Status == OrderStatus.Cancelled)
                 throw new BadRequestException("This order has already been cancelled.");
 
@@ -356,7 +383,7 @@ namespace Graduation.BLL.Services.Implementations
                 ProductNameAr = oi.Product.NameAr,
                 ProductNameEn = oi.Product.NameEn,
                 ProductImage = oi.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                    ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
+                                ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
                 Quantity = oi.Quantity,
                 UnitPrice = oi.UnitPrice,
                 TotalPrice = oi.TotalPrice
