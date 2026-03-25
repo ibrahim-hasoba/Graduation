@@ -294,7 +294,7 @@ namespace Graduation.API
                     }
                     await next();
                 });
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

@@ -10,6 +10,7 @@
         public string Governorate { get; set; } = string.Empty;
         public bool IsApproved { get; set; }
         public bool IsActive { get; set; }
+        public string ApprovalStatus { get; set; } = "Pending";
         public int TotalProducts { get; set; }
         public DateTime CreatedAt { get; set; }
     }

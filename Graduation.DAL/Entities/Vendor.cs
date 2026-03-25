@@ -1,5 +1,13 @@
 ﻿namespace Graduation.DAL.Entities
 {
+    public enum VendorApprovalStatus
+    {
+        Pending = 0,
+        Approved = 1,
+        Rejected = 2
+    }
+
+
     public class Vendor
     {
         public int Id { get; set; }
@@ -17,11 +25,12 @@
         public string Address { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
         public EgyptianGovernorate Governorate { get; set; }
-        public bool IsApproved { get; set; } = false;
+        public bool IsApproved => ApprovalStatus == VendorApprovalStatus.Approved;
         public bool IsActive { get; set; } = true;
+        public VendorApprovalStatus ApprovalStatus { get; set; } = VendorApprovalStatus.Pending;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
-
+        public string? RejectionReason { get; set; }
         public ICollection<Product> Products { get; set; } = new List<Product>();
     }
 }

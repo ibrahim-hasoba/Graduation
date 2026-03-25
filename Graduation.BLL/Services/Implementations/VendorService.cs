@@ -15,7 +15,7 @@ namespace Graduation.BLL.Services.Implementations
         private readonly DatabaseContext _context;
         private readonly IEmailService _emailService;
         private readonly UserManager<AppUser> _userManager;
-        private readonly Shared.BackgroundTasks.IBackgroundTaskQueue? _taskQueue;
+        private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
 
@@ -25,8 +25,7 @@ namespace Graduation.BLL.Services.Implementations
             UserManager<AppUser> userManager,
             ILogger<VendorService> logger,
             ICodeAssignmentService codeAssignment,
-            IBackgroundTaskQueue? taskQueue = null
-            )
+            IBackgroundTaskQueue? taskQueue = null)
         {
             _context = context;
             _emailService = emailService;
@@ -49,13 +48,11 @@ namespace Graduation.BLL.Services.Implementations
 
             var existingVendor = await _context.Vendors
                 .FirstOrDefaultAsync(v => v.UserId == userId);
-
             if (existingVendor != null)
                 throw new ConflictException("You already have a vendor account");
 
             var storeNameExists = await _context.Vendors
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
-
             if (storeNameExists)
                 throw new ConflictException("Store name already exists. Please choose a different name");
 
@@ -72,7 +69,7 @@ namespace Graduation.BLL.Services.Implementations
                 Governorate = dto.Governorate,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                IsApproved = false,
+                ApprovalStatus = VendorApprovalStatus.Pending,   // explicit
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -80,7 +77,8 @@ namespace Graduation.BLL.Services.Implementations
             _context.Vendors.Add(vendor);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Vendor registration submitted: {StoreName} by user {UserId}",
+            _logger.LogInformation(
+                "Vendor registration submitted: {StoreName} by user {UserId}",
                 dto.StoreName, userId);
 
             await _codeAssignment.AssignVendorCodeAsync(vendor);
@@ -118,7 +116,12 @@ namespace Graduation.BLL.Services.Implementations
                 .AsQueryable();
 
             if (isApproved.HasValue)
-                query = query.Where(v => v.IsApproved == isApproved.Value);
+            {
+                var targetStatus = isApproved.Value
+                    ? VendorApprovalStatus.Approved
+                    : VendorApprovalStatus.Pending;
+                query = query.Where(v => v.ApprovalStatus == targetStatus);
+            }
 
             var vendors = await query
                 .OrderByDescending(v => v.CreatedAt)
@@ -133,6 +136,7 @@ namespace Graduation.BLL.Services.Implementations
                 City = v.City,
                 Governorate = v.Governorate.ToString(),
                 IsApproved = v.IsApproved,
+                ApprovalStatus = v.ApprovalStatus.ToString(),
                 IsActive = v.IsActive,
                 TotalProducts = v.Products.Count,
                 CreatedAt = v.CreatedAt
@@ -141,9 +145,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorDto> UpdateVendorAsync(int id, string userId, VendorUpdateDto dto)
         {
-            var vendor = await _context.Vendors
-                .FirstOrDefaultAsync(v => v.Id == id);
-
+            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Id == id);
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
@@ -152,7 +154,6 @@ namespace Graduation.BLL.Services.Implementations
 
             var storeNameExists = await _context.Vendors
                 .AnyAsync(v => v.Id != id && v.StoreName.ToLower() == dto.StoreName.ToLower());
-
             if (storeNameExists)
                 throw new ConflictException("Store name already exists. Please choose a different name");
 
@@ -175,8 +176,10 @@ namespace Graduation.BLL.Services.Implementations
             return await GetVendorByIdAsync(id);
         }
 
-
-        public async Task<VendorDto> ApproveVendorAsync(int id, bool isApproved, string? rejectionReason = null)
+        public async Task<VendorDto> ApproveVendorAsync(
+            int id,
+            bool isApproved,
+            string? rejectionReason = null)
         {
             var vendor = await _context.Vendors
                 .Include(v => v.User)
@@ -185,12 +188,22 @@ namespace Graduation.BLL.Services.Implementations
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
-            vendor.IsApproved = isApproved;
-            vendor.UpdatedAt = DateTime.UtcNow;
+            // ── Update approval status ────────────────────────────────────────
+            if (isApproved)
+            {
+                vendor.ApprovalStatus = VendorApprovalStatus.Approved;
+                vendor.RejectionReason = null;   // clear any previous rejection
+            }
+            else
+            {
+                vendor.ApprovalStatus = VendorApprovalStatus.Rejected;
+                vendor.RejectionReason = rejectionReason;
+            }
 
+            vendor.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // FIX #7: Sync the Identity role so the user's next JWT reflects their vendor status.
+            // ── Sync Identity role ────────────────────────────────────────────
             if (vendor.User != null)
             {
                 var appUser = await _userManager.FindByIdAsync(vendor.UserId);
@@ -201,17 +214,19 @@ namespace Graduation.BLL.Services.Implementations
                     if (isApproved && !isInVendorRole)
                     {
                         await _userManager.AddToRoleAsync(appUser, "Vendor");
-                        _logger.LogInformation("User {UserId} added to Vendor role after approval", vendor.UserId);
+                        _logger.LogInformation(
+                            "User {UserId} added to Vendor role after approval", vendor.UserId);
                     }
                     else if (!isApproved && isInVendorRole)
                     {
                         await _userManager.RemoveFromRoleAsync(appUser, "Vendor");
-                        _logger.LogInformation("User {UserId} removed from Vendor role after rejection", vendor.UserId);
+                        _logger.LogInformation(
+                            "User {UserId} removed from Vendor role after rejection", vendor.UserId);
                     }
                 }
             }
 
-            // Send notification email via background queue (or fire-and-forget fallback)
+            // ── Send notification email ───────────────────────────────────────
             if (vendor.User != null && !string.IsNullOrEmpty(vendor.User.Email))
             {
                 var emailCopy = vendor.User.Email;
@@ -221,15 +236,8 @@ namespace Graduation.BLL.Services.Implementations
                 {
                     _taskQueue.QueueBackgroundWorkItem(async token =>
                     {
-                        try
-                        {
-                            await _emailService.SendVendorApprovalEmailAsync(
-                                emailCopy, storeNameCopy, isApproved, rejectionReason);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", emailCopy);
-                        }
+                        await _emailService.SendVendorApprovalEmailAsync(
+                            emailCopy, storeNameCopy, isApproved, rejectionReason);
                     });
                 }
                 else
@@ -243,13 +251,16 @@ namespace Graduation.BLL.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to send vendor approval email to {Email}", emailCopy);
+                            _logger.LogError(ex,
+                                "Failed to send vendor approval email to {Email}", emailCopy);
                         }
                     });
                 }
             }
 
-            _logger.LogInformation("Vendor {VendorId} approval status changed to {IsApproved}", id, isApproved);
+            _logger.LogInformation(
+                "Vendor {VendorId} approval status changed to {Status}",
+                id, vendor.ApprovalStatus);
 
             return await GetVendorByIdAsync(id);
         }
@@ -257,7 +268,6 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<VendorDto> ToggleVendorStatusAsync(int id)
         {
             var vendor = await _context.Vendors.FindAsync(id);
-
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
@@ -266,8 +276,8 @@ namespace Graduation.BLL.Services.Implementations
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Vendor {VendorId} active status toggled to {IsActive}",
-                id, vendor.IsActive);
+            _logger.LogInformation(
+                "Vendor {VendorId} active status toggled to {IsActive}", id, vendor.IsActive);
 
             return await GetVendorByIdAsync(id);
         }
@@ -275,7 +285,6 @@ namespace Graduation.BLL.Services.Implementations
         public async Task DeleteVendorAsync(int id)
         {
             var vendor = await _context.Vendors.FindAsync(id);
-
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
@@ -285,9 +294,12 @@ namespace Graduation.BLL.Services.Implementations
             _logger.LogInformation("Vendor deleted: {VendorId} - {StoreName}", id, vendor.StoreName);
         }
 
-        private VendorDto MapToDto(Vendor vendor) => new()
+        // ── Mapper ────────────────────────────────────────────────────────────
+
+        private static VendorDto MapToDto(Vendor vendor) => new()
         {
             Id = vendor.Id,
+            Code = vendor.Code,
             UserId = vendor.UserId,
             UserEmail = vendor.User?.Email ?? string.Empty,
             UserFullName = $"{vendor.User?.FirstName} {vendor.User?.LastName}",
@@ -302,13 +314,17 @@ namespace Graduation.BLL.Services.Implementations
             City = vendor.City,
             Governorate = vendor.Governorate.ToString(),
             GovernorateId = (int)vendor.Governorate,
-            IsApproved = vendor.IsApproved,
+
+            ApprovalStatus = vendor.ApprovalStatus.ToString(),   // "Pending" | "Approved" | "Rejected"
+            ApprovalStatusId = (int)vendor.ApprovalStatus,         // 1 | 2 | 3
+            RejectionReason = vendor.RejectionReason,
+            IsApproved = vendor.IsApproved,                  // kept for BC
+
             IsActive = vendor.IsActive,
             TotalProducts = vendor.Products?.Count ?? 0,
             TotalOrders = 0,
             CreatedAt = vendor.CreatedAt,
             UpdatedAt = vendor.UpdatedAt,
-            Code = vendor.Code,
         };
     }
 }

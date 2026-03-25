@@ -11,7 +11,6 @@ using Shared.Errors;
 
 namespace Graduation.API.Controllers
 {
-
     [Route("api/admin/vendors")]
     [ApiController]
     [Authorize(Roles = "Admin")]
@@ -44,7 +43,9 @@ namespace Graduation.API.Controllers
             [FromQuery] int pageSize = 20,
             [FromQuery] bool? isApproved = null,
             [FromQuery] bool? isActive = null,
-            [FromQuery] string? search = null)
+            [FromQuery] string? search = null,
+            // NEW: filter by explicit status string — "Pending" | "Approved" | "Rejected"
+            [FromQuery] string? approvalStatus = null)
         {
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
@@ -54,8 +55,20 @@ namespace Graduation.API.Controllers
                 .Include(v => v.Products)
                 .AsQueryable();
 
-            if (isApproved.HasValue)
-                query = query.Where(v => v.IsApproved == isApproved.Value);
+            // ── Approval filter (prefer the string approvalStatus param, fall back to
+            //    the legacy bool isApproved param for backwards compatibility) ──────────
+            if (!string.IsNullOrWhiteSpace(approvalStatus))
+            {
+                if (Enum.TryParse<VendorApprovalStatus>(approvalStatus, ignoreCase: true, out var parsedStatus))
+                    query = query.Where(v => v.ApprovalStatus == parsedStatus);
+            }
+            else if (isApproved.HasValue)
+            {
+                var targetStatus = isApproved.Value
+                    ? VendorApprovalStatus.Approved
+                    : VendorApprovalStatus.Pending;
+                query = query.Where(v => v.ApprovalStatus == targetStatus);
+            }
 
             if (isActive.HasValue)
                 query = query.Where(v => v.IsActive == isActive.Value);
@@ -103,7 +116,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: MapToDto(vendor)));
         }
 
-
         [HttpPost]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -126,6 +138,10 @@ namespace Graduation.API.Controllers
             if (nameExists)
                 throw new ConflictException("A vendor with this store name already exists");
 
+            var initialStatus = dto.IsApproved
+                ? VendorApprovalStatus.Approved
+                : VendorApprovalStatus.Pending;
+
             var vendor = new Vendor
             {
                 UserId = userId,
@@ -139,7 +155,7 @@ namespace Graduation.API.Controllers
                 Governorate = dto.Governorate,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                IsApproved = dto.IsApproved,
+                ApprovalStatus = initialStatus,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -161,7 +177,6 @@ namespace Graduation.API.Controllers
                 data: MapToDto(vendor),
                 message: "Vendor created successfully"));
         }
-
 
         [HttpPut("{vendorCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -209,17 +224,27 @@ namespace Graduation.API.Controllers
             if (dto.LogoUrl != null) vendor.LogoUrl = dto.LogoUrl;
             if (dto.BannerUrl != null) vendor.BannerUrl = dto.BannerUrl;
 
-            if (dto.IsApproved.HasValue && dto.IsApproved.Value != vendor.IsApproved)
+            // ── Handle approval status change ─────────────────────────────────
+            if (dto.IsApproved.HasValue)
             {
-                vendor.IsApproved = dto.IsApproved.Value;
+                var newApproval = dto.IsApproved.Value
+                    ? VendorApprovalStatus.Approved
+                    : VendorApprovalStatus.Pending;
 
-                var appUser = await _userManager.FindByIdAsync(vendor.UserId);
-                if (appUser != null)
+                if (newApproval != vendor.ApprovalStatus)
                 {
-                    if (dto.IsApproved.Value && !await _userManager.IsInRoleAsync(appUser, "Vendor"))
-                        await _userManager.AddToRoleAsync(appUser, "Vendor");
-                    else if (!dto.IsApproved.Value && await _userManager.IsInRoleAsync(appUser, "Vendor"))
-                        await _userManager.RemoveFromRoleAsync(appUser, "Vendor");
+                    vendor.ApprovalStatus = newApproval;
+                    if (newApproval == VendorApprovalStatus.Approved)
+                        vendor.RejectionReason = null;
+
+                    var appUser = await _userManager.FindByIdAsync(vendor.UserId);
+                    if (appUser != null)
+                    {
+                        if (dto.IsApproved.Value && !await _userManager.IsInRoleAsync(appUser, "Vendor"))
+                            await _userManager.AddToRoleAsync(appUser, "Vendor");
+                        else if (!dto.IsApproved.Value && await _userManager.IsInRoleAsync(appUser, "Vendor"))
+                            await _userManager.RemoveFromRoleAsync(appUser, "Vendor");
+                    }
                 }
             }
 
@@ -229,7 +254,6 @@ namespace Graduation.API.Controllers
             vendor.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // Reload full nav
             vendor = await _context.Vendors
                 .Include(v => v.User)
                 .Include(v => v.Products)
@@ -240,7 +264,6 @@ namespace Graduation.API.Controllers
                 message: "Vendor updated successfully"));
         }
 
-        
         [HttpDelete("{vendorCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -265,19 +288,16 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Vendor deleted successfully"));
         }
 
-        
         [HttpPost("{vendorCode}/approve")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ApproveVendor(
-            string vendorCode, [FromBody] VendorApprovalDto? dto = null)
+        public async Task<IActionResult> ApproveVendor(string vendorCode)
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(id, isApproved: true);
             return Ok(new ApiResult(data: result, message: "Vendor approved successfully"));
         }
 
-        
         [HttpPost("{vendorCode}/reject")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -294,7 +314,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: result, message: "Vendor rejected"));
         }
 
-        
         [HttpPost("{vendorCode}/toggle-status")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -306,15 +325,16 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: result, message: msg));
         }
 
+        // ── Mapper ────────────────────────────────────────────────────────────
 
         private static object MapToDto(Vendor v) => new
         {
-            vendorCode = v.Code,          
-            ownerCode = v.User?.Code,    
+            vendorCode = v.Code,
+            ownerCode = v.User?.Code,
             ownerEmail = v.User?.Email,
             ownerName = v.User != null
-                                    ? $"{v.User.FirstName} {v.User.LastName}".Trim()
-                                    : null,
+                                   ? $"{v.User.FirstName} {v.User.LastName}".Trim()
+                                   : null,
             storeName = v.StoreName,
             storeNameAr = v.StoreNameAr,
             storeDescription = v.StoreDescription,
@@ -325,7 +345,13 @@ namespace Graduation.API.Controllers
             address = v.Address,
             city = v.City,
             governorate = v.Governorate.ToString(),
-            isApproved = v.IsApproved,
+
+            // ── Approval ──────────────────────────────────────────────────────
+            approvalStatus = v.ApprovalStatus.ToString(),   // "Pending" | "Approved" | "Rejected"
+            approvalStatusId = (int)v.ApprovalStatus,         // 1 | 2 | 3
+            rejectionReason = v.RejectionReason,
+            isApproved = v.IsApproved,                  // kept for BC
+
             isActive = v.IsActive,
             totalProducts = v.Products?.Count ?? 0,
             createdAt = v.CreatedAt,

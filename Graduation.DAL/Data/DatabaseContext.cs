@@ -34,6 +34,16 @@ namespace Graduation.DAL.Data
             // Vendor Configuration
             builder.Entity<Vendor>(entity =>
             {
+                entity.Property(v => v.ApprovalStatus)
+                    .IsRequired()
+                    .HasDefaultValue(VendorApprovalStatus.Pending);
+
+                entity.Ignore(v => v.IsApproved);
+
+                entity.Property(v => v.RejectionReason)
+                    .HasMaxLength(500)
+                    .IsRequired(false);
+
                 entity.HasKey(v => v.Id);
 
                 entity.HasOne(v => v.User)
@@ -42,16 +52,20 @@ namespace Graduation.DAL.Data
                     .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasIndex(v => v.StoreName).IsUnique();
-                entity.Property(v => v.StoreName).IsRequired().HasMaxLength(200);
-                entity.Property(v => v.PhoneNumber).IsRequired().HasMaxLength(20);
+                entity.Property(v => v.StoreName)
+                    .IsRequired()
+                    .HasMaxLength(200);
 
-                // One-to-One: one user = one vendor store
+                entity.Property(v => v.PhoneNumber)
+                    .IsRequired()
+                    .HasMaxLength(20);
+
+                // One-to-One
                 entity.HasIndex(v => v.UserId).IsUnique();
 
                 // Performance Indexes
-                entity.HasIndex(v => v.IsApproved);
-                entity.HasIndex(v => v.IsActive);
-                entity.HasIndex(v => new { v.IsApproved, v.IsActive });
+                entity.HasIndex(v => v.ApprovalStatus);
+                entity.HasIndex(v => new { v.ApprovalStatus, v.IsActive });
                 entity.HasIndex(v => v.Governorate);
                 entity.HasIndex(v => v.CreatedAt);
 
@@ -60,8 +74,8 @@ namespace Graduation.DAL.Data
                     .IsRequired(false);
 
                 entity.HasIndex(v => v.Code)
-                 .IsUnique()
-                 .HasFilter("[Code] IS NOT NULL");
+                    .IsUnique()
+                    .HasFilter("[Code] IS NOT NULL");
             });
 
             builder.Entity<AppUser>(b =>

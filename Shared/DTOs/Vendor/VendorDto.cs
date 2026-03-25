@@ -23,6 +23,9 @@ namespace Shared.DTOs.Vendor
         public int GovernorateId { get; set; }
         public bool IsApproved { get; set; }
         public bool IsActive { get; set; }
+        public string ApprovalStatus { get; set; } = "Pending";
+        public int ApprovalStatusId { get; set; }
+        public string? RejectionReason { get; set; }
         public int TotalProducts { get; set; }
         public int TotalOrders { get; set; }
         public DateTime CreatedAt { get; set; }
