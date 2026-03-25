@@ -17,6 +17,7 @@ namespace Graduation.DAL.Entities
         public bool IsDefault { get; set; } = false;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+        public string? PhoneNumber { get; set; }
         public AppUser User { get; set; } = null!;
     }
 

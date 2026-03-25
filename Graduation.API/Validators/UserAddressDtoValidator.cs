@@ -23,6 +23,11 @@ namespace Graduation.API.Validators
             RuleFor(x => x.Longitude)
                 .InclusiveBetween(-180.0, 180.0).WithMessage("Longitude must be between -180 and 180.")
                 .When(x => x.Longitude.HasValue);
+
+            RuleFor(x => x.PhoneNumber)
+                        .Matches(@"^(\+20|0)1[0125]\d{8}$")
+                        .WithMessage("If provided, must be a valid Egyptian mobile number.")
+                        .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
         }
     }
 }

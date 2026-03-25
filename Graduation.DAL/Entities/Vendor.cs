@@ -24,7 +24,8 @@
         public string PhoneNumber { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
-        public EgyptianGovernorate Governorate { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
         public bool IsApproved => ApprovalStatus == VendorApprovalStatus.Approved;
         public bool IsActive { get; set; } = true;
         public VendorApprovalStatus ApprovalStatus { get; set; } = VendorApprovalStatus.Pending;

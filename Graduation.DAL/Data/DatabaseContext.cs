@@ -34,6 +34,9 @@ namespace Graduation.DAL.Data
             // Vendor Configuration
             builder.Entity<Vendor>(entity =>
             {
+                entity.Property(v => v.Latitude).HasColumnType("float");
+                entity.Property(v => v.Longitude).HasColumnType("float");
+
                 entity.Property(v => v.ApprovalStatus)
                     .IsRequired()
                     .HasDefaultValue(VendorApprovalStatus.Pending);
@@ -66,7 +69,6 @@ namespace Graduation.DAL.Data
                 // Performance Indexes
                 entity.HasIndex(v => v.ApprovalStatus);
                 entity.HasIndex(v => new { v.ApprovalStatus, v.IsActive });
-                entity.HasIndex(v => v.Governorate);
                 entity.HasIndex(v => v.CreatedAt);
 
                 entity.Property(v => v.Code)
@@ -179,6 +181,10 @@ namespace Graduation.DAL.Data
             // UserAddress Configuration
             builder.Entity<UserAddress>(entity =>
             {
+                entity.Property(e => e.PhoneNumber)
+                    .HasMaxLength(20)
+                    .IsRequired(false);
+
                 entity.HasKey(e => e.Id);
 
                 entity.Property(e => e.Nickname)

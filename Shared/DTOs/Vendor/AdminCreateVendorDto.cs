@@ -17,7 +17,8 @@ namespace Shared.DTOs.Vendor
         public string PhoneNumber { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
-        public EgyptianGovernorate Governorate { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
         public string? LogoUrl { get; set; }
         public string? BannerUrl { get; set; }
         public bool IsApproved { get; set; } = false;

@@ -19,8 +19,8 @@ namespace Shared.DTOs.Vendor
         public string PhoneNumber { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string City { get; set; } = string.Empty;
-        public string Governorate { get; set; } = string.Empty;
-        public int GovernorateId { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
         public bool IsApproved { get; set; }
         public bool IsActive { get; set; }
         public string ApprovalStatus { get; set; } = "Pending";

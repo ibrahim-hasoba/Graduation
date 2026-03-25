@@ -152,12 +152,13 @@ namespace Graduation.API.Controllers
                 PhoneNumber = dto.PhoneNumber,
                 Address = dto.Address,
                 City = dto.City,
-                Governorate = dto.Governorate,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
                 ApprovalStatus = initialStatus,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                Latitude = dto.Latitude,
+                Longitude = dto.Longitude,
             };
 
             _context.Vendors.Add(vendor);
@@ -219,12 +220,14 @@ namespace Graduation.API.Controllers
                 vendor.Address = dto.Address;
             if (!string.IsNullOrWhiteSpace(dto.City))
                 vendor.City = dto.City;
-            if (dto.Governorate.HasValue)
-                vendor.Governorate = dto.Governorate.Value;
+            if (dto.Latitude.HasValue)
+                vendor.Latitude = dto.Latitude;
+
+            if (dto.Longitude.HasValue)
+                vendor.Longitude = dto.Longitude;
             if (dto.LogoUrl != null) vendor.LogoUrl = dto.LogoUrl;
             if (dto.BannerUrl != null) vendor.BannerUrl = dto.BannerUrl;
 
-            // ── Handle approval status change ─────────────────────────────────
             if (dto.IsApproved.HasValue)
             {
                 var newApproval = dto.IsApproved.Value
@@ -325,7 +328,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: result, message: msg));
         }
 
-        // ── Mapper ────────────────────────────────────────────────────────────
 
         private static object MapToDto(Vendor v) => new
         {
@@ -344,13 +346,12 @@ namespace Graduation.API.Controllers
             phoneNumber = v.PhoneNumber,
             address = v.Address,
             city = v.City,
-            governorate = v.Governorate.ToString(),
-
-            // ── Approval ──────────────────────────────────────────────────────
-            approvalStatus = v.ApprovalStatus.ToString(),   // "Pending" | "Approved" | "Rejected"
-            approvalStatusId = (int)v.ApprovalStatus,         // 1 | 2 | 3
+            latitude = v.Latitude,
+            longitude = v.Longitude,
+            approvalStatus = v.ApprovalStatus.ToString(),   
+            approvalStatusId = (int)v.ApprovalStatus,         
             rejectionReason = v.RejectionReason,
-            isApproved = v.IsApproved,                  // kept for BC
+            isApproved = v.IsApproved,                  
 
             isActive = v.IsActive,
             totalProducts = v.Products?.Count ?? 0,

@@ -66,12 +66,13 @@ namespace Graduation.BLL.Services.Implementations
                 PhoneNumber = dto.PhoneNumber,
                 Address = dto.Address,
                 City = dto.City,
-                Governorate = dto.Governorate,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                ApprovalStatus = VendorApprovalStatus.Pending,   // explicit
+                ApprovalStatus = VendorApprovalStatus.Pending, 
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                Latitude = dto.Latitude,
+                Longitude = dto.Longitude
             };
 
             _context.Vendors.Add(vendor);
@@ -134,7 +135,6 @@ namespace Graduation.BLL.Services.Implementations
                 StoreNameAr = v.StoreNameAr,
                 LogoUrl = v.LogoUrl,
                 City = v.City,
-                Governorate = v.Governorate.ToString(),
                 IsApproved = v.IsApproved,
                 ApprovalStatus = v.ApprovalStatus.ToString(),
                 IsActive = v.IsActive,
@@ -164,10 +164,11 @@ namespace Graduation.BLL.Services.Implementations
             vendor.PhoneNumber = dto.PhoneNumber;
             vendor.Address = dto.Address;
             vendor.City = dto.City;
-            vendor.Governorate = dto.Governorate;
             vendor.LogoUrl = dto.LogoUrl;
             vendor.BannerUrl = dto.BannerUrl;
             vendor.UpdatedAt = DateTime.UtcNow;
+            vendor.Latitude = dto.Latitude;
+            vendor.Longitude = dto.Longitude;
 
             await _context.SaveChangesAsync();
 
@@ -294,7 +295,6 @@ namespace Graduation.BLL.Services.Implementations
             _logger.LogInformation("Vendor deleted: {VendorId} - {StoreName}", id, vendor.StoreName);
         }
 
-        // ── Mapper ────────────────────────────────────────────────────────────
 
         private static VendorDto MapToDto(Vendor vendor) => new()
         {
@@ -312,14 +312,12 @@ namespace Graduation.BLL.Services.Implementations
             PhoneNumber = vendor.PhoneNumber,
             Address = vendor.Address,
             City = vendor.City,
-            Governorate = vendor.Governorate.ToString(),
-            GovernorateId = (int)vendor.Governorate,
-
-            ApprovalStatus = vendor.ApprovalStatus.ToString(),   // "Pending" | "Approved" | "Rejected"
-            ApprovalStatusId = (int)vendor.ApprovalStatus,         // 1 | 2 | 3
+            Latitude = vendor.Latitude,
+            Longitude = vendor.Longitude,
+            ApprovalStatus = vendor.ApprovalStatus.ToString(),   
+            ApprovalStatusId = (int)vendor.ApprovalStatus,     
             RejectionReason = vendor.RejectionReason,
-            IsApproved = vendor.IsApproved,                  // kept for BC
-
+            IsApproved = vendor.IsApproved,                  
             IsActive = vendor.IsActive,
             TotalProducts = vendor.Products?.Count ?? 0,
             TotalOrders = 0,

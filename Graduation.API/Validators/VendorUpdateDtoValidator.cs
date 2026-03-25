@@ -43,8 +43,6 @@ namespace Graduation.API.Validators
                 .MinimumLength(2).WithMessage("City name must be at least 2 characters.")
                 .MaximumLength(100).WithMessage("City name cannot exceed 100 characters.");
 
-            RuleFor(x => x.Governorate)
-                .IsInEnum().WithMessage("A valid Egyptian governorate must be selected.");
 
             RuleFor(x => x.LogoUrl)
                 .MaximumLength(2048).WithMessage("Logo URL cannot exceed 2048 characters.")
@@ -57,6 +55,12 @@ namespace Graduation.API.Validators
                 .Must(url => Uri.TryCreate(url, UriKind.Absolute, out _))
                 .WithMessage("Banner URL must be a valid absolute URL.")
                 .When(x => !string.IsNullOrEmpty(x.BannerUrl));
+
+            RuleFor(x => x)
+                        .Must(x =>
+                        (x.Latitude.HasValue && x.Longitude.HasValue) ||
+                        (!x.Latitude.HasValue && !x.Longitude.HasValue))
+                        .WithMessage("Latitude and Longitude must both be provided together or both be null.");
         }
     }
 }

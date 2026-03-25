@@ -69,11 +69,12 @@ namespace Graduation.API.Controllers
                     UserId = userId!,
                     Nickname = dto.Nickname.Trim(),
                     FullAddress = dto.FullAddress.Trim(),
+                    PhoneNumber = dto.PhoneNumber?.Trim(),
                     Latitude = dto.Latitude,
                     Longitude = dto.Longitude,
                     IsDefault = makeDefault,
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    UpdatedAt = DateTime.UtcNow,
                 };
 
                 _context.UserAddresses.Add(address);
@@ -119,6 +120,7 @@ namespace Graduation.API.Controllers
                 address.Longitude = dto.Longitude;
                 address.IsDefault = dto.IsDefault || address.IsDefault;
                 address.UpdatedAt = DateTime.UtcNow;
+                address.PhoneNumber = dto.PhoneNumber?.Trim();
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -225,7 +227,8 @@ namespace Graduation.API.Controllers
             Latitude = a.Latitude,
             Longitude = a.Longitude,
             IsDefault = a.IsDefault,
-            CreatedAt = a.CreatedAt
+            CreatedAt = a.CreatedAt,
+            PhoneNumber = a.PhoneNumber,
         };
     }
 }
