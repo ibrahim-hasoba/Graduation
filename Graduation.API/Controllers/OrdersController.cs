@@ -1,10 +1,11 @@
-﻿using Shared.Errors;
+﻿using Graduation.API.Extensions;
+using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Graduation.API.Extensions;
 using Shared.DTOs.Order;
+using Shared.Errors;
 
 namespace Graduation.API.Controllers
 {
@@ -15,16 +16,16 @@ namespace Graduation.API.Controllers
     {
         private readonly IOrderService _orderService;
         private readonly IVendorService _vendorService;
+        private readonly IPaymentService _paymentService;
 
-        public OrdersController(IOrderService orderService, IVendorService vendorService)
+        public OrdersController(IOrderService orderService, IVendorService vendorService , IPaymentService paymentService)
         {
             _orderService = orderService;
             _vendorService = vendorService;
+            _paymentService = paymentService;
         }
 
-        /// <summary>
-        /// Create new order from cart
-        /// </summary>
+        
         [HttpPost]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -40,9 +41,26 @@ namespace Graduation.API.Controllers
             return StatusCode(201, new Errors.ApiResult(data: order, message: "Order placed successfully!"));
         }
 
-        /// <summary>
-        /// Get user's orders
-        /// </summary>
+
+        [HttpPost("{id}/initiate-payment")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> InitiatePayment(
+                int id,
+                [FromQuery] string clientType = "web")
+        {
+            var userId = User.GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+
+            await _orderService.GetOrderByIdAsync(id, userId);
+            var result = await _paymentService.InitiatePaymentAsync(id, clientType);
+            return Ok(new Errors.ApiResult(data: result));
+        }
+
+
         [HttpGet("my-orders")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -56,9 +74,7 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: orders));
         }
 
-        /// <summary>
-        /// Get order details by ID
-        /// </summary>
+        
         [HttpGet("{id}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -73,9 +89,7 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: order));
         }
 
-        /// <summary>
-        /// Get vendor's orders
-        /// </summary>
+        
         [HttpGet("vendor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -94,9 +108,7 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: orders));
         }
 
-        /// <summary>
-        /// Update order status (vendor only)
-        /// </summary>
+        
         [HttpPatch("{id}/status")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -117,9 +129,7 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: order, message: "Order status updated successfully"));
         }
 
-        /// <summary>
-        /// Cancel order (customer only)
-        /// </summary>
+        
         [HttpPost("{id}/cancel")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -127,10 +137,6 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CancelOrder(int id, [FromBody] CancelOrderDto dto)
         {
-            // FIXED BUG: Was using User.FindFirst("userId")?.Value which only checks the
-            // custom "userId" claim and misses the standard ClaimTypes.NameIdentifier claim,
-            // causing 401 for users whose JWT was issued with the standard claim type.
-            // Now uses the GetUserId() extension which checks both claim types consistently.
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
