@@ -15,25 +15,24 @@ namespace Graduation.BLL.Services.Implementations
         private readonly DatabaseContext _context;
         private readonly IPaymobService _paymob;
         private readonly INotificationService _notifications;
-        private readonly IEmailService _emailService; // ← ADDED
+        private readonly IEmailService _emailService;
         private readonly ILogger<PaymentService> _logger;
 
         public PaymentService(
             DatabaseContext context,
             IPaymobService paymob,
             INotificationService notifications,
-            IEmailService emailService, // ← ADDED
+            IEmailService emailService,
             ILogger<PaymentService> logger)
         {
             _context = context;
             _paymob = paymob;
             _notifications = notifications;
-            _emailService = emailService; // ← ADDED
+            _emailService = emailService;
             _logger = logger;
         }
 
-
-        public async Task<PaymentDto> InitiatePaymentAsync(int orderId)
+        public async Task<PaymentDto> InitiatePaymentAsync(int orderId, string clientType = "web")
         {
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -68,11 +67,11 @@ namespace Graduation.BLL.Services.Implementations
                     order.ShippingLastName,
                     order.User?.Email ?? "guest@heka.com",
                     order.ShippingPhone,
-                    order.ShippingCity);
+                    order.ShippingCity,
+                    clientType);
 
                 existing.Status = PaymentStatus2.Pending;
                 existing.UpdatedAt = DateTime.UtcNow;
-
                 await _context.SaveChangesAsync();
 
                 return MapToDto(existing, order.OrderNumber);
@@ -85,7 +84,8 @@ namespace Graduation.BLL.Services.Implementations
                 order.ShippingLastName,
                 order.User?.Email ?? "guest@heka.com",
                 order.ShippingPhone,
-                order.ShippingCity);
+                order.ShippingCity,
+                clientType);
 
             var payment = new Payment
             {
@@ -106,11 +106,9 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(payment, order.OrderNumber);
         }
 
-        // ── Webhook ───────────────────────────────────────────────────────────
-
         public async Task HandleWebhookAsync(
-    Dictionary<string, string> callbackData,
-    string receivedHmac)
+            Dictionary<string, string> callbackData,
+            string receivedHmac)
         {
             if (!_paymob.VerifyHmac(callbackData, receivedHmac))
             {
@@ -230,8 +228,6 @@ namespace Graduation.BLL.Services.Implementations
             }
         }
 
-        // ── Get by order number ───────────────────────────────────────────────
-
         public async Task<PaymentDto> GetByOrderNumberAsync(string orderNumber, string userId)
         {
             var order = await _context.Orders
@@ -254,7 +250,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return MapToDto(payment, orderNumber);
         }
-
 
         public async Task<PagedPaymentResultDto> GetAllAsync(
             int pageNumber, int pageSize, string? status)
@@ -287,8 +282,6 @@ namespace Graduation.BLL.Services.Implementations
                 TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             };
         }
-
-        // ── Helpers ───────────────────────────────────────────────────────────
 
         private static string BuildCode(int id)
         {

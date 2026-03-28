@@ -23,8 +23,6 @@ namespace Graduation.API.Controllers
             _logger = logger;
         }
 
-        // ── Get payment by order number (customer) ─────────────────────────────
-
         [HttpGet("{orderNumber}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -39,8 +37,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: payment));
         }
 
-        // ── Paymob POST webhook (Transaction Processed Callback) ───────────────
-        // Paymob sends this server-to-server with JSON body after payment
 
         [HttpPost("webhook")]
         [AllowAnonymous]
@@ -64,15 +60,15 @@ namespace Graduation.API.Controllers
                         .ToDictionary(q => q.Key, q => q.Value.ToString());
                 }
 
-                _logger.LogInformation("Webhook keys: {Keys}",
-                        string.Join(",", callbackData.Keys));
+                _logger.LogInformation("Webhook POST keys: {Keys}",
+                    string.Join(",", callbackData.Keys));
 
                 callbackData.TryGetValue("hmac", out var hmac);
                 callbackData.Remove("hmac");
 
                 if (string.IsNullOrEmpty(hmac))
                 {
-                    _logger.LogWarning("Webhook received without HMAC");
+                    _logger.LogWarning("Webhook POST received without HMAC — ignored");
                     return Ok();
                 }
 
@@ -81,53 +77,55 @@ namespace Graduation.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Webhook error");
+                _logger.LogError(ex, "Webhook POST error");
                 return Ok();
             }
         }
 
-        // ── Paymob GET webhook (Transaction Response Callback) ─────────────────
-        // Paymob redirects the customer's browser here after payment with query params
+       
 
         [HttpGet("webhook")]
         [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> WebhookGet()
+        public IActionResult WebhookGet()
         {
             try
             {
-                var callbackData = Request.Query
-                    .ToDictionary(q => q.Key, q => q.Value.ToString());
-
-                callbackData.TryGetValue("hmac", out var hmac);
-                callbackData.Remove("hmac");
-
-                callbackData.TryGetValue("success", out var success);
-                callbackData.TryGetValue("merchant_order_id", out var orderNumber);
+                Request.Query.TryGetValue("success", out var success);
+                Request.Query.TryGetValue("merchant_order_id", out var orderNumber);
+                Request.Query.TryGetValue("client_type", out var clientType);
 
                 _logger.LogInformation(
-                    "Paymob GET webhook: order={OrderNumber}, success={Success}",
-                    orderNumber, success);
+                    "Webhook GET: order={Order}, success={Success}, client={Client}",
+                    orderNumber, success, clientType);
 
-                if (!string.IsNullOrEmpty(hmac))
-                    await _paymentService.HandleWebhookAsync(callbackData, hmac);
+                var isSuccess = string.Equals(
+                    success, "true", StringComparison.OrdinalIgnoreCase);
+                var isMobile = string.Equals(
+                    clientType, "mobile", StringComparison.OrdinalIgnoreCase);
 
-                // Redirect customer browser to frontend
-                var isSuccess = string.Equals(success, "true", StringComparison.OrdinalIgnoreCase);
-                var frontendUrl = isSuccess
-                    ? $"https://heka-panel.netlify.app/payment-success?order={orderNumber}"
-                    : $"https://heka-panel.netlify.app/payment-failed?order={orderNumber}";
+                string redirectUrl;
 
-                return Redirect(frontendUrl);
+                if (isMobile)
+                {
+                    redirectUrl = isSuccess
+                        ? $"heka://payment-success?order={orderNumber}"
+                        : $"heka://payment-failed?order={orderNumber}";
+                }
+                else
+                {
+                    redirectUrl = isSuccess
+                        ? $"https://heka-eg.netlify.app/payment-success?order={orderNumber}"
+                        : $"https://heka-eg.netlify.app/payment-failed?order={orderNumber}";
+                }
+
+                return Redirect(redirectUrl);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing Paymob GET webhook");
-                return Redirect("https://heka-panel.netlify.app/payment-failed");
+                _logger.LogError(ex, "Webhook GET error");
+                return Redirect("https://heka-eg.netlify.app/payment-failed");
             }
         }
-
-        // ── Admin: all payments ────────────────────────────────────────────────
 
         [HttpGet]
         [Authorize(Roles = "Admin")]
@@ -152,8 +150,6 @@ namespace Graduation.API.Controllers
                 },
                 count: result.TotalCount));
         }
-
-        // ── Helper: flatten nested JSON to dot-notation dictionary ─────────────
 
         private static Dictionary<string, string> FlattenJson(
             JsonElement element, string prefix = "")

@@ -1,13 +1,9 @@
 ﻿using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -27,7 +23,6 @@ namespace Graduation.BLL.Services.Implementations
             _http = http;
         }
 
-
         public async Task<string> CreatePaymentUrlAsync(
             string orderNumber,
             decimal amount,
@@ -35,42 +30,39 @@ namespace Graduation.BLL.Services.Implementations
             string lastName,
             string email,
             string phone,
-            string city)
+            string city,
+            string clientType = "web")
         {
-            // Step 1: Authenticate
             var authToken = await AuthenticateAsync();
-
-            // Step 2: Register order with Paymob
             var amountCents = (int)(amount * 100);
             var paymobOrderId = await RegisterOrderAsync(authToken, amountCents, orderNumber);
-
-            // Step 3: Get payment key
             var paymentKey = await GetPaymentKeyAsync(
                 authToken, amountCents, paymobOrderId,
                 firstName, lastName, email, phone, city);
 
-            // Build iframe URL
-            return $"{_settings.IframeBaseUrl}/{_settings.IframeId}?payment_token={paymentKey}";
+            // Embed client_type so Paymob passes it back on the GET redirect
+            return $"{_settings.IframeBaseUrl}/{_settings.IframeId}" +
+                   $"?payment_token={paymentKey}&client_type={clientType}";
         }
 
         public bool VerifyHmac(Dictionary<string, string> data, string receivedHmac)
         {
+            // Exact field order required by Paymob HMAC spec
             var fields = new[]
             {
-        "amount_cents", "created_at", "currency", "error_occured",
-        "has_parent_transaction", "id", "integration_id",
-        "is_3d_secure", "is_auth", "is_capture",
-        "is_refund", "is_standalone_payment",
-        "is_voided", "order.id", "order",
-        "owner", "pending",
-        "source_data.pan",
-        "source_data.sub_type",
-        "source_data.type",
-        "success"
-    };
+                "amount_cents", "created_at", "currency", "error_occured",
+                "has_parent_transaction", "id", "integration_id",
+                "is_3d_secure", "is_auth", "is_capture",
+                "is_refund", "is_standalone_payment",
+                "is_voided", "order.id",
+                "owner", "pending",
+                "source_data.pan",
+                "source_data.sub_type",
+                "source_data.type",
+                "success"
+            };
 
             var sb = new StringBuilder();
-
             foreach (var field in fields)
             {
                 if (data.TryGetValue(field, out var value) && !string.IsNullOrEmpty(value))
@@ -78,15 +70,12 @@ namespace Graduation.BLL.Services.Implementations
             }
 
             var computed = ComputeHmacSha512(sb.ToString(), _settings.HmacSecret);
-
             return string.Equals(computed, receivedHmac, StringComparison.OrdinalIgnoreCase);
         }
-
 
         private async Task<string> AuthenticateAsync()
         {
             var request = new PaymobAuthRequest { ApiKey = _settings.ApiKey };
-
             var response = await PostAsync<PaymobAuthRequest, PaymobAuthResponse>(
                 "/auth/tokens", request);
 
@@ -95,7 +84,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return response.Token;
         }
-
 
         private async Task<int> RegisterOrderAsync(
             string authToken, int amountCents, string merchantOrderId)
@@ -118,7 +106,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return response!.Id;
         }
-
 
         private async Task<string> GetPaymentKeyAsync(
             string authToken,
@@ -146,7 +133,6 @@ namespace Graduation.BLL.Services.Implementations
                     PhoneNumber = phone,
                     City = city,
                     Country = "EG",
-                    // Required but not critical — set to NA for non-delivery
                     Apartment = "NA",
                     Floor = "NA",
                     Street = "NA",
@@ -165,7 +151,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return response.Token;
         }
-
 
         private async Task<TResponse?> PostAsync<TRequest, TResponse>(
             string endpoint, TRequest body)
@@ -187,7 +172,6 @@ namespace Graduation.BLL.Services.Implementations
         {
             var keyBytes = Encoding.UTF8.GetBytes(secret);
             var dataBytes = Encoding.UTF8.GetBytes(data);
-
             using var hmac = new HMACSHA512(keyBytes);
             var hash = hmac.ComputeHash(dataBytes);
             return Convert.ToHexString(hash).ToLowerInvariant();
