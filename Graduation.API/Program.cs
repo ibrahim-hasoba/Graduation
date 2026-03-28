@@ -285,24 +285,23 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
+
+                app.UseSwagger();
+                app.UseSwaggerUI(c =>
+                {
+                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
+                });
                 app.Use(async (context, next) =>
                 {
                     var path = context.Request.Path.Value;
                     if (path != null && path.Length > 1 && path.EndsWith("/"))
-                    {
                         context.Request.Path = path.TrimEnd('/');
-                    }
                     await next();
                 });
-                if (app.Environment.IsProduction())
-                {
-                    app.UseSwagger();
-                    app.UseSwaggerUI(c =>
-                    {
-                        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
-                    });
-                }
-                app.UseHttpsRedirection();
+
+                if (!app.Environment.IsDevelopment())
+                    app.UseHttpsRedirection();
+
                 app.UseStaticFiles();  
 
                 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
