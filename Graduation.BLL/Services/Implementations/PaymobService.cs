@@ -53,29 +53,33 @@ namespace Graduation.BLL.Services.Implementations
             return $"{_settings.IframeBaseUrl}/{_settings.IframeId}?payment_token={paymentKey}";
         }
 
-        public bool VerifyHmac(Dictionary<string, string> callbackData, string receivedHmac)
+        public bool VerifyHmac(Dictionary<string, string> data, string receivedHmac)
         {
-            // Paymob HMAC is computed over these fields in this exact order
             var fields = new[]
             {
-                "amount_cents", "created_at", "currency", "error_occured",
-                "has_parent_transaction", "id", "integration_id", "is_3d_secure",
-                "is_auth", "is_capture", "is_refund", "is_standalone_payment",
-                "is_voided", "order", "owner", "pending",
-                "source_data.pan", "source_data.sub_type", "source_data.type",
-                "success"
-            };
+        "amount_cents", "created_at", "currency", "error_occured",
+        "has_parent_transaction", "id", "integration_id",
+        "is_3d_secure", "is_auth", "is_capture",
+        "is_refund", "is_standalone_payment",
+        "is_voided", "order.id", "order",
+        "owner", "pending",
+        "source_data.pan",
+        "source_data.sub_type",
+        "source_data.type",
+        "success"
+    };
 
             var sb = new StringBuilder();
+
             foreach (var field in fields)
             {
-                if (callbackData.TryGetValue(field, out var val))
-                    sb.Append(val);
+                if (data.TryGetValue(field, out var value) && !string.IsNullOrEmpty(value))
+                    sb.Append(value);
             }
 
-            var computedHmac = ComputeHmacSha512(sb.ToString(), _settings.HmacSecret);
-            return string.Equals(computedHmac, receivedHmac,
-                StringComparison.OrdinalIgnoreCase);
+            var computed = ComputeHmacSha512(sb.ToString(), _settings.HmacSecret);
+
+            return string.Equals(computed, receivedHmac, StringComparison.OrdinalIgnoreCase);
         }
 
 

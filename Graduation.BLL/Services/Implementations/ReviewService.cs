@@ -2,6 +2,7 @@
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
+using Shared.DTOs;
 using Shared.DTOs.Review;
 using Shared.Errors;
 
@@ -81,7 +82,8 @@ namespace Graduation.BLL.Services.Implementations
             return review == null ? null : MapToDto(review);
         }
 
-        public async Task<List<ReviewDto>> GetProductReviewsAsync(int productId, bool approvedOnly = true)
+        public async Task<PagedResult<ReviewDto>> GetProductReviewsAsync(
+                        int productId, int pageNumber, int pageSize, bool approvedOnly = true)
         {
             var query = _context.ProductReviews
                 .Include(r => r.User)
@@ -91,26 +93,48 @@ namespace Graduation.BLL.Services.Implementations
             if (approvedOnly)
                 query = query.Where(r => r.IsApproved);
 
-            var reviews = await query
-                .OrderByDescending(r => r.CreatedAt)
+            query = query.OrderByDescending(r => r.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return reviews.Select(MapToDto).ToList();
+            return new PagedResult<ReviewDto>
+            {
+                Items = items.Select(MapToDto).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
         /// <summary>Admin overload — all pending reviews across all vendors.</summary>
-        public async Task<List<ReviewDto>> GetPendingReviewsAsync()
+        public async Task<PagedResult<ReviewDto>> GetPendingReviewsAsync(int pageNumber, int pageSize)
         {
-            var reviews = await _context.ProductReviews
+            var query = _context.ProductReviews
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
                 .Where(r => !r.IsApproved)
-                .OrderByDescending(r => r.CreatedAt)
+                .OrderByDescending(r => r.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return reviews.Select(MapToDto).ToList();
+            return new PagedResult<ReviewDto>
+            {
+                Items = items.Select(MapToDto).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
+
 
         /// <summary>Vendor overload — pending reviews for a specific vendor's products.</summary>
         public async Task<List<ReviewDto>> GetPendingReviewsAsync(int vendorId)
@@ -126,17 +150,29 @@ namespace Graduation.BLL.Services.Implementations
             return reviews.Select(MapToDto).ToList();
         }
 
-        public async Task<List<ReviewDto>> GetUserReviewsAsync(string userId)
+        public async Task<PagedResult<ReviewDto>> GetUserReviewsAsync(
+                    string userId, int pageNumber, int pageSize)
         {
-            var reviews = await _context.ProductReviews
+            var query = _context.ProductReviews
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
                 .Where(r => r.UserId == userId)
-                .OrderByDescending(r => r.CreatedAt)
+                .OrderByDescending(r => r.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return reviews.Select(MapToDto).ToList();
+            return new PagedResult<ReviewDto>
+            {
+                Items = items.Select(MapToDto).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
         /// <summary>

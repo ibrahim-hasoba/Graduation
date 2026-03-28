@@ -1,4 +1,4 @@
-﻿//using Graduation.API.Errors;
+﻿//using Shared.Errors;
 //using Graduation.API.Extensions;
 //using Graduation.BLL.Services.Interfaces;
 //using Microsoft.AspNetCore.Authorization;
@@ -44,37 +44,36 @@
 
 //        [HttpPost("webhook")]
 //        [AllowAnonymous]
-//        [ProducesResponseType(StatusCodes.Status200OK)]
 //        public async Task<IActionResult> WebhookPost()
 //        {
 //            try
 //            {
-//                // Read body as JSON
-//                using var reader = new System.IO.StreamReader(Request.Body);
+//                using var reader = new StreamReader(Request.Body);
 //                var body = await reader.ReadToEndAsync();
 
 //                Dictionary<string, string> callbackData;
 
 //                if (!string.IsNullOrWhiteSpace(body))
 //                {
-//                    // Parse JSON body into flat dictionary
 //                    var jsonDoc = JsonDocument.Parse(body);
 //                    callbackData = FlattenJson(jsonDoc.RootElement);
 //                }
 //                else
 //                {
-//                    // Fallback: read from query string
 //                    callbackData = Request.Query
 //                        .ToDictionary(q => q.Key, q => q.Value.ToString());
 //                }
+
+//                _logger.LogInformation("Webhook keys: {Keys}",
+//                        string.Join(",", callbackData.Keys));
 
 //                callbackData.TryGetValue("hmac", out var hmac);
 //                callbackData.Remove("hmac");
 
 //                if (string.IsNullOrEmpty(hmac))
 //                {
-//                    _logger.LogWarning("Paymob POST webhook received without HMAC");
-//                    return Ok(); // Always return 200 to Paymob
+//                    _logger.LogWarning("Webhook received without HMAC");
+//                    return Ok();
 //                }
 
 //                await _paymentService.HandleWebhookAsync(callbackData, hmac);
@@ -82,8 +81,8 @@
 //            }
 //            catch (Exception ex)
 //            {
-//                _logger.LogError(ex, "Error processing Paymob POST webhook");
-//                return Ok(); // Always return 200 — never let Paymob see errors
+//                _logger.LogError(ex, "Webhook error");
+//                return Ok();
 //            }
 //        }
 
@@ -114,7 +113,7 @@
 //                    await _paymentService.HandleWebhookAsync(callbackData, hmac);
 
 //                // Redirect customer browser to frontend
-//                var isSuccess = success?.ToLower() == "true";
+//                var isSuccess = string.Equals(success, "true", StringComparison.OrdinalIgnoreCase);
 //                var frontendUrl = isSuccess
 //                    ? $"https://heka-panel.netlify.app/payment-success?order={orderNumber}"
 //                    : $"https://heka-panel.netlify.app/payment-failed?order={orderNumber}";

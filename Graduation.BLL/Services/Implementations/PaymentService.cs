@@ -32,7 +32,6 @@ namespace Graduation.BLL.Services.Implementations
             _logger = logger;
         }
 
-        // ── Initiate ──────────────────────────────────────────────────────────
 
         public async Task<PaymentDto> InitiatePaymentAsync(int orderId)
         {
@@ -41,7 +40,6 @@ namespace Graduation.BLL.Services.Implementations
                 .FirstOrDefaultAsync(o => o.Id == orderId)
                 ?? throw new NotFoundException("Order", orderId);
 
-            // Cash on delivery → no Paymob needed
             if (order.PaymentMethod == PaymentMethod.CashOnDelivery)
                 return new PaymentDto
                 {
@@ -52,21 +50,42 @@ namespace Graduation.BLL.Services.Implementations
                     CreatedAt = DateTime.UtcNow
                 };
 
-            // Avoid creating duplicate payment records
             var existing = await _context.Payments
                 .FirstOrDefaultAsync(p => p.OrderId == orderId);
-            if (existing != null)
-                return MapToDto(existing, order.OrderNumber);
 
-            // Run the Paymob 3-step flow
+            if (existing != null)
+            {
+                if (existing.Status == PaymentStatus2.Paid)
+                    return MapToDto(existing, order.OrderNumber);
+
+                if (existing.Status == PaymentStatus2.Pending)
+                    return MapToDto(existing, order.OrderNumber);
+
+                existing.PaymentUrl = await _paymob.CreatePaymentUrlAsync(
+                    order.OrderNumber,
+                    order.TotalAmount,
+                    order.ShippingFirstName,
+                    order.ShippingLastName,
+                    order.User?.Email ?? "guest@heka.com",
+                    order.ShippingPhone,
+                    order.ShippingCity);
+
+                existing.Status = PaymentStatus2.Pending;
+                existing.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return MapToDto(existing, order.OrderNumber);
+            }
+
             var paymentUrl = await _paymob.CreatePaymentUrlAsync(
-                orderNumber: order.OrderNumber,
-                amount: order.TotalAmount,
-                firstName: order.ShippingFirstName,
-                lastName: order.ShippingLastName,
-                email: order.User?.Email ?? "guest@heka.com",
-                phone: order.ShippingPhone,
-                city: order.ShippingCity);
+                order.OrderNumber,
+                order.TotalAmount,
+                order.ShippingFirstName,
+                order.ShippingLastName,
+                order.User?.Email ?? "guest@heka.com",
+                order.ShippingPhone,
+                order.ShippingCity);
 
             var payment = new Payment
             {
@@ -84,142 +103,131 @@ namespace Graduation.BLL.Services.Implementations
             payment.Code = BuildCode(payment.Id);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation(
-                "Payment initiated for order {OrderNumber}, URL generated",
-                order.OrderNumber);
-
             return MapToDto(payment, order.OrderNumber);
         }
 
         // ── Webhook ───────────────────────────────────────────────────────────
 
         public async Task HandleWebhookAsync(
-            Dictionary<string, string> callbackData,
-            string receivedHmac)
+    Dictionary<string, string> callbackData,
+    string receivedHmac)
         {
-            // 1. Verify HMAC signature
             if (!_paymob.VerifyHmac(callbackData, receivedHmac))
             {
-                _logger.LogWarning("Paymob webhook: invalid HMAC — ignoring");
+                _logger.LogWarning("Invalid HMAC");
                 return;
             }
 
-            // 2. Extract key fields
             callbackData.TryGetValue("success", out var successStr);
             callbackData.TryGetValue("id", out var transactionId);
             callbackData.TryGetValue("merchant_order_id", out var orderNumber);
             callbackData.TryGetValue("is_refund", out var isRefundStr);
 
-            var isSuccess = successStr?.ToLower() == "true";
-            var isRefund = isRefundStr?.ToLower() == "true";
+            var isSuccess = string.Equals(successStr, "true", StringComparison.OrdinalIgnoreCase);
+            var isRefund = string.Equals(isRefundStr, "true", StringComparison.OrdinalIgnoreCase);
 
             if (string.IsNullOrEmpty(orderNumber))
-            {
-                _logger.LogWarning("Paymob webhook: missing merchant_order_id");
                 return;
-            }
 
-            // 3. Find the order
             var order = await _context.Orders
                 .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
             if (order == null)
             {
-                _logger.LogWarning("Paymob webhook: order {OrderNumber} not found", orderNumber);
+                _logger.LogWarning("Order not found: {OrderNumber}", orderNumber);
                 return;
             }
 
-            // 4. Find payment record
             var payment = await _context.Payments
                 .FirstOrDefaultAsync(p => p.OrderId == order.Id);
 
             if (payment == null)
             {
-                _logger.LogWarning(
-                    "Paymob webhook: payment record for order {OrderNumber} not found", orderNumber);
+                _logger.LogWarning("Payment not found for order: {OrderNumber}", orderNumber);
                 return;
             }
 
-            // 5. Avoid processing the same transaction twice
-            if (payment.Status == PaymentStatus2.Paid && !isRefund)
+            if (!string.IsNullOrEmpty(transactionId) &&
+                payment.PaymobTransactionId == transactionId)
+            {
+                _logger.LogInformation("Duplicate webhook ignored");
                 return;
-
-            payment.PaymobTransactionId = transactionId;
-            payment.IsSuccess = isSuccess;
-            payment.UpdatedAt = DateTime.UtcNow;
-
-            if (isRefund)
-            {
-                payment.Status = PaymentStatus2.Refunded;
-                order.PaymentStatus = PaymentStatus.Refunded;
-
-                await _notifications.CreateNotificationAsync(
-                    userId: order.UserId,
-                    title: "Payment Refunded",
-                    message: $"Your payment for order {orderNumber} has been refunded.",
-                    type: "Payment",
-                    orderId: order.Id);
             }
-            else if (isSuccess)
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
             {
-                payment.Status = PaymentStatus2.Paid;
-                payment.PaidAt = DateTime.UtcNow;
-                order.PaymentStatus = PaymentStatus.Paid;
-                order.Status = OrderStatus.Confirmed;
-                order.ConfirmedAt = DateTime.UtcNow;
+                await _context.Entry(payment).ReloadAsync();
 
-                await _notifications.CreateNotificationAsync(
-                    userId: order.UserId,
-                    title: "Payment Successful ✅",
-                    message: $"Your payment for order {orderNumber} was successful! We are preparing your order.",
-                    type: "Payment",
-                    orderId: order.Id);
+                payment.PaymobTransactionId = transactionId;
+                payment.IsSuccess = isSuccess;
+                payment.UpdatedAt = DateTime.UtcNow;
 
-                // ── Send confirmation email AFTER successful payment ────────────
-                var user = await _context.Users.FindAsync(order.UserId);
-                if (user?.Email != null)
+                if (isRefund)
                 {
-                    var capturedOrderNumber = orderNumber;
-                    var capturedAmount = order.TotalAmount;
-                    var capturedEmail = user.Email;
+                    payment.Status = PaymentStatus2.Refunded;
+                    order.PaymentStatus = PaymentStatus.Refunded;
 
-                    _ = Task.Run(async () =>
+                    await _notifications.CreateNotificationAsync(
+                        order.UserId,
+                        "Payment Refunded",
+                        $"Order {orderNumber} refunded",
+                        "Payment",
+                        order.Id);
+                }
+                else if (isSuccess)
+                {
+                    payment.Status = PaymentStatus2.Paid;
+                    payment.PaidAt = DateTime.UtcNow;
+
+                    order.PaymentStatus = PaymentStatus.Paid;
+                    order.Status = OrderStatus.Confirmed;
+                    order.ConfirmedAt = DateTime.UtcNow;
+
+                    await _notifications.CreateNotificationAsync(
+                        order.UserId,
+                        "Payment Successful ✅",
+                        $"Order {orderNumber} confirmed",
+                        "Payment",
+                        order.Id);
+
+                    var user = await _context.Users.FindAsync(order.UserId);
+                    if (user?.Email != null)
                     {
                         try
                         {
                             await _emailService.SendOrderConfirmationEmailAsync(
-                                capturedEmail, capturedOrderNumber, capturedAmount);
+                                user.Email,
+                                orderNumber,
+                                order.TotalAmount);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex,
-                                "Failed to send payment confirmation email for order {OrderNumber}",
-                                capturedOrderNumber);
+                            _logger.LogError(ex, "Email failed");
                         }
-                    });
+                    }
+                }
+                else
+                {
+                    payment.Status = PaymentStatus2.Failed;
+
+                    await _notifications.CreateNotificationAsync(
+                        order.UserId,
+                        "Payment Failed ❌",
+                        $"Order {orderNumber} failed",
+                        "Payment",
+                        order.Id);
                 }
 
-                _logger.LogInformation(
-                    "Payment confirmed for order {OrderNumber}, transaction {TransactionId}",
-                    orderNumber, transactionId);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
             }
-            else
+            catch (Exception ex)
             {
-                payment.Status = PaymentStatus2.Failed;
-
-                await _notifications.CreateNotificationAsync(
-                    userId: order.UserId,
-                    title: "Payment Failed ❌",
-                    message: $"Your payment for order {orderNumber} failed. Please try again.",
-                    type: "Payment",
-                    orderId: order.Id);
-
-                _logger.LogWarning(
-                    "Payment failed for order {OrderNumber}, transaction {TransactionId}",
-                    orderNumber, transactionId);
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Webhook transaction failed");
             }
-
-            await _context.SaveChangesAsync();
         }
 
         // ── Get by order number ───────────────────────────────────────────────
@@ -247,7 +255,6 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(payment, orderNumber);
         }
 
-        // ── Admin: all payments ───────────────────────────────────────────────
 
         public async Task<PagedPaymentResultDto> GetAllAsync(
             int pageNumber, int pageSize, string? status)

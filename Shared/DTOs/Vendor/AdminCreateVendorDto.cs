@@ -9,7 +9,7 @@ namespace Shared.DTOs.Vendor
 {
     public class AdminCreateVendorDto
     {
-        public string UserId { get; set; } = string.Empty;
+        public string UserCode { get; set; } = string.Empty;
         public string StoreName { get; set; } = string.Empty;
         public string StoreNameAr { get; set; } = string.Empty;
         public string StoreDescription { get; set; } = string.Empty;

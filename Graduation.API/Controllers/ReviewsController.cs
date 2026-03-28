@@ -21,24 +21,35 @@ namespace Graduation.API.Controllers
 
         [HttpGet("product/{productId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetProductReviews(int productId)
+        public async Task<IActionResult> GetProductReviews(
+                int productId,
+                [FromQuery] int pageNumber = 1,
+                [FromQuery] int pageSize = 10)
         {
-            var reviews = await _reviewService.GetProductReviewsAsync(productId);
-            return Ok(new ApiResult(data: reviews));
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1 || pageSize > 50) pageSize = 10;
+
+            var result = await _reviewService.GetProductReviewsAsync(productId, pageNumber, pageSize);
+            return Ok(new ApiResult(data: result, count: result.TotalCount));
         }
 
         [HttpGet("my-reviews")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetMyReviews()
+        public async Task<IActionResult> GetMyReviews(
+                 [FromQuery] int pageNumber = 1,
+                 [FromQuery] int pageSize = 10)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            var reviews = await _reviewService.GetUserReviewsAsync(userId);
-            return Ok(new ApiResult(data: reviews));
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1 || pageSize > 50) pageSize = 10;
+
+            var result = await _reviewService.GetUserReviewsAsync(userId, pageNumber, pageSize);
+            return Ok(new ApiResult(data: result, count: result.TotalCount));
         }
 
         [HttpPost]
@@ -110,11 +121,15 @@ namespace Graduation.API.Controllers
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetPendingReviews()
+        public async Task<IActionResult> GetPendingReviews(
+                    [FromQuery] int pageNumber = 1,
+                    [FromQuery] int pageSize = 20)
         {
-            // FIX: Admin calls the no-param overload — returns all pending reviews
-            var reviews = await _reviewService.GetPendingReviewsAsync();
-            return Ok(new ApiResult(data: reviews, count: reviews.Count));
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1 || pageSize > 100) pageSize = 20;
+
+            var result = await _reviewService.GetPendingReviewsAsync(pageNumber, pageSize);
+            return Ok(new ApiResult(data: result, count: result.TotalCount));
         }
     }
 }

@@ -123,7 +123,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> CreateVendor([FromBody] AdminCreateVendorDto dto)
         {
-            var userId = await _codeLookup.ResolveUserIdAsync(dto.UserId);
+            var userId = await _codeLookup.ResolveUserIdAsync(dto.UserCode);
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
