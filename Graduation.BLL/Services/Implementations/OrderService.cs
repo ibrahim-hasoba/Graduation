@@ -30,6 +30,42 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
+            // ── Normalise clientType ──────────────────────────────────────────
+            var clientType = string.IsNullOrWhiteSpace(dto.ClientType)
+                ? "web"
+                : dto.ClientType.ToLower().Trim();
+
+            if (clientType != "web" && clientType != "mobile")
+                clientType = "web";
+
+            // ── Resolve shipping location ─────────────────────────────────────
+            string? resolvedAddress = null;
+            double? resolvedLat = null;
+            double? resolvedLng = null;
+
+            if (dto.AddressId.HasValue)
+            {
+                var savedAddress = await _context.UserAddresses
+                    .FirstOrDefaultAsync(a => a.Id == dto.AddressId.Value && a.UserId == userId);
+
+                if (savedAddress == null)
+                    throw new BadRequestException("The selected address was not found.");
+
+                resolvedAddress = savedAddress.FullAddress;
+                resolvedLat = savedAddress.Latitude;
+                resolvedLng = savedAddress.Longitude;
+            }
+            else
+            {
+                if (dto.Latitude == null || dto.Longitude == null)
+                    throw new BadRequestException(
+                        "Please provide either a saved address ID or GPS coordinates.");
+
+                resolvedAddress = dto.ShippingAddress;
+                resolvedLat = dto.Latitude;
+                resolvedLng = dto.Longitude;
+            }
+
             using var transaction = await _context.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable);
 
@@ -38,6 +74,7 @@ namespace Graduation.BLL.Services.Implementations
                 var cartItems = await _context.CartItems
                     .Include(ci => ci.Product)
                         .ThenInclude(p => p.Vendor)
+                    .Include(ci => ci.Variant)
                     .Where(ci => ci.UserId == userId)
                     .ToListAsync();
 
@@ -58,7 +95,6 @@ namespace Graduation.BLL.Services.Implementations
                 var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
                 var createdOrders = new List<Order>();
                 var allOrderItems = new List<OrderItem>();
-                var allCartItemsToRemove = new List<CartItem>(cartItems);
 
                 foreach (var vendorGroup in vendorGroups)
                 {
@@ -66,12 +102,26 @@ namespace Graduation.BLL.Services.Implementations
 
                     foreach (var item in items)
                     {
-                        var rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE Products
-                            SET StockQuantity = StockQuantity - {item.Quantity}
-                            WHERE Id = {item.ProductId}
-                              AND StockQuantity >= {item.Quantity}
-                              AND IsActive = 1");
+                        int rowsAffected;
+
+                        if (item.VariantId.HasValue && item.Variant?.StockQuantity != null)
+                        {
+                            rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE ProductVariants
+                                SET StockQuantity = StockQuantity - {item.Quantity}
+                                WHERE Id = {item.VariantId.Value}
+                                  AND StockQuantity >= {item.Quantity}
+                                  AND IsActive = 1");
+                        }
+                        else
+                        {
+                            rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                UPDATE Products
+                                SET StockQuantity = StockQuantity - {item.Quantity}
+                                WHERE Id = {item.ProductId}
+                                  AND StockQuantity >= {item.Quantity}
+                                  AND IsActive = 1");
+                        }
 
                         if (rowsAffected == 0)
                         {
@@ -82,16 +132,22 @@ namespace Graduation.BLL.Services.Implementations
                             if (product == null)
                                 throw new NotFoundException($"Product with ID {item.ProductId} not found");
                             if (!product.IsActive)
-                                throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
+                                throw new BadRequestException(
+                                    $"Product '{product.NameEn}' is no longer available");
 
                             throw new BadRequestException(
-                                $"Product '{product.NameEn}' has insufficient stock. " +
-                                $"Only {product.StockQuantity} available");
+                                $"Product '{product.NameEn}' has insufficient stock.");
                         }
                     }
 
-                    var subTotal = items.Sum(i => (i.Product.DiscountPrice ?? i.Product.Price) * i.Quantity);
-                    var shippingCost = CalculateShipping(dto.ShippingGovernorate);
+                    var subTotal = items.Sum(i =>
+                    {
+                        var basePrice = i.Product.DiscountPrice ?? i.Product.Price;
+                        var adjustment = i.Variant?.PriceAdjustment ?? 0m;
+                        return (basePrice + adjustment) * i.Quantity;
+                    });
+
+                    const decimal shippingCost = 50m;
                     var totalAmount = subTotal + shippingCost;
 
                     var order = new Order
@@ -107,10 +163,12 @@ namespace Graduation.BLL.Services.Implementations
                         OrderDate = DateTime.UtcNow,
                         ShippingFirstName = dto.ShippingFirstName,
                         ShippingLastName = dto.ShippingLastName,
-                        ShippingAddress = dto.ShippingAddress,
-                        ShippingCity = dto.ShippingCity,
-                        ShippingGovernorate = dto.ShippingGovernorate,
                         ShippingPhone = dto.ShippingPhone,
+                        ShippingAddress = resolvedAddress,
+                        ShippingLatitude = resolvedLat,
+                        ShippingLongitude = resolvedLng,
+                        // ── Store clientType so re-initiation uses the correct redirect ──
+                        ClientType = clientType,
                         Notes = dto.Notes
                     };
 
@@ -119,11 +177,15 @@ namespace Graduation.BLL.Services.Implementations
 
                     foreach (var cartItem in items)
                     {
-                        var unitPrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
+                        var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
+                        var adjustment = cartItem.Variant?.PriceAdjustment ?? 0m;
+                        var unitPrice = basePrice + adjustment;
+
                         allOrderItems.Add(new OrderItem
                         {
                             Order = order,
                             ProductId = cartItem.ProductId,
+                            VariantId = cartItem.VariantId,
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
                             TotalPrice = unitPrice * cartItem.Quantity
@@ -132,29 +194,27 @@ namespace Graduation.BLL.Services.Implementations
                 }
 
                 _context.OrderItems.AddRange(allOrderItems);
-                _context.CartItems.RemoveRange(allCartItemsToRemove);
+                _context.CartItems.RemoveRange(cartItems);
                 await _context.SaveChangesAsync();
-
                 await transaction.CommitAsync();
 
                 _logger.LogInformation(
                     "Order(s) created: {OrderNumbers} for user {UserId}",
                     string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                // ── Email: ONLY for Cash on Delivery ───────────────────────────────
-                // For card payments, email is sent from webhook AFTER Paymob confirms payment
+                // ── CoD: send confirmation email immediately ───────────────────
                 if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
                 {
                     var user = await _context.Users.FindAsync(userId);
                     if (user?.Email != null)
                     {
-                        var firstOrder = createdOrders.First();
+                        var first = createdOrders.First();
                         _ = Task.Run(async () =>
                         {
                             try
                             {
                                 await _emailService.SendOrderConfirmationEmailAsync(
-                                    user.Email, firstOrder.OrderNumber, firstOrder.TotalAmount);
+                                    user.Email, first.OrderNumber, first.TotalAmount);
                             }
                             catch (Exception ex)
                             {
@@ -164,7 +224,7 @@ namespace Graduation.BLL.Services.Implementations
                     }
                 }
 
-                // ── Initiate Paymob payment for card orders ────────────────────────
+                // ── Card: initiate Paymob using the stored clientType ─────────
                 PaymentDto? paymentInfo = null;
 
                 if (dto.PaymentMethod != PaymentMethod.CashOnDelivery)
@@ -173,12 +233,14 @@ namespace Graduation.BLL.Services.Implementations
                     {
                         try
                         {
-                            await _paymentService.InitiatePaymentAsync(o.Id);
+                            // Pass the clientType so Paymob builds the correct redirect URL
+                            await _paymentService.InitiatePaymentAsync(o.Id, o.ClientType);
                         }
                         catch (Exception ex)
                         {
                             _logger.LogError(ex,
-                                "Failed to initiate Paymob payment for order {OrderNumber}", o.OrderNumber);
+                                "Failed to initiate Paymob payment for order {OrderNumber}",
+                                o.OrderNumber);
                         }
                     }
 
@@ -221,6 +283,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Variant)
                 .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
 
             if (order == null)
@@ -262,7 +326,10 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
-                .FirstOrDefaultAsync(o => o.Id == id && o.OrderItems.Any(oi => oi.Product.VendorId == vendorId));
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Variant)
+                .FirstOrDefaultAsync(o =>
+                    o.Id == id && o.OrderItems.Any(oi => oi.Product.VendorId == vendorId));
 
             if (order == null)
                 throw new NotFoundException("Order", id);
@@ -287,12 +354,7 @@ namespace Graduation.BLL.Services.Implementations
                 case OrderStatus.Cancelled:
                     order.CancelledAt = DateTime.UtcNow;
                     order.CancellationReason = dto.CancellationReason;
-                    foreach (var item in order.OrderItems)
-                    {
-                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                            UPDATE Products SET StockQuantity = StockQuantity + {item.Quantity}
-                            WHERE Id = {item.ProductId}");
-                    }
+                    await RestoreStockAsync(order.OrderItems);
                     break;
             }
 
@@ -307,6 +369,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Variant)
                 .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
 
             if (order == null)
@@ -322,37 +386,36 @@ namespace Graduation.BLL.Services.Implementations
             order.CancelledAt = DateTime.UtcNow;
             order.CancellationReason = reason;
 
-            foreach (var item in order.OrderItems)
-            {
-                await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                    UPDATE Products SET StockQuantity = StockQuantity + {item.Quantity}
-                    WHERE Id = {item.ProductId}");
-            }
-
+            await RestoreStockAsync(order.OrderItems);
             await _context.SaveChangesAsync();
             return MapToDto(order);
         }
 
-        // ── Private helpers ────────────────────────────────────────────────────────
+        // ── Private helpers ────────────────────────────────────────────────────
 
-        private string GenerateOrderNumber()
-            => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
-
-        private decimal CalculateShipping(EgyptianGovernorate governorate)
-            => governorate switch
+        private async Task RestoreStockAsync(IEnumerable<OrderItem> items)
+        {
+            foreach (var item in items)
             {
-                EgyptianGovernorate.Cairo => 30m,
-                EgyptianGovernorate.Giza => 30m,
-                EgyptianGovernorate.Alexandria => 40m,
-                EgyptianGovernorate.Dakahlia => 45m,
-                EgyptianGovernorate.Gharbia => 45m,
-                EgyptianGovernorate.Sharkia => 45m,
-                EgyptianGovernorate.RedSea => 70m,
-                EgyptianGovernorate.SouthSinai => 80m,
-                EgyptianGovernorate.Aswan => 75m,
-                EgyptianGovernorate.Luxor => 70m,
-                _ => 50m
-            };
+                if (item.VariantId.HasValue && item.Variant?.StockQuantity != null)
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE ProductVariants
+                        SET StockQuantity = StockQuantity + {item.Quantity}
+                        WHERE Id = {item.VariantId.Value}");
+                }
+                else
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE Products
+                        SET StockQuantity = StockQuantity + {item.Quantity}
+                        WHERE Id = {item.ProductId}");
+                }
+            }
+        }
+
+        private static string GenerateOrderNumber()
+            => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
 
         private OrderDto MapToDto(Order order) => new()
         {
@@ -369,10 +432,10 @@ namespace Graduation.BLL.Services.Implementations
             DeliveredAt = order.DeliveredAt,
             ShippingFirstName = order.ShippingFirstName,
             ShippingLastName = order.ShippingLastName,
-            ShippingAddress = order.ShippingAddress,
-            ShippingCity = order.ShippingCity,
-            ShippingGovernorate = order.ShippingGovernorate.ToString(),
             ShippingPhone = order.ShippingPhone,
+            ShippingAddress = order.ShippingAddress,
+            ShippingLatitude = order.ShippingLatitude,
+            ShippingLongitude = order.ShippingLongitude,
             Notes = order.Notes,
             VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
             VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
@@ -383,10 +446,14 @@ namespace Graduation.BLL.Services.Implementations
                 ProductNameAr = oi.Product.NameAr,
                 ProductNameEn = oi.Product.NameEn,
                 ProductImage = oi.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                                ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
+                               ?? oi.Product.Images.FirstOrDefault()?.ImageUrl,
                 Quantity = oi.Quantity,
                 UnitPrice = oi.UnitPrice,
-                TotalPrice = oi.TotalPrice
+                TotalPrice = oi.TotalPrice,
+                VariantId = oi.VariantId,
+                VariantTypeName = oi.Variant?.TypeName,
+                VariantValue = oi.Variant?.Value,
+                VariantColorHex = oi.Variant?.ColorHex
             }).ToList()
         };
 
@@ -419,6 +486,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Variant)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)

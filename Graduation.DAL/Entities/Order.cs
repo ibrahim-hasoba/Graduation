@@ -18,10 +18,10 @@
 
         public string ShippingFirstName { get; set; } = string.Empty;
         public string ShippingLastName { get; set; } = string.Empty;
-        public string ShippingAddress { get; set; } = string.Empty;
-        public string ShippingCity { get; set; } = string.Empty;
-        public EgyptianGovernorate ShippingGovernorate { get; set; }
         public string ShippingPhone { get; set; } = string.Empty;
+        public string? ShippingAddress { get; set; }
+        public double? ShippingLatitude { get; set; }
+        public double? ShippingLongitude { get; set; }
         public string? Notes { get; set; }
         public string? CancellationReason { get; set; }
 
@@ -29,5 +29,7 @@
         public AppUser User { get; set; } = null!;
 
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+
+        public string ClientType { get; set; } = "web";
     }
 }

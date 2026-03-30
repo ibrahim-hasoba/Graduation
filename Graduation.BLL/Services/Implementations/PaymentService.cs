@@ -36,6 +36,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             var order = await _context.Orders
                 .Include(o => o.User)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == orderId)
                 ?? throw new NotFoundException("Order", orderId);
 
@@ -49,6 +50,14 @@ namespace Graduation.BLL.Services.Implementations
                     CreatedAt = DateTime.UtcNow
                 };
 
+            // Always prefer the clientType stored on the order.
+            // The parameter is kept for backwards-compatibility but the stored value wins.
+            var resolvedClientType = string.IsNullOrWhiteSpace(order.ClientType)
+                ? clientType
+                : order.ClientType;
+
+            var cityForPaymob = order.ShippingAddress ?? "Egypt";
+
             var existing = await _context.Payments
                 .FirstOrDefaultAsync(p => p.OrderId == orderId);
 
@@ -60,6 +69,7 @@ namespace Graduation.BLL.Services.Implementations
                 if (existing.Status == PaymentStatus2.Pending)
                     return MapToDto(existing, order.OrderNumber);
 
+                // Failed/expired — regenerate the payment URL using the stored clientType
                 existing.PaymentUrl = await _paymob.CreatePaymentUrlAsync(
                     order.OrderNumber,
                     order.TotalAmount,
@@ -67,8 +77,8 @@ namespace Graduation.BLL.Services.Implementations
                     order.ShippingLastName,
                     order.User?.Email ?? "guest@heka.com",
                     order.ShippingPhone,
-                    order.ShippingCity,
-                    clientType);
+                    cityForPaymob,
+                    resolvedClientType);          // ← uses stored clientType
 
                 existing.Status = PaymentStatus2.Pending;
                 existing.UpdatedAt = DateTime.UtcNow;
@@ -84,8 +94,8 @@ namespace Graduation.BLL.Services.Implementations
                 order.ShippingLastName,
                 order.User?.Email ?? "guest@heka.com",
                 order.ShippingPhone,
-                order.ShippingCity,
-                clientType);
+                cityForPaymob,
+                resolvedClientType);              // ← uses stored clientType
 
             var payment = new Payment
             {
@@ -127,35 +137,39 @@ namespace Graduation.BLL.Services.Implementations
             if (string.IsNullOrEmpty(orderNumber))
                 return;
 
-            var order = await _context.Orders
-                .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
-
-            if (order == null)
-            {
-                _logger.LogWarning("Order not found: {OrderNumber}", orderNumber);
-                return;
-            }
-
-            var payment = await _context.Payments
-                .FirstOrDefaultAsync(p => p.OrderId == order.Id);
-
-            if (payment == null)
-            {
-                _logger.LogWarning("Payment not found for order: {OrderNumber}", orderNumber);
-                return;
-            }
-
-            if (!string.IsNullOrEmpty(transactionId) &&
-                payment.PaymobTransactionId == transactionId)
-            {
-                _logger.LogInformation("Duplicate webhook ignored");
-                return;
-            }
-
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
             try
             {
+                var order = await _context.Orders
+                    .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+
+                if (order == null)
+                {
+                    _logger.LogWarning("Order not found: {OrderNumber}", orderNumber);
+                    return;
+                }
+
+                var payment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.OrderId == order.Id);
+
+                if (payment == null)
+                {
+                    _logger.LogWarning("Payment not found for order: {OrderNumber}", orderNumber);
+                    return;
+                }
+
+                // Check for duplicate within transaction to prevent race condition
+                if (!string.IsNullOrEmpty(transactionId) &&
+                    !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
+                    payment.PaymobTransactionId == transactionId)
+                {
+                    _logger.LogInformation("Duplicate webhook ignored for order {OrderNumber}", orderNumber);
+                    await transaction.CommitAsync();
+                    return;
+                }
+
+
                 await _context.Entry(payment).ReloadAsync();
 
                 payment.PaymobTransactionId = transactionId;
@@ -170,7 +184,7 @@ namespace Graduation.BLL.Services.Implementations
                     await _notifications.CreateNotificationAsync(
                         order.UserId,
                         "Payment Refunded",
-                        $"Order {orderNumber} refunded",
+                        $"Your payment for order {orderNumber} has been refunded.",
                         "Payment",
                         order.Id);
                 }
@@ -186,7 +200,7 @@ namespace Graduation.BLL.Services.Implementations
                     await _notifications.CreateNotificationAsync(
                         order.UserId,
                         "Payment Successful ✅",
-                        $"Order {orderNumber} confirmed",
+                        $"Your order {orderNumber} has been confirmed.",
                         "Payment",
                         order.Id);
 
@@ -196,13 +210,11 @@ namespace Graduation.BLL.Services.Implementations
                         try
                         {
                             await _emailService.SendOrderConfirmationEmailAsync(
-                                user.Email,
-                                orderNumber,
-                                order.TotalAmount);
+                                user.Email, orderNumber, order.TotalAmount);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Email failed");
+                            _logger.LogError(ex, "Order confirmation email failed for {OrderNumber}", orderNumber);
                         }
                     }
                 }
@@ -213,18 +225,22 @@ namespace Graduation.BLL.Services.Implementations
                     await _notifications.CreateNotificationAsync(
                         order.UserId,
                         "Payment Failed ❌",
-                        $"Order {orderNumber} failed",
+                        $"Payment for order {orderNumber} failed. Please try again.",
                         "Payment",
                         order.Id);
                 }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                _logger.LogInformation(
+                    "Webhook processed: order={OrderNumber}, success={Success}, refund={Refund}",
+                    orderNumber, isSuccess, isRefund);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
-                _logger.LogError(ex, "Webhook transaction failed");
+                _logger.LogError(ex, "Webhook transaction failed for order {OrderNumber}", orderNumber);
             }
         }
 
@@ -282,6 +298,8 @@ namespace Graduation.BLL.Services.Implementations
                 TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             };
         }
+
+        // ── Helpers ────────────────────────────────────────────────────────────
 
         private static string BuildCode(int id)
         {

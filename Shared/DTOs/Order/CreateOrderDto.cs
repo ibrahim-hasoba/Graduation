@@ -14,22 +14,18 @@ namespace Shared.DTOs.Order
         [Required(ErrorMessage = "Last name is required")]
         public string ShippingLastName { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Address is required")]
-        public string ShippingAddress { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "City is required")]
-        public string ShippingCity { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Governorate is required")]
-        public EgyptianGovernorate ShippingGovernorate { get; set; }
-
         [Required(ErrorMessage = "Phone number is required")]
         [Phone]
         public string ShippingPhone { get; set; } = string.Empty;
+        public int? AddressId { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public string? ShippingAddress { get; set; }
+
 
         [Required(ErrorMessage = "Payment method is required")]
         public PaymentMethod PaymentMethod { get; set; }
-
+        public string ClientType { get; set; } = "web";
         public string? Notes { get; set; }
     }
 }

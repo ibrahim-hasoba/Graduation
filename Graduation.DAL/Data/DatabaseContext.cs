@@ -325,7 +325,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(o => o.Status);
                 entity.HasIndex(o => o.PaymentStatus);
                 entity.HasIndex(o => o.OrderDate);
-                entity.HasIndex(o => o.ShippingGovernorate);
 
                 // Composite Indexes for Common Queries
                 entity.HasIndex(o => new { o.UserId, o.OrderDate });

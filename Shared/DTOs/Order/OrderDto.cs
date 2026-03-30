@@ -21,10 +21,10 @@ namespace Shared.DTOs.Order
         // Shipping Info
         public string ShippingFirstName { get; set; } = string.Empty;
         public string ShippingLastName { get; set; } = string.Empty;
-        public string ShippingAddress { get; set; } = string.Empty;
-        public string ShippingCity { get; set; } = string.Empty;
-        public string ShippingGovernorate { get; set; } = string.Empty;
         public string ShippingPhone { get; set; } = string.Empty;
+        public string? ShippingAddress { get; set; }
+        public double? ShippingLatitude { get; set; }
+        public double? ShippingLongitude { get; set; }
         public string? Notes { get; set; }
 
         // Vendor Info

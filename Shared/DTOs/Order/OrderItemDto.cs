@@ -14,5 +14,9 @@ namespace Shared.DTOs.Order
         public int Quantity { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal TotalPrice { get; set; }
+        public int? VariantId { get; set; }
+        public string? VariantTypeName { get; set; }
+        public string? VariantValue { get; set; }
+        public string? VariantColorHex { get; set; }
     }
 }

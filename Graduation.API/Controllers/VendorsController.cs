@@ -126,8 +126,7 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new NotFoundException("Vendor profile not found");
 
-            // FIX #19: Filter by vendor's products, not by the vendor's user ID against
-            // Orders.UserId (which holds the *customer's* ID).
+            // Verify vendor ownership and filter by vendor's products
             var order = await _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
