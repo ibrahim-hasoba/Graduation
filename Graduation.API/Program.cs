@@ -70,9 +70,7 @@ namespace Graduation.API
 
                 builder.Host.UseSerilog();
 
-
                 builder.Services.AddValidatorsFromAssemblies(Assembly.GetExecutingAssembly());
-
 
                 builder.Services.AddControllers(options =>
                 {
@@ -106,7 +104,6 @@ namespace Graduation.API
                 {
                     options.SwaggerDoc("v1", new OpenApiInfo
                     {
-
                         Title = "Heka",
                         Version = "v1",
                         Description = "Heka API"
@@ -206,7 +203,6 @@ namespace Graduation.API
                     };
                 });
 
-
                 builder.Services.AddScoped<JwtHandler>();
                 builder.Services.AddScoped<IVendorService, VendorService>();
                 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -239,13 +235,13 @@ namespace Graduation.API
                     options.AddFixedWindowLimiter("fixed", opt =>
                     {
                         opt.Window = TimeSpan.FromSeconds(10);
-                        opt.PermitLimit = 5; 
+                        opt.PermitLimit = 5;
                         opt.QueueLimit = 2;
                     });
                     options.AddFixedWindowLimiter("otp", opt =>
                     {
                         opt.Window = TimeSpan.FromMinutes(60);
-                        opt.PermitLimit = 30; 
+                        opt.PermitLimit = 30;
                         opt.QueueLimit = 0;
                     });
                 });
@@ -255,54 +251,18 @@ namespace Graduation.API
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
-                /*
-                builder.Services.AddRouting(options =>
-                {
-                    options.LowercaseUrls = true;
-                    options.AppendTrailingSlash = false;
-                });
-                */
 
                 builder.Services.AddCors(options =>
                 {
                     options.AddPolicy("AllowFrontend", policy =>
                     {
                         policy
-                            .WithOrigins("http://localhost:3000" , "https://heka-eg.netlify.app")
+                            .WithOrigins("http://localhost:3000", "https://heka-eg.netlify.app")
                             .AllowAnyMethod()
                             .AllowAnyHeader()
-                            .AllowCredentials(); 
+                            .AllowCredentials();
                     });
                 });
-
-                var app = builder.Build();
-
-                using (var scope = app.Services.CreateScope())
-                {
-                    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-                    UserManager<AppUser>? userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
-                    await SeedRolesAndAdmin(roleManager, userManager);
-                }
-
-                app.UseMiddleware<ExceptionMiddleware>();
-
-                app.UseSwagger();
-                app.UseSwaggerUI(c =>
-                {
-                    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
-                });
-                app.Use(async (context, next) =>
-                {
-                    var path = context.Request.Path.Value;
-                    if (path != null && path.Length > 1 && path.EndsWith("/"))
-                        context.Request.Path = path.TrimEnd('/');
-                    await next();
-                });
-
-                if (!app.Environment.IsDevelopment())
-                    app.UseHttpsRedirection();
-
-                app.UseStaticFiles();  
 
                 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
                 if (!Directory.Exists(wwwrootPath))
@@ -324,12 +284,55 @@ namespace Graduation.API
                     Directory.CreateDirectory(profilesPath);
                     Log.Information("Created profiles folder at: {Path}", profilesPath);
                 }
+
+                // --- FORCE ASP.NET TO RECOGNIZE THE WEB ROOT ---
+                builder.Environment.WebRootPath = wwwrootPath;
+
+                var app = builder.Build();
+
+                using (var scope = app.Services.CreateScope())
+                {
+                    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+                    UserManager<AppUser>? userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
+                    await SeedRolesAndAdmin(roleManager, userManager);
+                }
+
+                app.UseMiddleware<ExceptionMiddleware>();
+
+                
+                app.UseStaticFiles();
+
+                app.UseStaticFiles(new StaticFileOptions
+                {
+                    FileProvider = new PhysicalFileProvider(uploadsPath),
+                    RequestPath = "/uploads"
+                });
+
+                if (app.Environment.IsProduction())
+                {
+                    app.UseSwagger();
+                    app.UseSwaggerUI(c =>
+                    {
+                        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
+                    });
+                }
+
+                app.Use(async (context, next) =>
+                {
+                    var path = context.Request.Path.Value;
+                    if (path != null && path.Length > 1 && path.EndsWith("/"))
+                        context.Request.Path = path.TrimEnd('/');
+                    await next();
+                });
+
+                if (!app.Environment.IsDevelopment())
+                    app.UseHttpsRedirection();
+
                 app.UseCors("AllowFrontend");
                 app.UseRateLimiter();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapControllers();
-                
 
                 Log.Information("API started successfully on {Environment}", app.Environment.EnvironmentName);
 

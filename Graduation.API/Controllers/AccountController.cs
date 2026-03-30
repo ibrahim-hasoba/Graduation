@@ -164,36 +164,56 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
-            var payload = await _googleAuthService.VerifyGoogleTokenAsync(dto.IdToken);
-            if (payload == null)
-                throw new UnauthorizedException("Invalid Google token.");
-
-            var user = await _userManager.FindByEmailAsync(payload.Email);
-            if (user == null)
+            try
             {
-                user = new AppUser
+                var payload = await _googleAuthService.VerifyGoogleTokenAsync(dto.IdToken);
+                if (payload == null)
+                    return Unauthorized(new { message = "Invalid Google token." });
+
+                var user = await _userManager.FindByEmailAsync(payload.Email);
+
+                if (user == null)
                 {
-                    Email = payload.Email,
-                    UserName = payload.Email,
-                    FirstName = payload.GivenName,
-                    LastName = payload.FamilyName,
-                    EmailConfirmed = true,
-                    CreatedAt = DateTime.UtcNow
-                };
+                    user = new AppUser
+                    {
+                        Email = payload.Email,
+                        UserName = payload.Email,
+                        // Safety check: Prevent DB NOT NULL crashes if Google returns null
+                        FirstName = payload.GivenName ?? "GoogleUser",
+                        LastName = payload.FamilyName ?? string.Empty,
+                        EmailConfirmed = true,
+                        CreatedAt = DateTime.UtcNow
+                    };
 
-                var result = await _userManager.CreateAsync(user);
-                if (!result.Succeeded)
-                    throw new BadRequestException("Failed to create user from Google account.");
+                    var result = await _userManager.CreateAsync(user);
 
-                await _userManager.AddToRoleAsync(user, "Customer");
-                await _codeAssignment.AssignUserCodeAsync(user);   
+                    if (!result.Succeeded)
+                    {
+                        // Extract exactly WHY Identity failed to create the user
+                        var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                        return BadRequest(new { message = "Failed to create user.", details = errors });
+                    }
+
+                    await _userManager.AddToRoleAsync(user, "Customer");
+                    await _codeAssignment.AssignUserCodeAsync(user);
+                }
+                else if (string.IsNullOrEmpty(user.Code))
+                {
+                    await _codeAssignment.AssignUserCodeAsync(user);
+                }
+
+                return await GenerateAuthResponse(user);
             }
-            else if (string.IsNullOrEmpty(user.Code))
+            catch (Exception ex)
             {
-                await _codeAssignment.AssignUserCodeAsync(user);   
+                // This temporarily bypasses your generic 500 middleware message
+                // and sends the EXACT database crash directly to your browser's console
+                return StatusCode(500, new
+                {
+                    message = "A fatal database or server error occurred.",
+                    errorDetails = ex.InnerException?.Message ?? ex.Message
+                });
             }
-
-            return await GenerateAuthResponse(user);
         }
 
 
@@ -376,6 +396,41 @@ namespace Graduation.API.Controllers
                 profilePictureUrl = fullProfilePictureUrl,
                 profilePictureRelativePath = user.ProfilePictureUrl
             }));
+        }
+
+        [HttpPut("update-profile")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+
+            var user = await _userManager.FindByIdAsync(userId!);
+            if (user == null) throw new NotFoundException("User not found");
+
+            user.FirstName = dto.FirstName;
+            user.LastName = dto.LastName;
+            user.PhoneNumber = dto.PhoneNumber;
+
+            var result = await _userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                throw new BadRequestException($"Failed to update profile: {errors}");
+            }
+
+            return Ok(new ApiResult(
+                data: new
+                {
+                    user.FirstName,
+                    user.LastName,
+                    user.PhoneNumber,
+                    user.Email 
+                },
+                message: "Profile updated successfully"
+            ));
         }
 
 
