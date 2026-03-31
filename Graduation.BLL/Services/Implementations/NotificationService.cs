@@ -10,16 +10,14 @@ namespace Graduation.BLL.Services.Implementations
     public class NotificationService : INotificationService
     {
         private readonly DatabaseContext _context;
-
-        public NotificationService(DatabaseContext context)
+        private readonly IFirebaseService _firebaseService;
+        public NotificationService(DatabaseContext context , IFirebaseService firebaseService)
         {
             _context = context;
+            _firebaseService = firebaseService;
         }
 
-        /// <summary>
-        /// FIX #7: Pagination is applied at the database layer via Skip/Take on the
-        /// IQueryable before materialisation. No full-table load occurs.
-        /// </summary>
+        
         public async Task<PagedNotificationResultDto> GetUserNotificationsAsync(
             string userId,
             bool unreadOnly = false,
@@ -35,7 +33,6 @@ namespace Graduation.BLL.Services.Implementations
 
             var totalCount = await query.CountAsync();
 
-            // FIX #7: Only the requested page is fetched from the DB
             var items = await query
                 .OrderByDescending(n => n.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
@@ -124,7 +121,7 @@ namespace Graduation.BLL.Services.Implementations
             int? productId = null,
             int? vendorId = null)
         {
-            _context.Notifications.Add(new Notification
+            var notification = new Notification
             {
                 UserId = userId,
                 Title = title,
@@ -135,9 +132,24 @@ namespace Graduation.BLL.Services.Implementations
                 VendorId = vendorId,
                 IsRead = false,
                 CreatedAt = DateTime.UtcNow
-            });
+            };
 
+            _context.Notifications.Add(notification);
             await _context.SaveChangesAsync();
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+
+            if (user != null && !string.IsNullOrEmpty(user.FcmToken))
+            {
+                var customData = new Dictionary<string, string>
+                {
+                    { "type", type },
+                    { "orderId", orderId?.ToString() ?? "" },
+                    { "productId", productId?.ToString() ?? "" }
+                };
+
+                await _firebaseService.SendPushNotificationAsync(user.FcmToken, title, message, customData);
+            }
         }
 
         public async Task CreateNotificationForVendorAsync(

@@ -17,5 +17,7 @@ namespace Graduation.DAL.Entities
         public string? ProfilePictureUrl { get; set; }
         public ICollection<UserAddress> Addresses { get; set; } = new List<UserAddress>();
         public DateTime? WarningEmailSentAt { get; set; }
+
+        public string? FcmToken { get; set; }
     }
 }

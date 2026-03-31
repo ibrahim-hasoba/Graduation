@@ -1,4 +1,7 @@
+using FirebaseAdmin;
+using FirebaseAdmin.Messaging;
 using FluentValidation;
+using Google.Apis.Auth.OAuth2;
 using Graduation.API.Errors;
 using Graduation.API.Extensions;
 using Graduation.API.Filters;
@@ -225,6 +228,25 @@ namespace Graduation.API
                 builder.Services.Configure<PaymobSettings>(builder.Configuration.GetSection("PaymobSettings"));
                 builder.Services.AddHttpClient<IPaymobService, PaymobService>();
                 builder.Services.AddScoped<IPaymentService, PaymentService>();
+                builder.Services.AddScoped<IFirebaseService, FirebaseService>();
+
+                var firebaseKeyPath = Path.Combine(Directory.GetCurrentDirectory(), "firebase-admin.json");
+                if (File.Exists(firebaseKeyPath))
+                {
+                    Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", firebaseKeyPath);
+
+                    FirebaseApp.Create(new AppOptions()
+                    {
+                        Credential = GoogleCredential.GetApplicationDefault()
+                    });
+
+                    builder.Services.AddSingleton(FirebaseMessaging.DefaultInstance);
+                }
+                else
+                {
+                    Log.Warning("Firebase Admin Key File Not Found! Push notifications will be disabled.");
+                }
+
                 builder.Services.Configure<FormOptions>(options =>
                 {
                     options.MultipartBodyLengthLimit = 5 * 1024 * 1024;

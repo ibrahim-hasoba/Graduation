@@ -363,3 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 
 src/Graduation.API/appsettings.json
+
+# Firebase Admin credentials
+**/firebase-admin.json
+firebase-admin.json

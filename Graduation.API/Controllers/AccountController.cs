@@ -1,5 +1,5 @@
 ﻿using Auth.DTOs;
-using Shared.Errors;
+using Graduation.API.Extensions;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
+using Shared.Errors;
 using System.Security.Claims;
 using System.Text;
 
@@ -216,6 +217,26 @@ namespace Graduation.API.Controllers
             }
         }
 
+        [HttpPost("update-fcm-token")]
+        [Authorize]
+        public async Task<IActionResult> UpdateFcmToken([FromBody] UpdateFcmTokenRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.FcmToken))
+                return BadRequest(new ApiResult(message: "FCM token cannot be empty"));
+
+            var userId = User.GetUserId();
+            if (string.IsNullOrWhiteSpace(userId))
+                return Unauthorized(new ApiResult(message: "Invalid token"));
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return NotFound(new ApiResult(message: "User not found"));
+
+            user.FcmToken = request.FcmToken;
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new ApiResult(message: "FCM token updated successfully"));
+        }
 
         [HttpPost("refresh-token")]
         [ProducesResponseType(StatusCodes.Status200OK)]
