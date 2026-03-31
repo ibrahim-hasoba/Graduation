@@ -2,6 +2,7 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Shared.DTOs.Notification;
 using Shared.Errors;
 
@@ -11,10 +12,12 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly IFirebaseService _firebaseService;
-        public NotificationService(DatabaseContext context , IFirebaseService firebaseService)
+        private readonly ILogger<NotificationService> _logger;
+        public NotificationService(DatabaseContext context , IFirebaseService firebaseService , ILogger<NotificationService> logger)
         {
             _context = context;
             _firebaseService = firebaseService;
+            _logger = logger;
         }
 
         
@@ -113,13 +116,13 @@ namespace Graduation.BLL.Services.Implementations
         }
 
         public async Task CreateNotificationAsync(
-            string userId,
-            string title,
-            string message,
-            string type = "",
-            int? orderId = null,
-            int? productId = null,
-            int? vendorId = null)
+       string userId,
+       string title,
+       string message,
+       string type = "",
+       int? orderId = null,
+       int? productId = null,
+       int? vendorId = null)
         {
             var notification = new Notification
             {
@@ -137,18 +140,36 @@ namespace Graduation.BLL.Services.Implementations
             _context.Notifications.Add(notification);
             await _context.SaveChangesAsync();
 
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
-
-            if (user != null && !string.IsNullOrEmpty(user.FcmToken))
+            try
             {
-                var customData = new Dictionary<string, string>
+                var user = await _context.Users
+                    .Where(u => u.Id == userId)
+                    .Select(u => new { u.FcmToken })
+                    .FirstOrDefaultAsync();
+
+                if (user != null && !string.IsNullOrEmpty(user.FcmToken))
+                {
+                    var customData = new Dictionary<string, string>
                 {
                     { "type", type },
                     { "orderId", orderId?.ToString() ?? "" },
                     { "productId", productId?.ToString() ?? "" }
                 };
 
-                await _firebaseService.SendPushNotificationAsync(user.FcmToken, title, message, customData);
+                    await _firebaseService.SendPushNotificationAsync(
+                        user.FcmToken, title, message, customData);
+                }
+                else
+                {
+                    _logger.LogDebug(
+                        "No FCM token found for user {UserId}, skipping push notification", userId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to send push notification to user {UserId} with title '{Title}'",
+                    userId, title);
             }
         }
 
