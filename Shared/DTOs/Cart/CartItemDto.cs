@@ -21,15 +21,7 @@ namespace Shared.DTOs.Cart
         public int VendorId { get; set; }
         public string VendorName { get; set; } = string.Empty;
         public DateTime AddedAt { get; set; }
-
-        public int? VariantId { get; set; }
-
-        public string? VariantTypeName { get; set; }
-
-        public string? VariantValue { get; set; }
-
-        public string? VariantColorHex { get; set; }
-
+        public List<CartItemVariantDto> SelectedVariants { get; set; } = new();
         public decimal VariantPriceAdjustment { get; set; }
     }
 }

@@ -26,11 +26,17 @@ namespace Graduation.DAL.Data
         public DbSet<UserAddress> UserAddresses { get; set; }
         public DbSet<ProductVariant> ProductVariants { get; set; }
         public DbSet<Payment> Payments { get; set; }
-
+        public DbSet<CartItemVariant> CartItemVariants { get; set; }
+        public DbSet<OrderItemVariant> OrderItemVariants { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
 
+            builder.Entity<CartItemVariant>()
+                    .HasKey(civ => new { civ.CartItemId, civ.ProductVariantId });
+
+            builder.Entity<OrderItemVariant>()
+                .HasKey(oiv => new { oiv.OrderItemId, oiv.ProductVariantId });
             // Vendor Configuration
             builder.Entity<Vendor>(entity =>
             {

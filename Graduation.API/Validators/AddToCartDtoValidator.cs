@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using Shared.DTOs.Cart;
+using System.Linq;
 
 namespace Graduation.API.Validators
 {
@@ -14,9 +15,9 @@ namespace Graduation.API.Validators
                 .GreaterThan(0).WithMessage("Quantity must be at least 1.")
                 .LessThanOrEqualTo(100).WithMessage("Cannot add more than 100 units of a single product at once.");
 
-            RuleFor(x => x.VariantId)
+            RuleForEach(x => x.VariantIds)
                 .GreaterThan(0).WithMessage("Variant ID must be a positive integer.")
-                .When(x => x.VariantId.HasValue);
+                .When(x => x.VariantIds != null && x.VariantIds.Any());
         }
     }
 }

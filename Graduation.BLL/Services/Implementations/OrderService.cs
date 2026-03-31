@@ -30,7 +30,6 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
         {
-            // ── Normalise clientType ──────────────────────────────────────────
             var clientType = string.IsNullOrWhiteSpace(dto.ClientType)
                 ? "web"
                 : dto.ClientType.ToLower().Trim();
@@ -38,7 +37,6 @@ namespace Graduation.BLL.Services.Implementations
             if (clientType != "web" && clientType != "mobile")
                 clientType = "web";
 
-            // ── Resolve shipping location ─────────────────────────────────────
             string? resolvedAddress = null;
             double? resolvedLat = null;
             double? resolvedLng = null;
@@ -74,7 +72,8 @@ namespace Graduation.BLL.Services.Implementations
                 var cartItems = await _context.CartItems
                     .Include(ci => ci.Product)
                         .ThenInclude(p => p.Vendor)
-                    .Include(ci => ci.Variant)
+                    .Include(ci => ci.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
                     .Where(ci => ci.UserId == userId)
                     .ToListAsync();
 
@@ -102,48 +101,52 @@ namespace Graduation.BLL.Services.Implementations
 
                     foreach (var item in items)
                     {
-                        int rowsAffected;
-
-                        if (item.VariantId.HasValue && item.Variant?.StockQuantity != null)
+                        if (item.SelectedVariants != null && item.SelectedVariants.Any())
                         {
-                            rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                                UPDATE ProductVariants
-                                SET StockQuantity = StockQuantity - {item.Quantity}
-                                WHERE Id = {item.VariantId.Value}
-                                  AND StockQuantity >= {item.Quantity}
-                                  AND IsActive = 1");
+                            foreach (var sv in item.SelectedVariants)
+                            {
+                                int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                    UPDATE ProductVariants
+                                    SET StockQuantity = StockQuantity - {item.Quantity}
+                                    WHERE Id = {sv.ProductVariantId}
+                                      AND StockQuantity >= {item.Quantity}
+                                      AND IsActive = 1");
+
+                                if (rowsAffected == 0)
+                                {
+                                    throw new BadRequestException($"Product '{item.Product.NameEn}' with variant '{sv.ProductVariant.TypeName}: {sv.ProductVariant.Value}' has insufficient stock.");
+                                }
+                            }
                         }
                         else
                         {
-                            rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
                                 UPDATE Products
                                 SET StockQuantity = StockQuantity - {item.Quantity}
                                 WHERE Id = {item.ProductId}
                                   AND StockQuantity >= {item.Quantity}
                                   AND IsActive = 1");
-                        }
 
-                        if (rowsAffected == 0)
-                        {
-                            var product = await _context.Products
-                                .AsNoTracking()
-                                .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                            if (rowsAffected == 0)
+                            {
+                                var product = await _context.Products
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
-                            if (product == null)
-                                throw new NotFoundException($"Product with ID {item.ProductId} not found");
-                            if (!product.IsActive)
-                                throw new BadRequestException(
-                                    $"Product '{product.NameEn}' is no longer available");
+                                if (product == null)
+                                    throw new NotFoundException($"Product with ID {item.ProductId} not found");
+                                if (!product.IsActive)
+                                    throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
 
-                            throw new BadRequestException(
-                                $"Product '{product.NameEn}' has insufficient stock.");
+                                throw new BadRequestException($"Product '{product.NameEn}' has insufficient stock.");
+                            }
                         }
                     }
 
                     var subTotal = items.Sum(i =>
                     {
                         var basePrice = i.Product.DiscountPrice ?? i.Product.Price;
-                        var adjustment = i.Variant?.PriceAdjustment ?? 0m;
+                        var adjustment = i.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
                         return (basePrice + adjustment) * i.Quantity;
                     });
 
@@ -167,7 +170,6 @@ namespace Graduation.BLL.Services.Implementations
                         ShippingAddress = resolvedAddress,
                         ShippingLatitude = resolvedLat,
                         ShippingLongitude = resolvedLng,
-                        // ── Store clientType so re-initiation uses the correct redirect ──
                         ClientType = clientType,
                         Notes = dto.Notes
                     };
@@ -178,17 +180,21 @@ namespace Graduation.BLL.Services.Implementations
                     foreach (var cartItem in items)
                     {
                         var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
-                        var adjustment = cartItem.Variant?.PriceAdjustment ?? 0m;
+                        var adjustment = cartItem.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
                         var unitPrice = basePrice + adjustment;
 
                         allOrderItems.Add(new OrderItem
                         {
                             Order = order,
                             ProductId = cartItem.ProductId,
-                            VariantId = cartItem.VariantId,
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
-                            TotalPrice = unitPrice * cartItem.Quantity
+                            TotalPrice = unitPrice * cartItem.Quantity,
+                            // CHANGED: Map CartItemVariants to OrderItemVariants
+                            SelectedVariants = cartItem.SelectedVariants?.Select(sv => new OrderItemVariant
+                            {
+                                ProductVariantId = sv.ProductVariantId
+                            }).ToList() ?? new List<OrderItemVariant>()
                         });
                     }
                 }
@@ -202,7 +208,6 @@ namespace Graduation.BLL.Services.Implementations
                     "Order(s) created: {OrderNumbers} for user {UserId}",
                     string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                // ── CoD: send confirmation email immediately ───────────────────
                 if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
                 {
                     var user = await _context.Users.FindAsync(userId);
@@ -224,7 +229,6 @@ namespace Graduation.BLL.Services.Implementations
                     }
                 }
 
-                // ── Card: initiate Paymob using the stored clientType ─────────
                 PaymentDto? paymentInfo = null;
 
                 if (dto.PaymentMethod != PaymentMethod.CashOnDelivery)
@@ -233,7 +237,6 @@ namespace Graduation.BLL.Services.Implementations
                     {
                         try
                         {
-                            // Pass the clientType so Paymob builds the correct redirect URL
                             await _paymentService.InitiatePaymentAsync(o.Id, o.ClientType);
                         }
                         catch (Exception ex)
@@ -284,7 +287,8 @@ namespace Graduation.BLL.Services.Implementations
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Variant)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
                 .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
 
             if (order == null)
@@ -327,7 +331,8 @@ namespace Graduation.BLL.Services.Implementations
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Variant)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
                 .FirstOrDefaultAsync(o =>
                     o.Id == id && o.OrderItems.Any(oi => oi.Product.VendorId == vendorId));
 
@@ -370,7 +375,8 @@ namespace Graduation.BLL.Services.Implementations
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Variant)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
                 .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
 
             if (order == null)
@@ -391,18 +397,20 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
-        // ── Private helpers ────────────────────────────────────────────────────
 
         private async Task RestoreStockAsync(IEnumerable<OrderItem> items)
         {
             foreach (var item in items)
             {
-                if (item.VariantId.HasValue && item.Variant?.StockQuantity != null)
+                if (item.SelectedVariants != null && item.SelectedVariants.Any())
                 {
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                        UPDATE ProductVariants
-                        SET StockQuantity = StockQuantity + {item.Quantity}
-                        WHERE Id = {item.VariantId.Value}");
+                    foreach (var sv in item.SelectedVariants)
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE ProductVariants
+                            SET StockQuantity = StockQuantity + {item.Quantity}
+                            WHERE Id = {sv.ProductVariantId}");
+                    }
                 }
                 else
                 {
@@ -450,10 +458,10 @@ namespace Graduation.BLL.Services.Implementations
                 Quantity = oi.Quantity,
                 UnitPrice = oi.UnitPrice,
                 TotalPrice = oi.TotalPrice,
-                VariantId = oi.VariantId,
-                VariantTypeName = oi.Variant?.TypeName,
-                VariantValue = oi.Variant?.Value,
-                VariantColorHex = oi.Variant?.ColorHex
+
+                VariantTypeName = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.TypeName)),
+                VariantValue = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.Value)),
+                VariantColorHex = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.ColorHex).Where(c => !string.IsNullOrEmpty(c)))
             }).ToList()
         };
 
@@ -487,7 +495,8 @@ namespace Graduation.BLL.Services.Implementations
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Images)
                 .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.Variant)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)

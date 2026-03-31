@@ -22,7 +22,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
-                .Include(ci => ci.Variant)
+                .Include(ci => ci.SelectedVariants)
+                    .ThenInclude(sv => sv.ProductVariant)
                 .Where(ci => ci.UserId == userId)
                 .OrderByDescending(ci => ci.AddedAt)
                 .ToListAsync();
@@ -58,81 +59,81 @@ namespace Graduation.BLL.Services.Implementations
             if (!product.IsActive)
                 throw new BadRequestException("This product is no longer available");
 
-            if (!product.Vendor.IsApproved || !product.Vendor.IsActive)
-                throw new BadRequestException("This product's vendor is currently unavailable");
+            // 1. Fetch the requested variants
+            List<ProductVariant> selectedVariants = new();
+            var requestedVariantIds = dto.VariantIds ?? new List<int>();
 
-            ProductVariant? variant = null;
-
-            if (dto.VariantId.HasValue)
+            if (requestedVariantIds.Any())
             {
-                variant = await _context.ProductVariants
-                    .FirstOrDefaultAsync(v =>
-                        v.Id == dto.VariantId.Value &&
-                        v.ProductId == dto.ProductId &&
-                        v.IsActive);
+                selectedVariants = await _context.ProductVariants
+                    .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
+                    .ToListAsync();
 
-                if (variant == null)
-                    throw new BadRequestException(
-                        "The selected variant is not available for this product.");
+                // Ensure all requested variants exist and belong to this product
+                if (selectedVariants.Count != requestedVariantIds.Count ||
+                    selectedVariants.Any(v => v.ProductId != dto.ProductId))
+                {
+                    throw new BadRequestException("One or more selected variants are invalid or not available.");
+                }
             }
             else
             {
+                // Verify if the product HAS variants and the user forgot to send them
                 var hasVariants = await _context.ProductVariants
                     .AnyAsync(v => v.ProductId == dto.ProductId && v.IsActive);
 
                 if (hasVariants)
-                    throw new BadRequestException(
-                        "Please select a variant (e.g. size or color) before adding to cart.");
+                    throw new BadRequestException("Please select product variants (e.g. size or color) before adding to cart.");
             }
 
-            var availableStock = variant?.StockQuantity ?? product.StockQuantity;
+            // 2. Determine available stock using the lowest stock among selected variants
+            var availableStock = selectedVariants.Any()
+                ? selectedVariants.Min(v => v.StockQuantity)
+                : product.StockQuantity;
 
             if (availableStock < dto.Quantity)
                 throw new BadRequestException($"Only {availableStock} items available in stock");
 
-            var existingItem = await _context.CartItems
-                .Include(ci => ci.Product)
-                    .ThenInclude(p => p.Images)
-                .Include(ci => ci.Product.Vendor)
-                .Include(ci => ci.Variant)
-                .FirstOrDefaultAsync(ci =>
-                    ci.UserId == userId &&
-                    ci.ProductId == dto.ProductId &&
-                    ci.VariantId == dto.VariantId);
+            // 3. Check if this exact item with these EXACT variants already exists in the cart
+            var existingItems = await _context.CartItems
+                .Include(ci => ci.SelectedVariants)
+                .Where(ci => ci.UserId == userId && ci.ProductId == dto.ProductId)
+                .ToListAsync();
+
+            var existingItem = existingItems.FirstOrDefault(ci =>
+                ci.SelectedVariants.Count == requestedVariantIds.Count &&
+                ci.SelectedVariants.All(sv => requestedVariantIds.Contains(sv.ProductVariantId)));
 
             if (existingItem != null)
             {
                 var newQuantity = existingItem.Quantity + dto.Quantity;
 
                 if (availableStock < newQuantity)
-                    throw new BadRequestException(
-                        $"Cannot add more. Only {availableStock} items available");
+                    throw new BadRequestException($"Cannot add more. Only {availableStock} items available");
 
                 existingItem.Quantity = newQuantity;
                 await _context.SaveChangesAsync();
-                return MapToDto(existingItem);
+
+                return await GetCartItemDtoAsync(existingItem.Id);
             }
 
+            // 4. Create new CartItem with multiple variants
             var cartItem = new CartItem
             {
                 UserId = userId,
                 ProductId = dto.ProductId,
-                VariantId = dto.VariantId,
                 Quantity = dto.Quantity,
-                AddedAt = DateTime.UtcNow
+                AddedAt = DateTime.UtcNow,
+                SelectedVariants = selectedVariants.Select(v => new CartItemVariant
+                {
+                    ProductVariantId = v.Id
+                }).ToList()
             };
 
             _context.CartItems.Add(cartItem);
             await _context.SaveChangesAsync();
 
-            cartItem = await _context.CartItems
-                .Include(ci => ci.Product)
-                    .ThenInclude(p => p.Images)
-                .Include(ci => ci.Product.Vendor)
-                .Include(ci => ci.Variant)
-                .FirstAsync(ci => ci.Id == cartItem.Id);
-
-            return MapToDto(cartItem);
+            return await GetCartItemDtoAsync(cartItem.Id);
         }
 
         public async Task<CartItemDto> UpdateCartItemAsync(
@@ -142,14 +143,18 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
-                .Include(ci => ci.Variant)
+                // CHANGED: Include the new many-to-many relationship
+                .Include(ci => ci.SelectedVariants)
+                    .ThenInclude(sv => sv.ProductVariant)
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId && ci.UserId == userId);
 
             if (cartItem == null)
                 throw new NotFoundException("Cart item not found");
 
-            var availableStock = cartItem.Variant?.StockQuantity
-                                 ?? cartItem.Product.StockQuantity;
+            // CHANGED: Determine stock from the list of selected variants
+            var availableStock = cartItem.SelectedVariants.Any()
+                ? cartItem.SelectedVariants.Min(sv => sv.ProductVariant.StockQuantity)
+                : cartItem.Product.StockQuantity;
 
             if (availableStock < dto.Quantity)
                 throw new BadRequestException(
@@ -190,19 +195,43 @@ namespace Graduation.BLL.Services.Implementations
                 .SumAsync(ci => ci.Quantity);
         }
 
+        // NEW: Helper method to fetch a cart item fully populated so it can be mapped to DTO
+        private async Task<CartItemDto> GetCartItemDtoAsync(int cartItemId)
+        {
+            var cartItem = await _context.CartItems
+                .Include(ci => ci.Product)
+                    .ThenInclude(p => p.Images)
+                .Include(ci => ci.Product.Vendor)
+                .Include(ci => ci.SelectedVariants)
+                    .ThenInclude(sv => sv.ProductVariant)
+                .FirstAsync(ci => ci.Id == cartItemId);
+
+            return MapToDto(cartItem);
+        }
 
         private static CartItemDto MapToDto(CartItem cartItem)
         {
             var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
 
-            var priceAdjustment = cartItem.Variant?.PriceAdjustment ?? 0m;
+            // CHANGED: Sum up the price adjustments for all selected variants
+            var priceAdjustment = cartItem.SelectedVariants.Sum(sv => sv.ProductVariant.PriceAdjustment);
             var unitPrice = basePrice + priceAdjustment;
 
             var primaryImage = cartItem.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
                                ?? cartItem.Product.Images.FirstOrDefault()?.ImageUrl;
 
-            var stockAvailable = cartItem.Variant?.StockQuantity
-                                 ?? cartItem.Product.StockQuantity;
+            // CHANGED: Use the lowest stock among selected variants
+            int stockAvailable;
+
+            if (cartItem.SelectedVariants.Any())
+            {
+                stockAvailable = cartItem.SelectedVariants
+                    .Min(sv => sv.ProductVariant.StockQuantity) ?? 0;
+            }
+            else
+            {
+                stockAvailable = cartItem.Product.StockQuantity;
+            }
 
             return new CartItemDto
             {
@@ -222,10 +251,14 @@ namespace Graduation.BLL.Services.Implementations
                 VendorName = cartItem.Product.Vendor.StoreName,
                 AddedAt = cartItem.AddedAt,
 
-                VariantId = cartItem.VariantId,
-                VariantTypeName = cartItem.Variant?.TypeName,
-                VariantValue = cartItem.Variant?.Value,
-                VariantColorHex = cartItem.Variant?.ColorHex,
+                SelectedVariants = cartItem.SelectedVariants?.Select(sv => new CartItemVariantDto
+                {
+                    VariantId = sv.ProductVariantId,
+                    TypeName = sv.ProductVariant.TypeName,
+                    Value = sv.ProductVariant.Value,
+                    ColorHex = sv.ProductVariant.ColorHex,
+                    PriceAdjustment = sv.ProductVariant.PriceAdjustment
+                }).ToList() ?? new List<CartItemVariantDto>(),
                 VariantPriceAdjustment = priceAdjustment
             };
         }
