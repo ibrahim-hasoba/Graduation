@@ -367,3 +367,17 @@ src/Graduation.API/appsettings.json
 # Firebase Admin credentials
 **/firebase-admin.json
 firebase-admin.json
+
+
+# Firebase Admin credentials
+**/firebase-admin.json
+firebase-admin.json
+
+# App Settings
+**/appsettings.json
+appsettings.json
+
+# Keep environment-specific overrides ignored too
+**/appsettings.*.json
+appsettings.Development.json
+appsettings.Production.json
