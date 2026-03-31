@@ -37,6 +37,12 @@ namespace Graduation.DAL.Data
 
             builder.Entity<OrderItemVariant>()
                 .HasKey(oiv => new { oiv.OrderItemId, oiv.ProductVariantId });
+
+            // Payment Configuration
+            builder.Entity<Payment>(entity =>
+            {
+                entity.Property(p => p.Amount).HasPrecision(18, 2);
+            });
             // Vendor Configuration
             builder.Entity<Vendor>(entity =>
             {
@@ -259,7 +265,6 @@ namespace Graduation.DAL.Data
                     .HasForeignKey(ci => ci.ProductId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasIndex(ci => new { ci.UserId, ci.ProductId }).IsUnique();
 
                 // Performance Indexes
                 entity.HasIndex(ci => ci.UserId);

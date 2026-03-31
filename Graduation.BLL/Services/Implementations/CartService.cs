@@ -19,11 +19,13 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<CartDto> GetUserCartAsync(string userId)
         {
             var cartItems = await _context.CartItems
+                .AsNoTracking()
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
+                .AsSplitQuery() 
                 .Where(ci => ci.UserId == userId)
                 .OrderByDescending(ci => ci.AddedAt)
                 .ToListAsync();
@@ -49,9 +51,8 @@ namespace Graduation.BLL.Services.Implementations
                 throw new BadRequestException("Quantity must be greater than 0");
 
             var product = await _context.Products
-                .Include(p => p.Images)
-                .Include(p => p.Vendor)
-                .FirstOrDefaultAsync(p => p.Id == dto.ProductId);
+                    .Select(p => new { p.Id, p.IsActive, p.StockQuantity })
+                    .FirstOrDefaultAsync(p => p.Id == dto.ProductId);
 
             if (product == null)
                 throw new NotFoundException("Product", dto.ProductId);
@@ -143,15 +144,14 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
-                // CHANGED: Include the new many-to-many relationship
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
+                .AsSplitQuery() 
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId && ci.UserId == userId);
 
             if (cartItem == null)
                 throw new NotFoundException("Cart item not found");
 
-            // CHANGED: Determine stock from the list of selected variants
             var availableStock = cartItem.SelectedVariants.Any()
                 ? cartItem.SelectedVariants.Min(sv => sv.ProductVariant.StockQuantity)
                 : cartItem.Product.StockQuantity;
@@ -168,24 +168,19 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task RemoveFromCartAsync(string userId, int cartItemId)
         {
-            var cartItem = await _context.CartItems
-                .FirstOrDefaultAsync(ci => ci.Id == cartItemId && ci.UserId == userId);
+            var rowsDeleted = await _context.CartItems
+                .Where(ci => ci.Id == cartItemId && ci.UserId == userId)
+                .ExecuteDeleteAsync();
 
-            if (cartItem == null)
+            if (rowsDeleted == 0)
                 throw new NotFoundException("Cart item not found");
-
-            _context.CartItems.Remove(cartItem);
-            await _context.SaveChangesAsync();
         }
 
         public async Task ClearCartAsync(string userId)
         {
-            var cartItems = await _context.CartItems
+            await _context.CartItems
                 .Where(ci => ci.UserId == userId)
-                .ToListAsync();
-
-            _context.CartItems.RemoveRange(cartItems);
-            await _context.SaveChangesAsync();
+                .ExecuteDeleteAsync();
         }
 
         public async Task<int> GetCartItemsCountAsync(string userId)
@@ -195,15 +190,16 @@ namespace Graduation.BLL.Services.Implementations
                 .SumAsync(ci => ci.Quantity);
         }
 
-        // NEW: Helper method to fetch a cart item fully populated so it can be mapped to DTO
         private async Task<CartItemDto> GetCartItemDtoAsync(int cartItemId)
         {
             var cartItem = await _context.CartItems
+                .AsNoTracking() 
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
+                .AsSplitQuery() 
                 .FirstAsync(ci => ci.Id == cartItemId);
 
             return MapToDto(cartItem);
@@ -217,8 +213,8 @@ namespace Graduation.BLL.Services.Implementations
             var priceAdjustment = cartItem.SelectedVariants.Sum(sv => sv.ProductVariant.PriceAdjustment);
             var unitPrice = basePrice + priceAdjustment;
 
-            var primaryImage = cartItem.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-                               ?? cartItem.Product.Images.FirstOrDefault()?.ImageUrl;
+            var primaryImage = cartItem.Product.Images?.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
+                   ?? cartItem.Product.Images?.FirstOrDefault()?.ImageUrl;
 
             // CHANGED: Use the lowest stock among selected variants
             int stockAvailable;
