@@ -137,8 +137,7 @@ namespace Graduation.BLL.Services.Implementations
             return await GetCartItemDtoAsync(cartItem.Id);
         }
 
-        public async Task<CartItemDto> UpdateCartItemAsync(
-            string userId, int cartItemId, UpdateCartItemDto dto)
+        public async Task<CartItemDto> UpdateCartItemAsync(string userId, int cartItemId, UpdateCartItemDto dto)
         {
             var cartItem = await _context.CartItems
                 .Include(ci => ci.Product)
@@ -146,24 +145,85 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(ci => ci.Product.Vendor)
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
-                .AsSplitQuery() 
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ci => ci.Id == cartItemId && ci.UserId == userId);
 
             if (cartItem == null)
                 throw new NotFoundException("Cart item not found");
 
-            var availableStock = cartItem.SelectedVariants.Any()
-                ? cartItem.SelectedVariants.Min(sv => sv.ProductVariant.StockQuantity)
+            // 1. Handle Variants Update if provided
+            var variantsToCheck = cartItem.SelectedVariants.Select(sv => sv.ProductVariant).ToList();
+
+            if (dto.VariantIds != null)
+            {
+                var requestedVariantIds = dto.VariantIds;
+
+                if (requestedVariantIds.Any())
+                {
+                    var newVariants = await _context.ProductVariants
+                        .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
+                        .ToListAsync();
+
+                    // Validate new variants
+                    if (newVariants.Count != requestedVariantIds.Count ||
+                        newVariants.Any(v => v.ProductId != cartItem.ProductId))
+                    {
+                        throw new BadRequestException("One or more selected variants are invalid or not available.");
+                    }
+
+                    // Check if another cart item already has these exact variants
+                    var existingDuplicate = await _context.CartItems
+                        .Include(ci => ci.SelectedVariants)
+                        .Where(ci => ci.UserId == userId && ci.ProductId == cartItem.ProductId && ci.Id != cartItemId)
+                        .FirstOrDefaultAsync(ci =>
+                            ci.SelectedVariants.Count == requestedVariantIds.Count &&
+                            ci.SelectedVariants.All(sv => requestedVariantIds.Contains(sv.ProductVariantId)));
+
+                    if (existingDuplicate != null)
+                    {
+                        throw new BadRequestException("An item with these exact variants already exists in your cart. Please update its quantity instead.");
+                    }
+
+                    // Remove old variants from database
+                    _context.RemoveRange(cartItem.SelectedVariants);
+
+                    // Add new variants
+                    cartItem.SelectedVariants = newVariants.Select(v => new CartItemVariant
+                    {
+                        ProductVariantId = v.Id
+                    }).ToList();
+
+                    variantsToCheck = newVariants;
+                }
+                else
+                {
+                    // If they passed an empty array [], ensure the product doesn't actually require variants
+                    var hasVariants = await _context.ProductVariants
+                        .AnyAsync(v => v.ProductId == cartItem.ProductId && v.IsActive);
+
+                    if (hasVariants)
+                        throw new BadRequestException("Please select product variants (e.g. size or color).");
+
+                    _context.RemoveRange(cartItem.SelectedVariants);
+                    cartItem.SelectedVariants.Clear();
+                    variantsToCheck.Clear();
+                }
+            }
+
+            // 2. Check Available Stock (using the new variants if updated, or old ones if not)
+            var availableStock = variantsToCheck.Any()
+                ? variantsToCheck.Min(v => v.StockQuantity)
                 : cartItem.Product.StockQuantity;
 
             if (availableStock < dto.Quantity)
-                throw new BadRequestException(
-                    $"Only {availableStock} items available in stock");
+                throw new BadRequestException($"Only {availableStock} items available in stock");
 
+            // 3. Update Quantity & Save
             cartItem.Quantity = dto.Quantity;
             await _context.SaveChangesAsync();
 
-            return MapToDto(cartItem);
+            // Re-fetch the cart item to ensure the newly added variants are fully loaded with their navigation properties
+            return await GetCartItemDtoAsync(cartItem.Id);
         }
 
         public async Task RemoveFromCartAsync(string userId, int cartItemId)

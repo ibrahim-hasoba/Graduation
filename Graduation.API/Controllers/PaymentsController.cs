@@ -40,37 +40,41 @@ namespace Graduation.API.Controllers
 
         [HttpPost("webhook")]
         [AllowAnonymous]
-        public async Task<IActionResult> WebhookPost()
+        public async Task<IActionResult> WebhookPost([FromQuery] string hmac) // Get HMAC from Query
         {
             try
             {
+                if (string.IsNullOrEmpty(hmac))
+                {
+                    _logger.LogWarning("Webhook POST received without HMAC — ignored");
+                    return Ok(); 
+                }
+
                 using var reader = new StreamReader(Request.Body);
                 var body = await reader.ReadToEndAsync();
 
-                Dictionary<string, string> callbackData;
+                Dictionary<string, string> callbackData = new();
 
                 if (!string.IsNullOrWhiteSpace(body))
                 {
                     var jsonDoc = JsonDocument.Parse(body);
-                    callbackData = FlattenJson(jsonDoc.RootElement);
+
+                    
+                    if (jsonDoc.RootElement.TryGetProperty("obj", out var objElement))
+                    {
+                        callbackData = FlattenJson(objElement);
+                    }
+                    else
+                    {
+                        callbackData = FlattenJson(jsonDoc.RootElement);
+                    }
                 }
                 else
                 {
-                    callbackData = Request.Query
-                        .ToDictionary(q => q.Key, q => q.Value.ToString());
+                    callbackData = Request.Query.ToDictionary(q => q.Key, q => q.Value.ToString());
                 }
 
-                _logger.LogInformation("Webhook POST keys: {Keys}",
-                    string.Join(",", callbackData.Keys));
-
-                callbackData.TryGetValue("hmac", out var hmac);
-                callbackData.Remove("hmac");
-
-                if (string.IsNullOrEmpty(hmac))
-                {
-                    _logger.LogWarning("Webhook POST received without HMAC — ignored");
-                    return Ok();
-                }
+                _logger.LogInformation("Webhook POST keys: {Keys}", string.Join(",", callbackData.Keys));
 
                 await _paymentService.HandleWebhookAsync(callbackData, hmac);
                 return Ok();
@@ -82,7 +86,7 @@ namespace Graduation.API.Controllers
             }
         }
 
-       
+
 
         [HttpGet("webhook")]
         [AllowAnonymous]

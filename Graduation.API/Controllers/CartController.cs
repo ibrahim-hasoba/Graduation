@@ -70,7 +70,7 @@ namespace Graduation.API.Controllers
         }
 
         /// <summary>
-        /// Update cart item quantity
+        /// Update a cart item's quantity and/or selected variants
         /// </summary>
         [HttpPut("items/{cartItemId}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -84,6 +84,7 @@ namespace Graduation.API.Controllers
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
             var cartItem = await _cartService.UpdateCartItemAsync(userId, cartItemId, dto);
+
             return Ok(new Errors.ApiResult(data: cartItem, message: "Cart item updated successfully"));
         }
 

@@ -330,7 +330,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -347,7 +347,7 @@ namespace Graduation.API
                     await next();
                 });
 
-                if (!app.Environment.IsProduction())
+                if (app.Environment.IsProduction())
                     app.UseHttpsRedirection();
 
                 app.UseCors("AllowFrontend");

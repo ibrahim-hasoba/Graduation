@@ -10,5 +10,7 @@ namespace Shared.DTOs.Cart
         [Required(ErrorMessage = "Quantity is required")]
         [Range(1, int.MaxValue, ErrorMessage = "Quantity must be at least 1")]
         public int Quantity { get; set; }
+
+        public List<int>? VariantIds { get; set; }
     }
 }
