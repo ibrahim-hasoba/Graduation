@@ -632,8 +632,6 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
-            // Pass vendorId = 0 → service must treat 0 as "admin override, skip vendor check"
-            // See note below if your ProductService enforces vendorId ownership
             var product = await _productService.AdminUpdateProductAsync(id, dto);
             return Ok(new ApiResult(data: product, message: "Product updated successfully"));
         }
@@ -669,6 +667,19 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: product, message: msg));
         }
 
+        
+        [HttpPatch("{code}/status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ChangeProductStatus(string code, [FromBody] ChangeProductStatusDto dto)
+        {
+            
+            var product = await _productService.AdminChangeProductStatusAsync(code, dto.Status);
+            return Ok(new Errors.ApiResult(data: product, message: "Product status updated successfully"));
+        }
 
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(

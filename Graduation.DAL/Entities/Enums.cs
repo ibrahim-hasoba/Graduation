@@ -1,5 +1,8 @@
-﻿namespace Graduation.DAL.Entities
+﻿using System.Text.Json.Serialization;
+
+namespace Graduation.DAL.Entities
 {
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum OrderStatus
     {
         Pending = 1,
@@ -11,6 +14,7 @@
         Returned = 7
     }
 
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum PaymentMethod
     {
         CashOnDelivery = 1,
@@ -19,6 +23,7 @@
         InstaPay = 4,
         BankTransfer = 5
     }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
 
     public enum PaymentStatus
     {
@@ -27,6 +32,7 @@
         Failed = 3,
         Refunded = 4
     }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
 
     public enum EgyptianGovernorate
     {
@@ -57,5 +63,12 @@
         Qena = 25,
         NorthSinai = 26,
         Sohag = 27
+    }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public enum ProductStatus
+    {
+        Pending = 0,
+        Approved = 1,
+        Rejected = 2
     }
 }

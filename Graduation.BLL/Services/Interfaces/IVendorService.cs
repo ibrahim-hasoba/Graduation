@@ -12,5 +12,7 @@ namespace Graduation.BLL.Services.Interfaces
         Task<VendorDto> ApproveVendorAsync(int id, bool isApproved, string? rejectionReason = null);
         Task<VendorDto> ToggleVendorStatusAsync(int id);
         Task DeleteVendorAsync(int id);
+        Task<IEnumerable<PublicVendorDto>> GetPublicVendorsListAsync();
+        Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id);
     }
 }

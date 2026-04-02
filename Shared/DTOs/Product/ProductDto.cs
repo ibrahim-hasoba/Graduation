@@ -24,6 +24,7 @@ namespace Shared.DTOs.Product
         public string? MadeInGovernorate { get; set; }
         public bool IsFeatured { get; set; }
         public bool IsActive { get; set; }
+        public string Status { get; set; } = string.Empty;
         public bool InStock { get; set; }
         public int ViewCount { get; set; }
         public double AverageRating { get; set; }

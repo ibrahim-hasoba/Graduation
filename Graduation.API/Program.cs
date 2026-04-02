@@ -78,11 +78,13 @@ namespace Graduation.API
                 builder.Services.AddControllers(options =>
                 {
                     options.Filters.Add<FluentValidationFilter>();
+                    
                 })
                 .AddJsonOptions(options =>
                 {
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+                    // options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
                 });
 
                 builder.Services.Configure<ApiBehaviorOptions>(options =>

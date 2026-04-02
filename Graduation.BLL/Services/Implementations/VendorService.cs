@@ -296,6 +296,48 @@ namespace Graduation.BLL.Services.Implementations
         }
 
 
+        public async Task<IEnumerable<PublicVendorDto>> GetPublicVendorsListAsync()
+        {
+            var vendors = await _context.Vendors
+                .Where(v => v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved)
+                .Select(v => new PublicVendorDto
+                {
+                    Id = v.Id,
+                    StoreName = v.StoreName,
+                    StoreNameAr = v.StoreNameAr ?? string.Empty,
+                    LogoUrl = v.LogoUrl ?? string.Empty,
+                    AverageRating = 4.5,
+                    TotalReviews = 120
+                })
+                .ToListAsync();
+
+            return vendors;
+        }
+
+        public async Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id)
+        {
+            
+            var vendor = await _context.Vendors
+                .Where(v => v.Id == id && v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved)
+                .Select(v => new PublicVendorDetailsDto
+                {
+                    Id = v.Id,
+                    StoreName = v.StoreName,
+                    StoreNameAr = v.StoreNameAr ?? string.Empty,
+                    Description = v.StoreDescription ?? string.Empty,
+                    LogoUrl = v.LogoUrl ?? string.Empty,
+                    BannerImageUrl = v.BannerUrl ?? string.Empty,
+                    JoinedDate = v.CreatedAt,
+                    AverageRating = 4.5,
+                    TotalReviews = 120
+                })
+                .FirstOrDefaultAsync();
+
+            if (vendor == null)
+                throw new NotFoundException("Vendor not found, or the store is currently inactive.");
+
+            return vendor;
+        }
         private static VendorDto MapToDto(Vendor vendor) => new()
         {
             Id = vendor.Id,

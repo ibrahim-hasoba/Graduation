@@ -129,10 +129,13 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)] 
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
-            if (user == null) throw new UnauthorizedException("Invalid credentials");
+
+            if (user == null)
+                throw new NotFoundException("Account not found. Please register first.");
 
             if (await _userManager.IsLockedOutAsync(user))
                 throw new BadRequestException("Account locked. Please try again later.");
@@ -140,7 +143,7 @@ namespace Graduation.API.Controllers
             if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
             {
                 await _userManager.AccessFailedAsync(user);
-                throw new UnauthorizedException("Invalid credentials");
+                throw new UnauthorizedException("Invalid credentials"); 
             }
 
             if (!user.EmailConfirmed)
@@ -369,7 +372,7 @@ namespace Graduation.API.Controllers
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
             if (user == null)
-                throw new UnauthorizedException("Invalid credentials");
+                throw new NotFoundException("Account not found. Please register first.");
 
             if (await _userManager.IsLockedOutAsync(user))
                 throw new BadRequestException("Account locked. Please try again later.");

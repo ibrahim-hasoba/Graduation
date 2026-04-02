@@ -149,6 +149,12 @@ namespace Graduation.BLL.Services.Implementations
             if (searchDto.IsFeatured == true)
                 query = query.Where(p => p.IsFeatured);
 
+            if (searchDto.CreatedAfter.HasValue)
+                query = query.Where(p => p.CreatedAt >= searchDto.CreatedAfter.Value);
+
+            if (searchDto.CreatedBefore.HasValue)
+                query = query.Where(p => p.CreatedAt <= searchDto.CreatedBefore.Value);
+
             query = searchDto.SortBy?.ToLower() switch
             {
                 "price_asc" => query.OrderBy(p => p.Price),
@@ -280,13 +286,13 @@ namespace Graduation.BLL.Services.Implementations
             if (product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only delete your own products");
 
-            // Soft delete for vendor
+            
             product.IsActive = false;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
 
-        // Admin hard delete
+        
         public async Task AdminDeleteProductAsync(int id)
         {
             var product = await _context.Products.FindAsync(id);
@@ -351,7 +357,24 @@ namespace Graduation.BLL.Services.Implementations
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
-        // ── Mappers ────────────────────────────────────────────────────────────────
+        public async Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus)
+        {
+            var product = await _context.Products
+                .Include(p => p.Vendor)
+                .Include(p => p.Category)
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", id);
+
+            product.Status = newStatus;
+            product.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            return MapToDto(product);
+        }
+
 
         private ProductDto MapToDto(Product product)
         {
@@ -379,6 +402,7 @@ namespace Graduation.BLL.Services.Implementations
                 MadeInGovernorate = product.MadeInGovernorate?.ToString(),
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
+                Status = product.Status.ToString(),
                 InStock = product.StockQuantity > 0,
                 ViewCount = product.ViewCount,
                 AverageRating = Math.Round(avgRating, 1),
@@ -446,6 +470,8 @@ namespace Graduation.BLL.Services.Implementations
                 DiscountPercentage = discountPercentage,
                 InStock = product.StockQuantity > 0,
                 IsFeatured = product.IsFeatured,
+                IsActive = product.IsActive,
+                Status = product.Status.ToString(),
                 PrimaryImageUrl = primaryImage,
                 AverageRating = Math.Round(avgRating, 1),
                 TotalReviews = product.Reviews.Count,
@@ -453,6 +479,9 @@ namespace Graduation.BLL.Services.Implementations
                 CategoryNameEn = product.Category.NameEn,
                 CategoryNameAr = product.Category.NameAr,
                 Code = product.Code,
+                CreatedAt = product.CreatedAt,
+                UpdatedAt = product.UpdatedAt
+
             };
         }
     }

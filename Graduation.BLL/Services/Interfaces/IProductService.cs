@@ -1,4 +1,5 @@
-﻿using Shared.DTOs.Product;
+﻿using Graduation.DAL.Entities;
+using Shared.DTOs.Product;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -21,5 +22,7 @@ namespace Graduation.BLL.Services.Interfaces
         Task AdminDeleteProductAsync(int id);
         Task AdminUpdateStockAsync(int id, int quantity);
         Task<ProductDto> AdminToggleProductStatusAsync(int id);
+
+        Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus);
     }
 }
