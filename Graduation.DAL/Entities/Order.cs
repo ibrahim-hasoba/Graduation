@@ -15,7 +15,6 @@
         public DateTime? ShippedAt { get; set; }
         public DateTime? DeliveredAt { get; set; }
         public DateTime? CancelledAt { get; set; }
-
         public string ShippingFirstName { get; set; } = string.Empty;
         public string ShippingLastName { get; set; } = string.Empty;
         public string ShippingPhone { get; set; } = string.Empty;
@@ -24,12 +23,9 @@
         public double? ShippingLongitude { get; set; }
         public string? Notes { get; set; }
         public string? CancellationReason { get; set; }
-
         public string UserId { get; set; } = string.Empty;
         public AppUser User { get; set; } = null!;
-
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
-
         public string ClientType { get; set; } = "web";
     }
 }

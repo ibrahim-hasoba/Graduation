@@ -113,9 +113,9 @@ namespace Graduation.BLL.Services.Implementations
                                       AND IsActive = 1");
 
                                 if (rowsAffected == 0)
-                                {
-                                    throw new BadRequestException($"Product '{item.Product.NameEn}' with variant '{sv.ProductVariant.TypeName}: {sv.ProductVariant.Value}' has insufficient stock.");
-                                }
+                                    throw new BadRequestException(
+                                        $"Product '{item.Product.NameEn}' with variant " +
+                                        $"'{sv.ProductVariant.TypeName}: {sv.ProductVariant.Value}' has insufficient stock.");
                             }
                         }
                         else
@@ -190,7 +190,6 @@ namespace Graduation.BLL.Services.Implementations
                             Quantity = cartItem.Quantity,
                             UnitPrice = unitPrice,
                             TotalPrice = unitPrice * cartItem.Quantity,
-                            // CHANGED: Map CartItemVariants to OrderItemVariants
                             SelectedVariants = cartItem.SelectedVariants?.Select(sv => new OrderItemVariant
                             {
                                 ProductVariantId = sv.ProductVariantId
@@ -200,7 +199,11 @@ namespace Graduation.BLL.Services.Implementations
                 }
 
                 _context.OrderItems.AddRange(allOrderItems);
-                _context.CartItems.RemoveRange(cartItems);
+
+                
+                if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
+                    _context.CartItems.RemoveRange(cartItems);
+
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
@@ -421,6 +424,42 @@ namespace Graduation.BLL.Services.Implementations
                 }
             }
         }
+        public async Task HandleUserAccountDeletionAsync(string userId)
+        {
+            var activeOrders = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                .Where(o => o.UserId == userId &&
+                            o.Status != OrderStatus.Cancelled &&
+                            o.Status != OrderStatus.Delivered)
+                .ToListAsync();
+
+            foreach (var order in activeOrders)
+                await RestoreStockAsync(order.OrderItems);
+
+            var allOrders = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                .Where(o => o.UserId == userId)
+                .ToListAsync();
+
+            foreach (var order in allOrders)
+            {
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.SelectedVariants != null && item.SelectedVariants.Any())
+                        _context.Set<OrderItemVariant>().RemoveRange(item.SelectedVariants);
+                }
+                _context.OrderItems.RemoveRange(order.OrderItems);
+            }
+
+            _context.Orders.RemoveRange(allOrders);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "All {Count} order(s) deleted for user {UserId} before account deletion",
+                allOrders.Count, userId);
+        }
 
         private static string GenerateOrderNumber()
             => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
@@ -433,7 +472,6 @@ namespace Graduation.BLL.Services.Implementations
             ShippingCost = order.ShippingCost,
             TotalAmount = order.TotalAmount,
             Status = order.Status.ToString(),
-            StatusId = (int)order.Status,
             PaymentMethod = order.PaymentMethod.ToString(),
             PaymentStatus = order.PaymentStatus.ToString(),
             OrderDate = order.OrderDate,
@@ -458,10 +496,11 @@ namespace Graduation.BLL.Services.Implementations
                 Quantity = oi.Quantity,
                 UnitPrice = oi.UnitPrice,
                 TotalPrice = oi.TotalPrice,
-
                 VariantTypeName = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.TypeName)),
                 VariantValue = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.Value)),
-                VariantColorHex = string.Join(", ", oi.SelectedVariants.Select(sv => sv.ProductVariant.ColorHex).Where(c => !string.IsNullOrEmpty(c)))
+                VariantColorHex = string.Join(", ", oi.SelectedVariants
+                    .Select(sv => sv.ProductVariant.ColorHex)
+                    .Where(c => !string.IsNullOrEmpty(c)))
             }).ToList()
         };
 

@@ -9,6 +9,7 @@ using Graduation.API.HostedServices;
 using Graduation.API.Middlewares;
 using Graduation.API.Swagger;
 using Graduation.API.Swagger.Filters;
+using Graduation.BLL.BackgroundJobs;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Implementations;
@@ -275,6 +276,7 @@ namespace Graduation.API
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
+                builder.Services.AddHostedService<StaleOrderCleanupJob>();
 
                 builder.Services.AddCors(options =>
                 {
@@ -309,7 +311,6 @@ namespace Graduation.API
                     Log.Information("Created profiles folder at: {Path}", profilesPath);
                 }
 
-                // --- FORCE ASP.NET TO RECOGNIZE THE WEB ROOT ---
                 builder.Environment.WebRootPath = wwwrootPath;
 
                 var app = builder.Build();
@@ -332,7 +333,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

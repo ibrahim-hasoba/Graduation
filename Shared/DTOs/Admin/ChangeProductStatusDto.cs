@@ -7,8 +7,10 @@ using System.Threading.Tasks;
 
 namespace Shared.DTOs.Admin
 {
+    /*
     public class ChangeProductStatusDto
     {
         public ProductStatus Status { get; set; }
     }
+    */
 }

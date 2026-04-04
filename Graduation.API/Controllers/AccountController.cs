@@ -33,6 +33,7 @@ namespace Graduation.API.Controllers
         private readonly IOtpService _otpService;
         private readonly IImageService _imageService;
         private readonly ICodeAssignmentService _codeAssignment;
+        private readonly IOrderService _orderService;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -44,7 +45,8 @@ namespace Graduation.API.Controllers
             IGoogleAuthService googleAuthService,
             IOtpService otpService,
             IImageService imageService,
-            ICodeAssignmentService codeAssignment)
+            ICodeAssignmentService codeAssignment,
+            IOrderService orderService)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -56,6 +58,7 @@ namespace Graduation.API.Controllers
             _otpService = otpService;
             _imageService = imageService;
             _codeAssignment = codeAssignment;
+            _orderService = orderService;
         }
 
 
@@ -562,6 +565,61 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Code is valid. You may now reset your password."));
         }
 
+        [HttpDelete("delete-account")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var user = await _userManager.FindByIdAsync(userId!);
+            if (user == null) throw new NotFoundException("User not found");
+
+            if (!await _userManager.CheckPasswordAsync(user, dto.Password))
+                throw new UnauthorizedException("Invalid password");
+
+            await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
+
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+                await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
+
+            await CleanupUserDataAsync(userId!);
+
+            var result = await _userManager.DeleteAsync(user);
+            if (!result.Succeeded)
+                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            return Ok(new ApiResult(message: "Your account has been permanently deleted."));
+        }
+
+        private async Task CleanupUserDataAsync(string userId)
+        {
+            await _orderService.HandleUserAccountDeletionAsync(userId);
+
+            await _context.CartItems
+                .Where(c => c.UserId == userId)
+                .ExecuteDeleteAsync();
+
+            await _context.Wishlists
+                .Where(w => w.UserId == userId)
+                .ExecuteDeleteAsync();
+
+            await _context.UserAddresses
+                .Where(a => a.UserId == userId)
+                .ExecuteDeleteAsync();
+
+            await _context.Notifications
+                .Where(n => n.UserId == userId)
+                .ExecuteDeleteAsync();
+
+            await _context.EmailOtps
+                .Where(o => o.Email == _context.Users
+                    .Where(u => u.Id == userId)
+                    .Select(u => u.Email)
+                    .FirstOrDefault())
+                .ExecuteDeleteAsync();
+        }
 
         private async Task<IActionResult> GenerateAuthResponse(AppUser user, bool rememberMe = false)
         {

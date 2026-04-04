@@ -23,6 +23,6 @@ namespace Graduation.BLL.Services.Interfaces
         Task AdminUpdateStockAsync(int id, int quantity);
         Task<ProductDto> AdminToggleProductStatusAsync(int id);
 
-        Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus);
+        // Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus);
     }
 }

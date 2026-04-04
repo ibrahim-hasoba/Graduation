@@ -21,5 +21,8 @@ namespace Graduation.BLL.Services.Interfaces
 
         Task<PagedPaymentResultDto> GetAllAsync(
             int pageNumber, int pageSize, string? status);
+
+        Task CancelStaleOrdersAsync(int timeoutMinutes = 30);
+
     }
 }

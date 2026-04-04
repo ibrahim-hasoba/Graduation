@@ -30,6 +30,7 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IImageService _imageService;
         private readonly IProductService _productService;
+        private readonly IOrderService _orderService;
 
         public AdminController(
             IAdminService adminService,
@@ -40,7 +41,8 @@ namespace Graduation.API.Controllers
             ICodeLookupService codeLookup,
             ICodeAssignmentService codeAssignment, 
             IImageService imageService,
-            IProductService productService)
+            IProductService productService,
+            IOrderService orderService)
         {
             _adminService = adminService;
             _categoryService = categoryService;
@@ -51,6 +53,7 @@ namespace Graduation.API.Controllers
             _codeAssignment = codeAssignment;
             _imageService = imageService;
             _productService = productService;
+            _orderService = orderService;
         }
 
         [HttpGet("dashboard/stats")]
@@ -195,29 +198,6 @@ namespace Graduation.API.Controllers
             }));
         }
 
-        /*
-        [HttpDelete("users/{userCode}")]
-        public async Task<IActionResult> DeleteUser(string userCode)
-        {
-            var requestingAdminId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                                 ?? User.FindFirstValue("userId");
-
-            var userId = await _codeLookup.ResolveUserIdAsync(userCode);
-
-            if (requestingAdminId == userId)
-                throw new BadRequestException("You cannot delete your own admin account.");
-
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException("User not found");
-
-            var result = await _userManager.DeleteAsync(user);
-            if (!result.Succeeded)
-                throw new BadRequestException("Failed to delete user");
-
-            return Ok(new ApiResult(message: "User deleted successfully"));
-        }
-        */
-
         [HttpDelete("users/{userCode}")]
         public async Task<IActionResult> DeleteUser(string userCode)
         {
@@ -233,18 +213,22 @@ namespace Graduation.API.Controllers
             if (user == null)
                 throw new NotFoundException("User not found");
 
-            
+            await _orderService.HandleUserAccountDeletionAsync(userId);
+
+            await _context.CartItems.Where(c => c.UserId == userId).ExecuteDeleteAsync();
+            await _context.Wishlists.Where(w => w.UserId == userId).ExecuteDeleteAsync();
+            await _context.UserAddresses.Where(a => a.UserId == userId).ExecuteDeleteAsync();
+            await _context.Notifications.Where(n => n.UserId == userId).ExecuteDeleteAsync();
+
             var roles = await _userManager.GetRolesAsync(user);
             if (roles.Any())
                 await _userManager.RemoveFromRolesAsync(user, roles);
 
-            
             var claims = await _userManager.GetClaimsAsync(user);
             if (claims.Any())
                 await _userManager.RemoveClaimsAsync(user, claims);
 
             var result = await _userManager.DeleteAsync(user);
-
             if (!result.Succeeded)
                 throw new BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
@@ -667,19 +651,20 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: product, message: msg));
         }
 
-        
-        [HttpPatch("{code}/status")]
+        /*
+        [HttpPatch("{id}/status")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ChangeProductStatus(string code, [FromBody] ChangeProductStatusDto dto)
+        public async Task<IActionResult> ChangeProductStatus(int id, [FromBody] ChangeProductStatusDto dto)
         {
             
-            var product = await _productService.AdminChangeProductStatusAsync(code, dto.Status);
+            var product = await _productService.AdminChangeProductStatusAsync(id, dto.Status);
             return Ok(new Errors.ApiResult(data: product, message: "Product status updated successfully"));
         }
+        */
 
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(

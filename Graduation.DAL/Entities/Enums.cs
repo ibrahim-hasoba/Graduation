@@ -64,6 +64,7 @@ namespace Graduation.DAL.Entities
         NorthSinai = 26,
         Sohag = 27
     }
+    /*
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum ProductStatus
     {
@@ -71,4 +72,5 @@ namespace Graduation.DAL.Entities
         Approved = 1,
         Rejected = 2
     }
+    */
 }

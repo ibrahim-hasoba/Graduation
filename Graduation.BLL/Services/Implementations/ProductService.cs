@@ -357,6 +357,7 @@ namespace Graduation.BLL.Services.Implementations
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
+        /*
         public async Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus)
         {
             var product = await _context.Products
@@ -374,6 +375,7 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
             return MapToDto(product);
         }
+        */
 
 
         private ProductDto MapToDto(Product product)
@@ -402,7 +404,7 @@ namespace Graduation.BLL.Services.Implementations
                 MadeInGovernorate = product.MadeInGovernorate?.ToString(),
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
-                Status = product.Status.ToString(),
+                //Status = product.Status.ToString(),
                 InStock = product.StockQuantity > 0,
                 ViewCount = product.ViewCount,
                 AverageRating = Math.Round(avgRating, 1),
@@ -471,7 +473,7 @@ namespace Graduation.BLL.Services.Implementations
                 InStock = product.StockQuantity > 0,
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
-                Status = product.Status.ToString(),
+                //Status = product.Status.ToString(),
                 PrimaryImageUrl = primaryImage,
                 AverageRating = Math.Round(avgRating, 1),
                 TotalReviews = product.Reviews.Count,

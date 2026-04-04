@@ -18,7 +18,7 @@ namespace Shared.DTOs.Product
         public bool InStock { get; set; }
         public bool IsFeatured { get; set; }
         public bool IsActive { get; set; }
-        public string Status { get; set; } = string.Empty;
+        // public string Status { get; set; } = string.Empty;
         public string? PrimaryImageUrl { get; set; }
         public double AverageRating { get; set; }
         public int TotalReviews { get; set; }

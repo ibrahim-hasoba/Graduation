@@ -50,8 +50,6 @@ namespace Graduation.BLL.Services.Implementations
                     CreatedAt = DateTime.UtcNow
                 };
 
-            // Always prefer the clientType stored on the order.
-            // The parameter is kept for backwards-compatibility but the stored value wins.
             var resolvedClientType = string.IsNullOrWhiteSpace(order.ClientType)
                 ? clientType
                 : order.ClientType;
@@ -69,7 +67,6 @@ namespace Graduation.BLL.Services.Implementations
                 if (existing.Status == PaymentStatus2.Pending)
                     return MapToDto(existing, order.OrderNumber);
 
-                // Failed/expired — regenerate the payment URL using the stored clientType
                 existing.PaymentUrl = await _paymob.CreatePaymentUrlAsync(
                     order.OrderNumber,
                     order.TotalAmount,
@@ -78,7 +75,7 @@ namespace Graduation.BLL.Services.Implementations
                     order.User?.Email ?? "guest@heka.com",
                     order.ShippingPhone,
                     cityForPaymob,
-                    resolvedClientType);          // ← uses stored clientType
+                    resolvedClientType);
 
                 existing.Status = PaymentStatus2.Pending;
                 existing.UpdatedAt = DateTime.UtcNow;
@@ -95,7 +92,7 @@ namespace Graduation.BLL.Services.Implementations
                 order.User?.Email ?? "guest@heka.com",
                 order.ShippingPhone,
                 cityForPaymob,
-                resolvedClientType);              // ← uses stored clientType
+                resolvedClientType);
 
             var payment = new Payment
             {
@@ -122,7 +119,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             if (!_paymob.VerifyHmac(callbackData, receivedHmac))
             {
-                _logger.LogWarning("Invalid HMAC");
+                _logger.LogWarning("Invalid HMAC — webhook rejected");
                 return;
             }
 
@@ -137,16 +134,19 @@ namespace Graduation.BLL.Services.Implementations
             if (string.IsNullOrEmpty(orderNumber))
                 return;
 
-            using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            using var transaction = await _context.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.Serializable);
 
             try
             {
                 var order = await _context.Orders
+                    .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.SelectedVariants)
                     .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
                 if (order == null)
                 {
-                    _logger.LogWarning("Order not found: {OrderNumber}", orderNumber);
+                    _logger.LogWarning("Webhook: order not found — {OrderNumber}", orderNumber);
                     return;
                 }
 
@@ -155,11 +155,10 @@ namespace Graduation.BLL.Services.Implementations
 
                 if (payment == null)
                 {
-                    _logger.LogWarning("Payment not found for order: {OrderNumber}", orderNumber);
+                    _logger.LogWarning("Webhook: payment record not found for order {OrderNumber}", orderNumber);
                     return;
                 }
 
-                // Check for duplicate within transaction to prevent race condition
                 if (!string.IsNullOrEmpty(transactionId) &&
                     !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
                     payment.PaymobTransactionId == transactionId)
@@ -168,7 +167,6 @@ namespace Graduation.BLL.Services.Implementations
                     await transaction.CommitAsync();
                     return;
                 }
-
 
                 await _context.Entry(payment).ReloadAsync();
 
@@ -197,6 +195,14 @@ namespace Graduation.BLL.Services.Implementations
                     order.Status = OrderStatus.Confirmed;
                     order.ConfirmedAt = DateTime.UtcNow;
 
+                    
+                    var cartItems = await _context.CartItems
+                        .Where(ci => ci.UserId == order.UserId)
+                        .ToListAsync();
+
+                    if (cartItems.Any())
+                        _context.CartItems.RemoveRange(cartItems);
+
                     await _notifications.CreateNotificationAsync(
                         order.UserId,
                         "Payment Successful ✅",
@@ -214,18 +220,27 @@ namespace Graduation.BLL.Services.Implementations
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Order confirmation email failed for {OrderNumber}", orderNumber);
+                            _logger.LogError(ex,
+                                "Order confirmation email failed for {OrderNumber}", orderNumber);
                         }
                     }
                 }
                 else
                 {
+                   
                     payment.Status = PaymentStatus2.Failed;
+                    order.PaymentStatus = PaymentStatus.Failed;
+                    order.Status = OrderStatus.Cancelled;
+                    order.CancelledAt = DateTime.UtcNow;
+                    order.CancellationReason = "Payment failed";
+
+                    if (order.OrderItems != null && order.OrderItems.Any())
+                        await RestoreStockAsync(order.OrderItems);
 
                     await _notifications.CreateNotificationAsync(
                         order.UserId,
                         "Payment Failed ❌",
-                        $"Payment for order {orderNumber} failed. Please try again.",
+                        $"Payment for order {orderNumber} failed. Your cart items are still available.",
                         "Payment",
                         order.Id);
                 }
@@ -242,6 +257,48 @@ namespace Graduation.BLL.Services.Implementations
                 await transaction.RollbackAsync();
                 _logger.LogError(ex, "Webhook transaction failed for order {OrderNumber}", orderNumber);
             }
+        }
+
+        
+        public async Task CancelStaleOrdersAsync(int timeoutMinutes = 30)
+        {
+            var cutoff = DateTime.UtcNow.AddMinutes(-timeoutMinutes);
+
+            var staleOrders = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                .Where(o =>
+                    o.Status == OrderStatus.Pending &&
+                    o.PaymentMethod != PaymentMethod.CashOnDelivery &&
+                    o.OrderDate < cutoff)
+                .ToListAsync();
+
+            if (!staleOrders.Any())
+                return;
+
+            foreach (var order in staleOrders)
+            {
+                order.Status = OrderStatus.Cancelled;
+                order.CancelledAt = DateTime.UtcNow;
+                order.CancellationReason = "Payment timeout — auto-cancelled";
+
+                var payment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.OrderId == order.Id);
+
+                if (payment != null && payment.Status == PaymentStatus2.Pending)
+                {
+                    payment.Status = PaymentStatus2.Failed;
+                    payment.UpdatedAt = DateTime.UtcNow;
+                }
+
+                if (order.OrderItems != null && order.OrderItems.Any())
+                    await RestoreStockAsync(order.OrderItems);
+
+                _logger.LogInformation(
+                    "Stale order auto-cancelled: {OrderNumber}", order.OrderNumber);
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         public async Task<PaymentDto> GetByOrderNumberAsync(string orderNumber, string userId)
@@ -299,7 +356,30 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        // ── Helpers ────────────────────────────────────────────────────────────
+
+        private async Task RestoreStockAsync(IEnumerable<OrderItem> items)
+        {
+            foreach (var item in items)
+            {
+                if (item.SelectedVariants != null && item.SelectedVariants.Any())
+                {
+                    foreach (var sv in item.SelectedVariants)
+                    {
+                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                            UPDATE ProductVariants
+                            SET StockQuantity = StockQuantity + {item.Quantity}
+                            WHERE Id = {sv.ProductVariantId}");
+                    }
+                }
+                else
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        UPDATE Products
+                        SET StockQuantity = StockQuantity + {item.Quantity}
+                        WHERE Id = {item.ProductId}");
+                }
+            }
+        }
 
         private static string BuildCode(int id)
         {

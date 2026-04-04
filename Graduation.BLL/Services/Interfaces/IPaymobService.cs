@@ -15,5 +15,6 @@ namespace Graduation.BLL.Services.Interfaces
             string email, string phone, string city,
             string clientType = "web");
         bool VerifyHmac(Dictionary<string, string> callbackData, string receivedHmac);
+        
     }
 }
