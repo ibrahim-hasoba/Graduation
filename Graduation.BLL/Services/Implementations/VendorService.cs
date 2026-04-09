@@ -1,12 +1,13 @@
-﻿using Shared.DTOs.Vendor;
-using Shared.Errors;
-using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.BackgroundTasks;
+using Shared.DTOs;
+using Shared.DTOs.Vendor;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -296,10 +297,19 @@ namespace Graduation.BLL.Services.Implementations
         }
 
 
-        public async Task<IEnumerable<PublicVendorDto>> GetPublicVendorsListAsync()
+        public async Task<PagedResult<PublicVendorDto>> GetPublicVendorsListAsync(
+    int pageNumber = 1,
+    int pageSize = 10)
         {
-            var vendors = await _context.Vendors
-                .Where(v => v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved)
+            var query = _context.Vendors
+                .Where(v => v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved);
+
+            var totalCount = await query.CountAsync();
+
+            var vendors = await query
+                .OrderByDescending(v => v.CreatedAt)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .Select(v => new PublicVendorDto
                 {
                     Id = v.Id,
@@ -311,7 +321,13 @@ namespace Graduation.BLL.Services.Implementations
                 })
                 .ToListAsync();
 
-            return vendors;
+            return new PagedResult<PublicVendorDto>
+            {
+                Items = vendors,
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
         public async Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id)

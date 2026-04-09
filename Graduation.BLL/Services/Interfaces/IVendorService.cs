@@ -1,4 +1,5 @@
-﻿using Shared.DTOs.Vendor;
+﻿using Shared.DTOs;
+using Shared.DTOs.Vendor;
 
 namespace Graduation.BLL.Services.Interfaces
 {
@@ -12,7 +13,9 @@ namespace Graduation.BLL.Services.Interfaces
         Task<VendorDto> ApproveVendorAsync(int id, bool isApproved, string? rejectionReason = null);
         Task<VendorDto> ToggleVendorStatusAsync(int id);
         Task DeleteVendorAsync(int id);
-        Task<IEnumerable<PublicVendorDto>> GetPublicVendorsListAsync();
+        Task<PagedResult<PublicVendorDto>> GetPublicVendorsListAsync(
+            int pageNumber = 1,
+            int pageSize = 10);
         Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id);
     }
 }
