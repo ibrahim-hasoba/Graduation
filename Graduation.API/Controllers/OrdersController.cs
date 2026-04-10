@@ -83,17 +83,21 @@ namespace Graduation.API.Controllers
             }));
         }
 
+        
+
         [HttpGet("my-orders")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetMyOrders()
+        public async Task<IActionResult> GetMyOrders([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            var orders = await _orderService.GetUserOrdersAsync(userId);
-            return Ok(new Errors.ApiResult(data: orders));
+            
+            var pagedOrders = await _orderService.GetUserOrdersAsync(userId, pageNumber, pageSize);
+
+            return Ok(new Errors.ApiResult(data: pagedOrders));
         }
 
         [HttpGet("{id}")]

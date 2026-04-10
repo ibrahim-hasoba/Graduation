@@ -3,6 +3,7 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Shared.DTOs;
 using Shared.DTOs.Order;
 using Shared.DTOs.Payment;
 using Shared.Errors;
@@ -300,17 +301,35 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
-        public async Task<List<OrderListDto>> GetUserOrdersAsync(string userId)
+        
+
+        public async Task<PagedResult<OrderListDto>> GetUserOrdersAsync(string userId, int pageNumber = 1, int pageSize = 10)
         {
-            var orders = await _context.Orders
+            
+            var query = _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Vendor)
-                .Where(o => o.UserId == userId)
+                .Where(o => o.UserId == userId);
+
+            
+            var totalCount = await query.CountAsync();
+
+            
+            var orders = await query
                 .OrderByDescending(o => o.OrderDate)
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return orders.Select(o => MapToListDto(o, null)).ToList();
+            
+            return new PagedResult<OrderListDto>
+            {
+                Items = orders.Select(o => MapToListDto(o, null)).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
         public async Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId)
