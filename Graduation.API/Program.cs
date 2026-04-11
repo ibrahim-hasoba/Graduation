@@ -19,6 +19,7 @@ using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -278,6 +279,21 @@ namespace Graduation.API
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
                 builder.Services.AddHostedService<StaleOrderCleanupJob>();
 
+                builder.Services.AddLocalization();
+
+                builder.Services.AddHttpContextAccessor();
+                builder.Services.AddScoped<ILanguageService, LanguageService>();
+
+                var supportedCultures = new[] { "en", "ar" };
+                builder.Services.Configure<RequestLocalizationOptions>(opts =>
+                {
+                    opts.SetDefaultCulture("en")
+                        .AddSupportedCultures(supportedCultures)
+                        .AddSupportedUICultures(supportedCultures);
+                    opts.RequestCultureProviders.Insert(
+                        0, new AcceptLanguageHeaderRequestCultureProvider());
+                });
+
                 builder.Services.AddCors(options =>
                 {
                     options.AddPolicy("AllowFrontend", policy =>
@@ -355,6 +371,7 @@ namespace Graduation.API
 
                 app.UseCors("AllowFrontend");
                 app.UseRateLimiter();
+                app.UseRequestLocalization();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapControllers();

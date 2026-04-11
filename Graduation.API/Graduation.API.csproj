@@ -9,6 +9,7 @@
 
 	<ItemGroup>
 		<!-- Observability -->
+		<PackageReference Include="Microsoft.Extensions.Localization" Version="8.0.25" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="7.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />
 		<!-- Authentication -->

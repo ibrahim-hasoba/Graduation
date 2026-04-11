@@ -1,0 +1,200 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- Auth / Account -->
+  <data name="User_NotFound"><value>المستخدم غير موجود</value></data>
+  <data name="Account_NotFound"><value>الحساب غير موجود. يرجى التسجيل أولاً.</value></data>
+  <data name="Account_Locked"><value>الحساب محظور. يرجى المحاولة لاحقاً.</value></data>
+  <data name="Invalid_Credentials"><value>بيانات الدخول غير صحيحة</value></data>
+  <data name="Email_NotVerified"><value>يرجى التحقق من بريدك الإلكتروني أولاً.</value></data>
+  <data name="Email_AlreadyExists"><value>يوجد مستخدم بهذا البريد الإلكتروني بالفعل</value></data>
+  <data name="Phone_AlreadyRegistered"><value>رقم الهاتف مسجل بالفعل</value></data>
+  <data name="OTP_RecentlySent"><value>تم إرسال الرمز مؤخراً. حاول مرة أخرى بعد دقيقة.</value></data>
+  <data name="OTP_TooMany"><value>طلبات كثيرة جداً. حاول لاحقاً.</value></data>
+  <data name="Registration_Success"><value>تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني.</value></data>
+  <data name="Registration_EmailFailed"><value>فشل التسجيل لعدم إمكانية إرسال بريد التحقق. يرجى المحاولة لاحقاً.</value></data>
+  <data name="Login_GoogleInvalidToken"><value>رمز Google غير صالح.</value></data>
+  <data name="Login_GoogleFailed"><value>فشل إنشاء المستخدم.</value></data>
+  <data name="FCM_Empty"><value>لا يمكن أن يكون رمز FCM فارغاً</value></data>
+  <data name="FCM_Updated"><value>تم تحديث رمز FCM بنجاح</value></data>
+  <data name="Session_Invalid"><value>الجلسة غير صالحة أو منتهية</value></data>
+  <data name="User_NoLongerExists"><value>المستخدم لم يعد موجوداً</value></data>
+  <data name="Token_RefreshFailed"><value>فشل تجديد الرمز</value></data>
+  <data name="ForgotPassword_Sent"><value>إذا كان بريدك موجوداً في نظامنا، ستتلقى رمزاً.</value></data>
+  <data name="ForgotPassword_CodeSent"><value>تم إرسال رمز التحقق إلى بريدك الإلكتروني.</value></data>
+  <data name="Code_RecentlySent"><value>تم إرسال الرمز مؤخراً. حاول بعد دقيقة.</value></data>
+  <data name="Code_TooMany"><value>طلبات كثيرة جداً. حاول لاحقاً.</value></data>
+  <data name="Password_ResetSuccess"><value>تم إعادة تعيين كلمة المرور بنجاح.</value></data>
+  <data name="Password_Invalid"><value>طلب غير صالح</value></data>
+  <data name="Password_CodeInvalid"><value>رمز التحقق غير صالح أو منتهي الصلاحية</value></data>
+  <data name="Verification_Sent"><value>تم إرسال بريد التحقق إن وُجد.</value></data>
+  <data name="Verification_NewSent"><value>تم إرسال رمز تحقق جديد.</value></data>
+  <data name="Logout_Success"><value>تم تسجيل الخروج بنجاح</value></data>
+  <data name="NotAdmin"><value>غير مصرح لك كمسؤول.</value></data>
+  <data name="Profile_UpdateSuccess"><value>تم تحديث الملف الشخصي بنجاح</value></data>
+  <data name="ProfilePicture_UpdateSuccess"><value>تم تحديث صورة الملف الشخصي بنجاح</value></data>
+  <data name="ProfilePicture_DeleteSuccess"><value>تم حذف صورة الملف الشخصي بنجاح</value></data>
+  <data name="Password_ChangeSuccess"><value>تم تحديث كلمة المرور. تم إلغاء الجلسات الأخرى.</value></data>
+  <data name="Email_AlreadyVerified"><value>البريد الإلكتروني محقق بالفعل. يرجى تسجيل الدخول.</value></data>
+  <data name="Email_ConfirmFailed"><value>فشل تأكيد البريد الإلكتروني</value></data>
+  <data name="ResetCode_Valid"><value>الرمز صالح. يمكنك الآن إعادة تعيين كلمة المرور.</value></data>
+  <data name="Account_Deleted"><value>تم حذف حسابك نهائياً.</value></data>
+  <data name="NotAuthenticated"><value>المستخدم غير مصادق عليه</value></data>
+
+  <!-- Address -->
+  <data name="Address_MaxReached"><value>يمكنك حفظ {0} عناوين كحد أقصى.</value></data>
+  <data name="Address_NotFound"><value>العنوان غير موجود.</value></data>
+  <data name="Address_Added"><value>تمت إضافة العنوان بنجاح.</value></data>
+  <data name="Address_Updated"><value>تم تحديث العنوان بنجاح.</value></data>
+  <data name="Address_AlreadyDefault"><value>هذا العنوان هو العنوان الافتراضي بالفعل.</value></data>
+  <data name="Address_DefaultUpdated"><value>تم تحديث العنوان الافتراضي بنجاح.</value></data>
+  <data name="Address_Deleted"><value>تم حذف العنوان بنجاح.</value></data>
+
+  <!-- Category -->
+  <data name="Category_NotFound"><value>الفئة غير موجودة</value></data>
+  <data name="Category_Created"><value>تم إنشاء الفئة بنجاح</value></data>
+  <data name="Category_Updated"><value>تم تحديث الفئة بنجاح</value></data>
+  <data name="Category_Activated"><value>تم تفعيل الفئة بنجاح</value></data>
+  <data name="Category_Deactivated"><value>تم تعطيل الفئة بنجاح</value></data>
+  <data name="Category_Deleted"><value>تم حذف الفئة بنجاح</value></data>
+
+  <!-- Images -->
+  <data name="Image_NoFile"><value>لم يتم توفير ملف</value></data>
+  <data name="Image_NoFiles"><value>لم يتم توفير ملفات</value></data>
+  <data name="Image_MaxExceeded"><value>الحد الأقصى 5 صور للمنتج</value></data>
+  <data name="Image_Uploaded"><value>تم رفع الصورة بنجاح</value></data>
+  <data name="Image_MultipleUploaded"><value>تم رفع {0} صور بنجاح</value></data>
+  <data name="Image_ProductUploaded"><value>تم رفع {0} صور للمنتج بنجاح</value></data>
+  <data name="Image_LogoUploaded"><value>تم رفع الشعار بنجاح</value></data>
+  <data name="Image_BannerUploaded"><value>تم رفع البانر بنجاح</value></data>
+  <data name="Image_UrlRequired"><value>رابط الصورة مطلوب</value></data>
+  <data name="Image_NotFound"><value>الصورة غير موجودة</value></data>
+  <data name="Image_Deleted"><value>تم حذف الصورة بنجاح</value></data>
+
+  <!-- Notifications -->
+  <data name="Notification_MarkedRead"><value>تم تحديد الإشعار كمقروء</value></data>
+  <data name="Notification_AllMarkedRead"><value>تم تحديد جميع الإشعارات كمقروءة</value></data>
+  <data name="Notification_Deleted"><value>تم حذف الإشعار</value></data>
+  <data name="Notification_BulkDeleted"><value>تم حذف الإشعارات نهائياً</value></data>
+
+  <!-- Orders -->
+  <data name="Order_Placed"><value>تم تقديم الطلب بنجاح!</value></data>
+  <data name="Order_StatusUpdated"><value>تم تحديث حالة الطلب بنجاح</value></data>
+  <data name="Order_Cancelled"><value>تم إلغاء الطلب بنجاح</value></data>
+  <data name="Order_NotVendor"><value>يجب أن تكون بائعاً لعرض الطلبات</value></data>
+  <data name="Order_UpdateNotVendor"><value>يجب أن تكون بائعاً لتحديث حالة الطلب</value></data>
+
+  <!-- Products -->
+  <data name="Product_Created"><value>تم إنشاء المنتج بنجاح</value></data>
+  <data name="Product_Updated"><value>تم تحديث المنتج بنجاح</value></data>
+  <data name="Product_Deleted"><value>تم حذف المنتج بنجاح</value></data>
+  <data name="Product_StockUpdated"><value>تم تحديث المخزون بنجاح</value></data>
+  <data name="Product_NoVendor"><value>ليس لديك حساب بائع</value></data>
+  <data name="Product_NotVendor"><value>يجب أن تكون بائعاً لإنشاء المنتجات</value></data>
+  <data name="Product_VendorNotApproved"><value>يجب أن يكون حساب البائع معتمداً قبل إضافة المنتجات</value></data>
+  <data name="Product_DeleteNotVendor"><value>يجب أن تكون بائعاً لحذف المنتجات</value></data>
+  <data name="Product_StockNotVendor"><value>يجب أن تكون بائعاً لتحديث مخزون المنتجات</value></data>
+  <data name="Product_AdminCreated"><value>تم إنشاء المنتج بنجاح</value></data>
+  <data name="Product_AdminUpdated"><value>تم تحديث المنتج بنجاح</value></data>
+  <data name="Product_AdminDeleted"><value>تم حذف المنتج بنجاح</value></data>
+  <data name="Product_StockAdminUpdated"><value>تم تحديث المخزون بنجاح</value></data>
+  <data name="Product_Activated"><value>تم تفعيل المنتج بنجاح</value></data>
+  <data name="Product_Deactivated"><value>تم تعطيل المنتج بنجاح</value></data>
+
+  <!-- Variants -->
+  <data name="Variant_Added"><value>تمت إضافة الخيار بنجاح.</value></data>
+  <data name="Variant_Updated"><value>تم تحديث الخيار بنجاح.</value></data>
+  <data name="Variant_Deleted"><value>تم حذف الخيار بنجاح.</value></data>
+  <data name="Variant_TypeDeleted"><value>تم حذف جميع خيارات '{0}' بنجاح.</value></data>
+  <data name="Variant_TypeUpdated"><value>تم تحديث خيارات النوع '{0}' بنجاح.</value></data>
+  <data name="Variant_NotVendor"><value>يجب أن تكون بائعاً لإدارة خيارات المنتج.</value></data>
+  <data name="Variant_VendorNotApproved"><value>يجب أن يكون حساب البائع معتمداً قبل إدارة الخيارات.</value></data>
+
+  <!-- Reviews -->
+  <data name="Review_Submitted"><value>تم إرسال التقييم بنجاح. سيظهر بعد مراجعة المسؤول.</value></data>
+  <data name="Review_Deleted"><value>تم حذف التقييم بنجاح</value></data>
+  <data name="Review_NotFound"><value>التقييم غير موجود أو ليس لديك صلاحية حذفه</value></data>
+  <data name="Review_Approved"><value>تم اعتماد التقييم بنجاح</value></data>
+  <data name="Review_Rejected"><value>تم رفض التقييم بنجاح</value></data>
+  <data name="Review_NotFoundSimple"><value>التقييم غير موجود</value></data>
+
+  <!-- Vendors -->
+  <data name="Vendor_NotFound"><value>ملف البائع غير موجود</value></data>
+  <data name="Vendor_Approved"><value>تم اعتماد البائع بنجاح</value></data>
+  <data name="Vendor_Rejected"><value>تم رفض البائع</value></data>
+  <data name="Vendor_Activated"><value>تم تفعيل البائع</value></data>
+  <data name="Vendor_Deactivated"><value>تم تعطيل البائع</value></data>
+  <data name="Vendor_Deleted"><value>تم حذف البائع بنجاح</value></data>
+  <data name="Vendor_Updated"><value>تم تحديث البائع بنجاح</value></data>
+  <data name="Vendor_Created"><value>تم إنشاء البائع بنجاح</value></data>
+  <data name="Vendor_RejectionRequired"><value>سبب الرفض مطلوب عند رفض البائع</value></data>
+  <data name="Vendor_AlreadyExists"><value>هذا المستخدم لديه حساب بائع بالفعل</value></data>
+  <data name="Vendor_NameExists"><value>يوجد بائع بهذا الاسم بالفعل</value></data>
+  <data name="Vendor_NotApproved"><value>البائع برقم {0} غير موجود أو غير معتمد أو غير نشط.</value></data>
+  <data name="Vendor_AdminRequired"><value>معرف البائع مطلوب عند إنشاء منتج كمسؤول.</value></data>
+
+  <!-- Wishlist -->
+  <data name="Wishlist_Added"><value>تمت إضافة المنتج إلى المفضلة</value></data>
+  <data name="Wishlist_Removed"><value>تم حذف المنتج من المفضلة</value></data>
+  <data name="Wishlist_Cleared"><value>تم مسح المفضلة</value></data>
+
+  <!-- Users (Admin) -->
+  <data name="User_CannotDeleteSelf"><value>لا يمكنك حذف حسابك الخاص كمسؤول.</value></data>
+  <data name="User_Deleted"><value>تم حذف المستخدم بنجاح</value></data>
+  <data name="User_Unlocked"><value>تم إلغاء حظر المستخدم بنجاح</value></data>
+  <data name="User_Locked"><value>تم حظر المستخدم بنجاح</value></data>
+  <data name="User_Created"><value>تم إنشاء المستخدم بنجاح</value></data>
+  <data name="User_Updated"><value>تم تحديث المستخدم بنجاح</value></data>
+  <data name="User_PasswordReset"><value>تم إعادة تعيين كلمة المرور بنجاح</value></data>
+  <data name="User_AdminPasswordReset"><value>لا يمكن للمسؤولين إعادة تعيين كلمات مرور مسؤولين آخرين</value></data>
+</root>

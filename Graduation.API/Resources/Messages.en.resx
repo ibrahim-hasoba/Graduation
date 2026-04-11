@@ -1,0 +1,200 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- Auth / Account -->
+  <data name="User_NotFound"><value>User not found</value></data>
+  <data name="Account_NotFound"><value>Account not found. Please register first.</value></data>
+  <data name="Account_Locked"><value>Account locked. Please try again later.</value></data>
+  <data name="Invalid_Credentials"><value>Invalid credentials</value></data>
+  <data name="Email_NotVerified"><value>Please verify your email first.</value></data>
+  <data name="Email_AlreadyExists"><value>A user with this email already exists</value></data>
+  <data name="Phone_AlreadyRegistered"><value>This phone number is already registered</value></data>
+  <data name="OTP_RecentlySent"><value>OTP recently sent. Try again in a minute.</value></data>
+  <data name="OTP_TooMany"><value>Too many OTP requests. Try again later.</value></data>
+  <data name="Registration_Success"><value>Registration successful! Please verify your email.</value></data>
+  <data name="Registration_EmailFailed"><value>Registration failed because the verification email could not be sent. Please try again later.</value></data>
+  <data name="Login_GoogleInvalidToken"><value>Invalid Google token.</value></data>
+  <data name="Login_GoogleFailed"><value>Failed to create user.</value></data>
+  <data name="FCM_Empty"><value>FCM token cannot be empty</value></data>
+  <data name="FCM_Updated"><value>FCM token updated successfully</value></data>
+  <data name="Session_Invalid"><value>Invalid or expired session</value></data>
+  <data name="User_NoLongerExists"><value>User no longer exists</value></data>
+  <data name="Token_RefreshFailed"><value>Token refresh failed</value></data>
+  <data name="ForgotPassword_Sent"><value>If your email is in our system, you will receive a code.</value></data>
+  <data name="ForgotPassword_CodeSent"><value>Verification code sent to your email.</value></data>
+  <data name="Code_RecentlySent"><value>Code recently sent. Try again in a minute.</value></data>
+  <data name="Code_TooMany"><value>Too many requests. Try again later.</value></data>
+  <data name="Password_ResetSuccess"><value>Password has been reset successfully.</value></data>
+  <data name="Password_Invalid"><value>Invalid request</value></data>
+  <data name="Password_CodeInvalid"><value>Invalid or expired verification code</value></data>
+  <data name="Verification_Sent"><value>Verification email sent if applicable.</value></data>
+  <data name="Verification_NewSent"><value>A new verification code has been sent.</value></data>
+  <data name="Logout_Success"><value>Logged out successfully</value></data>
+  <data name="NotAdmin"><value>You are not authorized as admin.</value></data>
+  <data name="Profile_UpdateSuccess"><value>Profile updated successfully</value></data>
+  <data name="ProfilePicture_UpdateSuccess"><value>Profile picture updated successfully</value></data>
+  <data name="ProfilePicture_DeleteSuccess"><value>Profile picture removed successfully</value></data>
+  <data name="Password_ChangeSuccess"><value>Password updated. Other sessions revoked.</value></data>
+  <data name="Email_AlreadyVerified"><value>Email already verified. Please log in.</value></data>
+  <data name="Email_ConfirmFailed"><value>Failed to confirm email</value></data>
+  <data name="ResetCode_Valid"><value>Code is valid. You may now reset your password.</value></data>
+  <data name="Account_Deleted"><value>Your account has been permanently deleted.</value></data>
+  <data name="NotAuthenticated"><value>User not authenticated</value></data>
+
+  <!-- Address -->
+  <data name="Address_MaxReached"><value>You can save a maximum of {0} addresses.</value></data>
+  <data name="Address_NotFound"><value>Address not found.</value></data>
+  <data name="Address_Added"><value>Address added successfully.</value></data>
+  <data name="Address_Updated"><value>Address updated successfully.</value></data>
+  <data name="Address_AlreadyDefault"><value>This address is already your default.</value></data>
+  <data name="Address_DefaultUpdated"><value>Default address updated successfully.</value></data>
+  <data name="Address_Deleted"><value>Address deleted successfully.</value></data>
+
+  <!-- Category -->
+  <data name="Category_NotFound"><value>Category not found</value></data>
+  <data name="Category_Created"><value>Category created successfully</value></data>
+  <data name="Category_Updated"><value>Category updated successfully</value></data>
+  <data name="Category_Activated"><value>Category activated successfully</value></data>
+  <data name="Category_Deactivated"><value>Category deactivated successfully</value></data>
+  <data name="Category_Deleted"><value>Category deleted successfully</value></data>
+
+  <!-- Images -->
+  <data name="Image_NoFile"><value>No file provided</value></data>
+  <data name="Image_NoFiles"><value>No files provided</value></data>
+  <data name="Image_MaxExceeded"><value>Maximum 5 images allowed per product</value></data>
+  <data name="Image_Uploaded"><value>Image uploaded successfully</value></data>
+  <data name="Image_MultipleUploaded"><value>{0} images uploaded successfully</value></data>
+  <data name="Image_ProductUploaded"><value>{0} product images uploaded successfully</value></data>
+  <data name="Image_LogoUploaded"><value>Logo uploaded successfully</value></data>
+  <data name="Image_BannerUploaded"><value>Banner uploaded successfully</value></data>
+  <data name="Image_UrlRequired"><value>Image URL is required</value></data>
+  <data name="Image_NotFound"><value>Image not found</value></data>
+  <data name="Image_Deleted"><value>Image deleted successfully</value></data>
+
+  <!-- Notifications -->
+  <data name="Notification_MarkedRead"><value>Notification marked as read</value></data>
+  <data name="Notification_AllMarkedRead"><value>All notifications marked as read</value></data>
+  <data name="Notification_Deleted"><value>Notification deleted</value></data>
+  <data name="Notification_BulkDeleted"><value>Notifications deleted permanently</value></data>
+
+  <!-- Orders -->
+  <data name="Order_Placed"><value>Order placed successfully!</value></data>
+  <data name="Order_StatusUpdated"><value>Order status updated successfully</value></data>
+  <data name="Order_Cancelled"><value>Order cancelled successfully</value></data>
+  <data name="Order_NotVendor"><value>You must be a vendor to view vendor orders</value></data>
+  <data name="Order_UpdateNotVendor"><value>You must be a vendor to update order status</value></data>
+
+  <!-- Products -->
+  <data name="Product_Created"><value>Product created successfully</value></data>
+  <data name="Product_Updated"><value>Product updated successfully</value></data>
+  <data name="Product_Deleted"><value>Product deleted successfully</value></data>
+  <data name="Product_StockUpdated"><value>Stock updated successfully</value></data>
+  <data name="Product_NoVendor"><value>You don't have a vendor account</value></data>
+  <data name="Product_NotVendor"><value>You must be a vendor to create products</value></data>
+  <data name="Product_VendorNotApproved"><value>Your vendor account must be approved before adding products</value></data>
+  <data name="Product_DeleteNotVendor"><value>You must be a vendor to delete products</value></data>
+  <data name="Product_StockNotVendor"><value>You must be a vendor to update product stock</value></data>
+  <data name="Product_AdminCreated"><value>Product created successfully</value></data>
+  <data name="Product_AdminUpdated"><value>Product updated successfully</value></data>
+  <data name="Product_AdminDeleted"><value>Product deleted successfully</value></data>
+  <data name="Product_StockAdminUpdated"><value>Stock updated successfully</value></data>
+  <data name="Product_Activated"><value>Product activated successfully</value></data>
+  <data name="Product_Deactivated"><value>Product deactivated successfully</value></data>
+
+  <!-- Variants -->
+  <data name="Variant_Added"><value>Variant added successfully.</value></data>
+  <data name="Variant_Updated"><value>Variant updated successfully.</value></data>
+  <data name="Variant_Deleted"><value>Variant removed successfully.</value></data>
+  <data name="Variant_TypeDeleted"><value>All '{0}' variants removed successfully.</value></data>
+  <data name="Variant_TypeUpdated"><value>Variants for type '{0}' updated successfully.</value></data>
+  <data name="Variant_NotVendor"><value>You must be a vendor to manage product variants.</value></data>
+  <data name="Variant_VendorNotApproved"><value>Your vendor account must be approved before managing variants.</value></data>
+
+  <!-- Reviews -->
+  <data name="Review_Submitted"><value>Review submitted successfully. It will be visible after admin approval.</value></data>
+  <data name="Review_Deleted"><value>Review deleted successfully</value></data>
+  <data name="Review_NotFound"><value>Review not found or you don't have permission to delete it</value></data>
+  <data name="Review_Approved"><value>Review approved successfully</value></data>
+  <data name="Review_Rejected"><value>Review rejected successfully</value></data>
+  <data name="Review_NotFoundSimple"><value>Review not found</value></data>
+
+  <!-- Vendors -->
+  <data name="Vendor_NotFound"><value>Vendor profile not found</value></data>
+  <data name="Vendor_Approved"><value>Vendor approved successfully</value></data>
+  <data name="Vendor_Rejected"><value>Vendor rejected</value></data>
+  <data name="Vendor_Activated"><value>Vendor activated</value></data>
+  <data name="Vendor_Deactivated"><value>Vendor deactivated</value></data>
+  <data name="Vendor_Deleted"><value>Vendor deleted successfully</value></data>
+  <data name="Vendor_Updated"><value>Vendor updated successfully</value></data>
+  <data name="Vendor_Created"><value>Vendor created successfully</value></data>
+  <data name="Vendor_RejectionRequired"><value>A rejection reason is required when rejecting a vendor</value></data>
+  <data name="Vendor_AlreadyExists"><value>This user already has a vendor account</value></data>
+  <data name="Vendor_NameExists"><value>A vendor with this store name already exists</value></data>
+  <data name="Vendor_NotApproved"><value>Vendor with ID {0} not found, not approved, or inactive.</value></data>
+  <data name="Vendor_AdminRequired"><value>vendorId is required when admin creates a product.</value></data>
+
+  <!-- Wishlist -->
+  <data name="Wishlist_Added"><value>Product added to wishlist</value></data>
+  <data name="Wishlist_Removed"><value>Product removed from wishlist</value></data>
+  <data name="Wishlist_Cleared"><value>Wishlist cleared</value></data>
+
+  <!-- Users (Admin) -->
+  <data name="User_CannotDeleteSelf"><value>You cannot delete your own admin account.</value></data>
+  <data name="User_Deleted"><value>User deleted successfully</value></data>
+  <data name="User_Unlocked"><value>User unlocked successfully</value></data>
+  <data name="User_Locked"><value>User locked successfully</value></data>
+  <data name="User_Created"><value>User created successfully</value></data>
+  <data name="User_Updated"><value>User updated successfully</value></data>
+  <data name="User_PasswordReset"><value>Password reset successfully</value></data>
+  <data name="User_AdminPasswordReset"><value>Admins cannot reset other admin passwords</value></data>
+</root>
