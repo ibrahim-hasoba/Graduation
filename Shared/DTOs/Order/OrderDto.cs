@@ -27,10 +27,15 @@ namespace Shared.DTOs.Order
         public double? ShippingLongitude { get; set; }
         public string? Notes { get; set; }
 
+        public double? CurrentLatitude { get; set; }
+        public double? CurrentLongitude { get; set; }
+
         // Vendor Info
         public int VendorId { get; set; }
         public string VendorName { get; set; } = string.Empty;
 
+        public double? VendorLatitude { get; set; }
+        public double? VendorLongitude { get; set; }
         // Items
         public List<OrderItemDto> Items { get; set; } = new();
     }

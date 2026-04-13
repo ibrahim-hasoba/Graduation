@@ -479,6 +479,35 @@ namespace Graduation.BLL.Services.Implementations
                 "All {Count} order(s) deleted for user {UserId} before account deletion",
                 allOrders.Count, userId);
         }
+        public async Task<OrderMapTrackingDto> GetOrderMapTrackingAsync(string orderNumber, string userId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
+                .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.UserId == userId);
+
+            if (order == null) throw new NotFoundException("Order not found");
+
+            var vendor = order.OrderItems.FirstOrDefault()?.Product.Vendor;
+
+            return new OrderMapTrackingDto
+            {
+                OrderNumber = order.OrderNumber,
+                Status = order.Status.ToString(),
+
+                DeliveryLatitude = order.ShippingLatitude,
+                DeliveryLongitude = order.ShippingLongitude,
+
+                VendorLatitude = vendor?.Latitude,
+                VendorLongitude = vendor?.Longitude,
+
+                CurrentLatitude = order.CurrentLatitude ?? vendor?.Latitude,
+                CurrentLongitude = order.CurrentLongitude ?? vendor?.Longitude
+            };
+        }
+
+        
 
         private static string GenerateOrderNumber()
             => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
@@ -504,6 +533,8 @@ namespace Graduation.BLL.Services.Implementations
             Notes = order.Notes,
             VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
             VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
+            CurrentLatitude = order.CurrentLatitude, 
+            CurrentLongitude = order.CurrentLongitude ,
             Items = order.OrderItems.Select(oi => new OrderItemDto
             {
                 Id = oi.Id,
@@ -538,7 +569,8 @@ namespace Graduation.BLL.Services.Implementations
                 StatusId = (int)order.Status,
                 OrderDate = order.OrderDate,
                 ItemsCount = vendorItems.Count,
-                VendorName = vendorItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown"
+                VendorName = vendorItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
+
             };
         }
 

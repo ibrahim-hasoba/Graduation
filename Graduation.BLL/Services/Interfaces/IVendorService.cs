@@ -17,5 +17,7 @@ namespace Graduation.BLL.Services.Interfaces
             int pageNumber = 1,
             int pageSize = 10);
         Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id);
+
+        Task UpdateOrderLocationAsync(int orderId, double lat, double lng);
     }
 }

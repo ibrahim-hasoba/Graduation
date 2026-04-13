@@ -168,12 +168,21 @@ namespace Graduation.API.Controllers
             return Ok(new Errors.ApiResult(data: order, message: "Order cancelled successfully"));
         }
 
-        // ── Helper ─────────────────────────────────────────────────────────────
+        [HttpGet("{orderNumber}/track")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetOrderTracking(string orderNumber)
+        {
+            var userId = User.GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-        /// <summary>
-        /// Terminal statuses mean no further change is expected —
-        /// the frontend can stop polling once it sees one of these.
-        /// </summary>
+            var trackingData = await _orderService.GetOrderMapTrackingAsync(orderNumber, userId);
+            return Ok(new ApiResult(data: trackingData));
+        }
+
+       
         private static bool IsTerminalStatus(string status) =>
             status is "Paid" or "Failed" or "Refunded";
     }

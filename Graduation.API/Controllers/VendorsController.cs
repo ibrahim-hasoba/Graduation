@@ -215,5 +215,37 @@ namespace Graduation.API.Controllers
                 pendingOrders
             }));
         }
+
+        [HttpPost("orders/{orderId:int}/location")]
+        public async Task<IActionResult> PostOrderLocation(int orderId, [FromBody] UpdateLocationDto dto)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                      ?? User.FindFirstValue("userId");
+
+            var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
+            if (vendor == null)
+                throw new NotFoundException("Vendor profile not found");
+
+            var order = await _context.Orders
+                .FirstOrDefaultAsync(o => o.Id == orderId
+                    && o.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id));
+
+            if (order == null)
+                throw new UnauthorizedException("Access denied: Order not found for this vendor.");
+
+            if (order.Status != OrderStatus.Shipped)
+            {
+                return BadRequest(new ApiResult(message: "Location updates are only allowed for Shipped orders."));
+            }
+
+            await _vendorService.UpdateOrderLocationAsync(orderId, dto.Latitude, dto.Longitude);
+
+            return Ok(new ApiResult(message: "GPS location synchronized successfully"));
+        }
+        public class UpdateLocationDto
+        {
+            public double Latitude { get; set; }
+            public double Longitude { get; set; }
+        }
     }
 }

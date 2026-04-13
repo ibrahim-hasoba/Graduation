@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
 using Shared.Errors;
@@ -33,6 +34,8 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IOrderService _orderService;
         private readonly ILanguageService _lang;
+        private readonly INotificationService _notificationService;
+        private readonly ILogger<AccountController> _logger; 
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -46,7 +49,9 @@ namespace Graduation.API.Controllers
             IImageService imageService,
             ICodeAssignmentService codeAssignment,
             IOrderService orderService,
-            ILanguageService lang)
+            ILanguageService lang,
+            INotificationService notificationService,
+            ILogger<AccountController> logger) 
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -60,6 +65,8 @@ namespace Graduation.API.Controllers
             _codeAssignment = codeAssignment;
             _orderService = orderService;
             _lang = lang;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         [HttpPost("register")]
@@ -131,8 +138,6 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
-            var lang = Request.Headers["Accept-Language"].ToString();
-            var message = _lang.GetMessage("Account_NotFound");
             if (user == null)
                 throw new NotFoundException(_lang.GetMessage("Account_NotFound"));
 
@@ -152,6 +157,22 @@ namespace Graduation.API.Controllers
                 await _codeAssignment.AssignUserCodeAsync(user);
 
             await _userManager.ResetAccessFailedCountAsync(user);
+
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _notificationService.CreateNotificationAsync(
+                        user.Id,
+                        "New Login Detected",
+                        $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                        "If this wasn't you, please change your password immediately.",
+                        "Security");
+                }
+                catch { }
+            });
+
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
 
@@ -196,20 +217,25 @@ namespace Graduation.API.Controllers
                     await _userManager.AddToRoleAsync(user, "Customer");
                     await _codeAssignment.AssignUserCodeAsync(user);
                 }
-                else if (string.IsNullOrEmpty(user.Code))
+                else
                 {
-                    await _codeAssignment.AssignUserCodeAsync(user);
+                    
+                    if (!user.EmailConfirmed)
+                    {
+                        user.EmailConfirmed = true;
+                        await _userManager.UpdateAsync(user);
+                    }
+
+                    if (string.IsNullOrEmpty(user.Code))
+                        await _codeAssignment.AssignUserCodeAsync(user);
                 }
 
                 return await GenerateAuthResponse(user);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new
-                {
-                    message = "A fatal database or server error occurred.",
-                    errorDetails = ex.InnerException?.Message ?? ex.Message
-                });
+                _logger.LogError(ex, "Google login failed");
+                return StatusCode(500, new ApiResult(message: "Server error"));
             }
         }
 
@@ -228,8 +254,28 @@ namespace Graduation.API.Controllers
             if (user == null)
                 return NotFound(new ApiResult(message: _lang.GetMessage("User_NotFound")));
 
+            var isNewToken = user.FcmToken != request.FcmToken;
+
             user.FcmToken = request.FcmToken;
             await _userManager.UpdateAsync(user);
+
+            if (isNewToken)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _notificationService.CreateNotificationAsync(
+                            userId,
+                            "New Login Detected",
+                            $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                            "If this wasn't you, please change your password immediately.",
+                            "Security");
+                    }
+                    catch { }
+                });
+            }
+
             return Ok(new ApiResult(message: _lang.GetMessage("FCM_Updated")));
         }
 
@@ -330,8 +376,7 @@ namespace Graduation.API.Controllers
             if (lastHourCount >= 5)
                 return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_TooMany")));
 
-            var code = await _otpService.GenerateOtpAsync(user.Email!);
-            await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
+            await SendVerificationEmail(user);
             return Ok(new ApiResult(message: _lang.GetMessage("Verification_NewSent")));
         }
 
@@ -381,6 +426,21 @@ namespace Graduation.API.Controllers
                 await _codeAssignment.AssignUserCodeAsync(user);
 
             await _userManager.ResetAccessFailedCountAsync(user);
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _notificationService.CreateNotificationAsync(
+                        user.Id,
+                        "New Login Detected",
+                        $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                        "If this wasn't you, please change your password immediately.",
+                        "Security");
+                }
+                catch { }
+            });
+
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
 
@@ -486,7 +546,7 @@ namespace Graduation.API.Controllers
 
             var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
             if (!result.Succeeded)
-                throw new BadRequestException(_lang.GetMessage("Password_CodeInvalid"));
+                throw new BadRequestException(_lang.GetMessage("Password_Invalid"));
 
             await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
             return Ok(new ApiResult(message: _lang.GetMessage("Password_ChangeSuccess")));
@@ -550,7 +610,8 @@ namespace Graduation.API.Controllers
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
                 await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
 
-            await CleanupUserDataAsync(userId!);
+            var userEmail = user.Email!;
+            await CleanupUserDataAsync(userId!, userEmail);
 
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
@@ -559,9 +620,8 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: _lang.GetMessage("Account_Deleted")));
         }
 
-        // ── Private helpers ────────────────────────────────────────────────────
 
-        private async Task CleanupUserDataAsync(string userId)
+        private async Task CleanupUserDataAsync(string userId, string userEmail)
         {
             await _orderService.HandleUserAccountDeletionAsync(userId);
 
@@ -582,10 +642,7 @@ namespace Graduation.API.Controllers
                 .ExecuteDeleteAsync();
 
             await _context.EmailOtps
-                .Where(o => o.Email == _context.Users
-                    .Where(u => u.Id == userId)
-                    .Select(u => u.Email)
-                    .FirstOrDefault())
+                .Where(o => o.Email == userEmail)
                 .ExecuteDeleteAsync();
         }
 

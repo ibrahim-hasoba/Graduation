@@ -63,6 +63,7 @@
   <data name="OTP_TooMany"><value>طلبات كثيرة جداً. حاول لاحقاً.</value></data>
   <data name="Registration_Success"><value>تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني.</value></data>
   <data name="Registration_EmailFailed"><value>فشل التسجيل لعدم إمكانية إرسال بريد التحقق. يرجى المحاولة لاحقاً.</value></data>
+
   <data name="Login_GoogleInvalidToken"><value>رمز Google غير صالح.</value></data>
   <data name="Login_GoogleFailed"><value>فشل إنشاء المستخدم.</value></data>
   <data name="FCM_Empty"><value>لا يمكن أن يكون رمز FCM فارغاً</value></data>

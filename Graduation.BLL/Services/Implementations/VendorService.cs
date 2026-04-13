@@ -354,6 +354,27 @@ namespace Graduation.BLL.Services.Implementations
 
             return vendor;
         }
+        public async Task UpdateOrderLocationAsync(int orderId, double lat, double lng)
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+
+            if (order == null)
+                throw new NotFoundException("Order", orderId);
+
+            order.CurrentLatitude = lat;
+            order.CurrentLongitude = lng;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Location updated for Order {OrderId}: Lat {Lat}, Lng {Lng}", orderId, lat, lng);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating location for Order {OrderId}", orderId);
+                throw;
+            }
+        }
         private static VendorDto MapToDto(Vendor vendor) => new()
         {
             Id = vendor.Id,

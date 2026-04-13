@@ -14,7 +14,7 @@ namespace Graduation.BLL.Services.Interfaces
         Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId);
         Task<OrderDto> UpdateOrderStatusAsync(int id, int vendorId, UpdateOrderStatusDto dto);
         Task<OrderDto> CancelOrderAsync(int id, string userId, string reason);
-
         Task HandleUserAccountDeletionAsync(string userId);
+        Task<OrderMapTrackingDto> GetOrderMapTrackingAsync(string orderNumber, string userId);
     }
 }
