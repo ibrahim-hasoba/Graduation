@@ -39,7 +39,7 @@ namespace Graduation.API.Controllers
             DatabaseContext context,
             UserManager<AppUser> userManager,
             ICodeLookupService codeLookup,
-            ICodeAssignmentService codeAssignment, 
+            ICodeAssignmentService codeAssignment,
             IImageService imageService,
             IProductService productService,
             IOrderService orderService)
@@ -115,10 +115,9 @@ namespace Graduation.API.Controllers
                 lastName = user.LastName,
                 emailConfirmed = user.EmailConfirmed,
                 phoneNumber = user.PhoneNumber,
-                ProfilePicture  = fullProfilePictureUrl,
+                ProfilePicture = fullProfilePictureUrl,
                 createdAt = user.CreatedAt,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow,
-                
             }));
         }
 
@@ -133,7 +132,6 @@ namespace Graduation.API.Controllers
             if (!string.IsNullOrEmpty(role))
             {
                 var normalizedRole = role.ToUpper();
-
                 var roleEntity = await _context.Roles
                     .FirstOrDefaultAsync(r => r.NormalizedName == normalizedRole);
 
@@ -150,7 +148,6 @@ namespace Graduation.API.Controllers
 
             var totalCount = await query.CountAsync();
 
-           
             var rawUsers = await query
                 .OrderByDescending(u => u.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
@@ -172,10 +169,8 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-           
             var users = rawUsers.Select(u => new
             {
-                
                 u.code,
                 u.email,
                 u.firstName,
@@ -284,8 +279,6 @@ namespace Graduation.API.Controllers
                 throw new NotFoundException("Role not found");
 
             await _userManager.AddToRoleAsync(user, dto.Role);
-
-            
             await _codeAssignment.AssignUserCodeAsync(user);
 
             return Ok(new ApiResult(data: new
@@ -299,7 +292,6 @@ namespace Graduation.API.Controllers
                 updatedAt = user.UpdatedAt,
                 role = dto.Role,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
-
             }, message: "User created successfully"));
         }
 
@@ -387,7 +379,6 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            // Build CSV
             var csv = new StringBuilder();
             csv.AppendLine("First Name,Last Name,Email,Phone,Verified,Created At,Updated At");
 
@@ -407,9 +398,7 @@ namespace Graduation.API.Controllers
             return File(bytes, "text/csv", $"users-export-{DateTime.UtcNow:yyyyMMdd}.csv");
         }
 
-
-
-    [HttpGet("orders")]
+        [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20,
@@ -489,8 +478,6 @@ namespace Graduation.API.Controllers
             }));
         }
 
-
-
         [HttpPost("categories")]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -524,7 +511,6 @@ namespace Graduation.API.Controllers
                 count: result.TotalCount));
         }
 
-        
         [HttpGet("categories/{categoryCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -546,7 +532,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: category, message: "Category updated successfully"));
         }
 
-        
         [HttpPost("categories/{categoryCode}/toggle-activation")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -559,7 +544,6 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: category, message: msg));
         }
 
-        
         [HttpDelete("categories/{categoryCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -578,93 +562,67 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: result));
         }
 
-        
-        [HttpGet("products/{id}")]
+       
+        [HttpGet("products/{productCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetProductById(int id)
+        public async Task<IActionResult> GetProductByCode(string productCode)
         {
-            var product = await _productService.GetProductByIdAsync(id);
+            var product = await _productService.GetProductByIdAsync(productCode);
             return Ok(new ApiResult(data: product));
         }
 
-        
         [HttpPost("products")]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
-            if (!dto.VendorId.HasValue)
-                throw new BadRequestException("vendorId is required when admin creates a product.");
-
-            var vendorExists = await _context.Vendors
-                .AnyAsync(v => v.Id == dto.VendorId.Value && v.IsApproved && v.IsActive);
-
-            if (!vendorExists)
-                throw new BadRequestException(
-                    $"Vendor with ID {dto.VendorId.Value} not found, not approved, or inactive.");
-
-            var product = await _productService.CreateProductAsync(dto.VendorId.Value, dto);
+            var product = await _productService.CreateProductAsync(dto);
             return StatusCode(201, new ApiResult(data: product, message: "Product created successfully"));
         }
 
         
-        [HttpPut("products/{id}")]
+        [HttpPut("products/{productCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
+        public async Task<IActionResult> UpdateProduct(string productCode, [FromBody] ProductUpdateDto dto)
         {
-            var product = await _productService.AdminUpdateProductAsync(id, dto);
+            var product = await _productService.AdminUpdateProductAsync(productCode, dto);
             return Ok(new ApiResult(data: product, message: "Product updated successfully"));
         }
 
         
-        [HttpDelete("products/{id}")]
+        [HttpDelete("products/{productCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteProduct(int id)
+        public async Task<IActionResult> DeleteProduct(string productCode)
         {
-            await _productService.AdminDeleteProductAsync(id);
+            await _productService.AdminDeleteProductAsync(productCode);
             return Ok(new ApiResult(message: "Product deleted successfully"));
         }
 
-        
-        [HttpPatch("products/{id}/stock")]
+        [HttpPatch("products/{productCode}/stock")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateProductStock(int id, [FromBody] UpdateStockDto dto)
+        public async Task<IActionResult> UpdateProductStock(string code, [FromBody] UpdateStockDto dto)
         {
-            await _productService.AdminUpdateStockAsync(id, dto.Quantity);
+            await _productService.AdminUpdateStockAsync(code, dto.Quantity);
             return Ok(new ApiResult(message: "Stock updated successfully"));
         }
 
         
-        [HttpPost("products/{id}/toggle-status")]
+        [HttpPost("products/{productCode}/toggle-status")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ToggleProductStatus(int id)
+        public async Task<IActionResult> ToggleProductStatus(string productCode)
         {
-            var product = await _productService.AdminToggleProductStatusAsync(id);
+            var product = await _productService.AdminToggleProductStatusAsync(productCode);
             var msg = product.IsActive ? "Product activated successfully" : "Product deactivated successfully";
             return Ok(new ApiResult(data: product, message: msg));
         }
 
-        /*
-        [HttpPatch("{id}/status")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status403Forbidden)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ChangeProductStatus(int id, [FromBody] ChangeProductStatusDto dto)
-        {
-            
-            var product = await _productService.AdminChangeProductStatusAsync(id, dto.Status);
-            return Ok(new Errors.ApiResult(data: product, message: "Product status updated successfully"));
-        }
-        */
 
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(
@@ -756,7 +714,5 @@ namespace Graduation.API.Controllers
             var report = await _reportService.GetUserTrendsAsync();
             return Ok(new ApiResult(data: report));
         }
-
-        
     }
 }

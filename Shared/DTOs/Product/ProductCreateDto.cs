@@ -8,10 +8,15 @@ namespace Shared.DTOs.Product
 {
     public class ProductCreateDto
     {
+        [Required(ErrorMessage = "Vendor code is required")]
+        [RegularExpression(@"^V-[A-F0-9]{6}$", ErrorMessage = "Invalid vendor code format")]
+        public string Code { get; set; } = string.Empty;
+
         [Required(ErrorMessage = "Product name in Arabic is required")]
         [MinLength(3, ErrorMessage = "Product name must be at least 3 characters")]
         [MaxLength(300)]
         public string NameAr { get; set; } = string.Empty;
+
 
         [Required(ErrorMessage = "Product name in English is required")]
         [MinLength(3, ErrorMessage = "Product name must be at least 3 characters")]
@@ -59,6 +64,5 @@ namespace Shared.DTOs.Product
 
         public List<string>? ImageUrls { get; set; }
 
-        public int? VendorId { get; set; }
     }
 }

@@ -18,14 +18,14 @@ namespace Graduation.BLL.Services.Implementations
             _codeAssignment = codeAssignment;
         }
 
-        public async Task<ProductDto> CreateProductAsync(int vendorId, ProductCreateDto dto)
+        public async Task<ProductDto> CreateProductAsync(ProductCreateDto dto)
         {
-            var vendor = await _context.Vendors.FindAsync(vendorId);
+            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Code == dto.Code);
             if (vendor == null)
-                throw new NotFoundException("Vendor", vendorId);
+                throw new NotFoundException($"Vendor with code '{dto.Code}' was not found");
 
-            if (!vendor.IsApproved)
-                throw new UnauthorizedException("Your vendor account must be approved before adding products");
+            if (!vendor.IsApproved || !vendor.IsActive)
+                throw new UnauthorizedException("Vendor is not approved or inactive");
 
             var skuExists = await _context.Products.AnyAsync(p => p.SKU == dto.SKU);
             if (skuExists)
@@ -36,7 +36,7 @@ namespace Graduation.BLL.Services.Implementations
                 .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.Status == CategoryStatus.Active);
 
             if (category == null)
-                throw new NotFoundException("Category", dto.CategoryId);
+                throw new NotFoundException("Category", "id", dto.CategoryId);
 
             if (category.SubCategories.Any())
                 throw new BadRequestException("Products must be added to a subcategory, not a parent category");
@@ -57,8 +57,9 @@ namespace Graduation.BLL.Services.Implementations
                 DiscountPrice = dto.DiscountPrice,
                 StockQuantity = dto.StockQuantity,
                 SKU = dto.SKU,
+                Code = dto.Code,
                 CategoryId = dto.CategoryId,
-                VendorId = vendorId,
+                VendorId = vendor.Id,
                 IsEgyptianMade = dto.IsEgyptianMade,
                 MadeInCity = dto.MadeInCity,
                 MadeInGovernorate = dto.MadeInGovernorate,
@@ -69,7 +70,6 @@ namespace Graduation.BLL.Services.Implementations
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
-            await _codeAssignment.AssignProductCodeAsync(product);
 
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
@@ -86,10 +86,11 @@ namespace Graduation.BLL.Services.Implementations
                 await _context.SaveChangesAsync();
             }
 
-            return await GetProductByIdAsync(product.Id);
+            return await GetProductByIdAsync(product.Code);
         }
 
-        public async Task<ProductDto> GetProductByIdAsync(int id)
+        // FIX: Interface uses string code — was int id before
+        public async Task<ProductDto> GetProductByIdAsync(string code)
         {
             var product = await _context.Products
                 .Include(p => p.Vendor)
@@ -97,10 +98,10 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
                 .Include(p => p.Variants.Where(v => v.IsActive))
-                .FirstOrDefaultAsync(p => p.Id == id);
+                .FirstOrDefaultAsync(p => p.Code == code);
 
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
             return MapToDto(product);
         }
@@ -215,32 +216,37 @@ namespace Graduation.BLL.Services.Implementations
             return products.Select(MapToListDto).ToList();
         }
 
-        // Vendor update — enforces ownership
-        public async Task<ProductDto> UpdateProductAsync(int id, int vendorId, ProductUpdateDto dto)
+        // FIX: Interface signature is (string code, string vendorCode, ...).
+        // FIX: Ownership check now correctly compares vendor's Code, not product's Code.
+        public async Task<ProductDto> UpdateProductAsync(string code, string vendorCode, ProductUpdateDto dto)
         {
             var product = await _context.Products
                 .Include(p => p.Vendor)
-                .FirstOrDefaultAsync(p => p.Id == id);
+                .FirstOrDefaultAsync(p => p.Code == code);
 
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
-            if (product.VendorId != vendorId)
+            // FIX: Compare the vendor's own Code against vendorCode, not the product's Code
+            if (product.Vendor.Code != vendorCode)
                 throw new UnauthorizedException("You can only update your own products");
 
             await ApplyProductUpdate(product, dto);
-            return await GetProductByIdAsync(id);
+            return await GetProductByIdAsync(code);
         }
 
         // Admin update — no ownership check
-        public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
+        public async Task<ProductDto> AdminUpdateProductAsync(string code, ProductUpdateDto dto)
         {
-            var product = await _context.Products.FindAsync(id);
+            // FIX: FindAsync uses PK (int Id). Use FirstOrDefaultAsync to query by Code string.
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Code == code);
+
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
             await ApplyProductUpdate(product, dto);
-            return await GetProductByIdAsync(id);
+            return await GetProductByIdAsync(code);
         }
 
         // Shared update logic used by both vendor and admin
@@ -276,28 +282,33 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
         }
 
-        public async Task DeleteProductAsync(int id, int vendorId)
+        // FIX: Interface signature is (string code, string vendorCode).
+        // Soft-delete by code with vendor ownership check via vendor's Code.
+        public async Task DeleteProductAsync(string code, string vendorCode)
         {
-            var product = await _context.Products.FindAsync(id);
+            var product = await _context.Products
+                .Include(p => p.Vendor)
+                .FirstOrDefaultAsync(p => p.Code == code);
 
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
-            if (product.VendorId != vendorId)
+            if (product.Vendor.Code != vendorCode)
                 throw new UnauthorizedException("You can only delete your own products");
 
-            
             product.IsActive = false;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
 
-        
-        public async Task AdminDeleteProductAsync(int id)
+        public async Task AdminDeleteProductAsync(string code)
         {
-            var product = await _context.Products.FindAsync(id);
+            // FIX: FindAsync uses PK (int Id). Use FirstOrDefaultAsync to query by Code string.
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Code == code);
+
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
@@ -325,11 +336,11 @@ namespace Graduation.BLL.Services.Implementations
             return true;
         }
 
-        public async Task AdminUpdateStockAsync(int id, int quantity)
+        public async Task AdminUpdateStockAsync(string code, int quantity)
         {
-            var product = await _context.Products.FindAsync(id);
+            var product = await _context.Products.FindAsync(code);
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code",  code);
 
             if (quantity < 0)
                 throw new BadRequestException("Stock quantity cannot be negative");
@@ -339,16 +350,19 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
         }
 
-        public async Task<ProductDto> AdminToggleProductStatusAsync(int id)
+        public async Task<ProductDto> AdminToggleProductStatusAsync(string code)
         {
-            var product = await _context.Products.FindAsync(id);
+            // FIX: FindAsync uses PK (int Id). Use FirstOrDefaultAsync to query by Code string.
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Code == code);
+
             if (product == null)
-                throw new NotFoundException("Product", id);
+                throw new NotFoundException("Product", "Code", code);
 
             product.IsActive = !product.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-            return await GetProductByIdAsync(id);
+            return await GetProductByIdAsync(code);
         }
 
         public async Task IncrementViewCountAsync(int id)
@@ -356,27 +370,6 @@ namespace Graduation.BLL.Services.Implementations
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
-
-        /*
-        public async Task<ProductDto> AdminChangeProductStatusAsync(int id, ProductStatus newStatus)
-        {
-            var product = await _context.Products
-                .Include(p => p.Vendor)
-                .Include(p => p.Category)
-                .Include(p => p.Images)
-                .FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-                throw new NotFoundException("Product", id);
-
-            product.Status = newStatus;
-            product.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            return MapToDto(product);
-        }
-        */
-
 
         private ProductDto MapToDto(Product product)
         {
@@ -404,7 +397,6 @@ namespace Graduation.BLL.Services.Implementations
                 MadeInGovernorate = product.MadeInGovernorate?.ToString(),
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
-                //Status = product.Status.ToString(),
                 InStock = product.StockQuantity > 0,
                 ViewCount = product.ViewCount,
                 AverageRating = Math.Round(avgRating, 1),
@@ -473,7 +465,6 @@ namespace Graduation.BLL.Services.Implementations
                 InStock = product.StockQuantity > 0,
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
-                //Status = product.Status.ToString(),
                 PrimaryImageUrl = primaryImage,
                 AverageRating = Math.Round(avgRating, 1),
                 TotalReviews = product.Reviews.Count,
@@ -483,7 +474,6 @@ namespace Graduation.BLL.Services.Implementations
                 Code = product.Code,
                 CreatedAt = product.CreatedAt,
                 UpdatedAt = product.UpdatedAt
-
             };
         }
     }

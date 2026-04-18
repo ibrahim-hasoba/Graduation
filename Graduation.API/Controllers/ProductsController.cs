@@ -36,7 +36,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> SearchProducts([FromQuery] ProductSearchDto searchDto)
         {
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new Errors.ApiResult(data: result));
+            return Ok(new ApiResult(data: result));
         }
 
         /// <summary>
@@ -55,7 +55,7 @@ namespace Graduation.API.Controllers
             };
 
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new Errors.ApiResult(data: result));
+            return Ok(new ApiResult(data: result));
         }
 
         /// <summary>
@@ -66,22 +66,20 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetFeaturedProducts([FromQuery] int count = 10)
         {
             var products = await _productService.GetFeaturedProductsAsync(count);
-            return Ok(new Errors.ApiResult(data: products));
+            return Ok(new ApiResult(data: products));
         }
 
         /// <summary>
-        /// Get product by ID (public)
+        /// Get product by code (public)
         /// </summary>
-        [HttpGet("{id}")]
+        [HttpGet("{productCode}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetProductById(int id)
+        public async Task<IActionResult> GetProductByCode(string productCode)
         {
-            // Increment view count
-            await _productService.IncrementViewCountAsync(id);
-
-            var product = await _productService.GetProductByIdAsync(id);
-            return Ok(new Errors.ApiResult(data: product));
+            var product = await _productService.GetProductByIdAsync(productCode);
+            await _productService.IncrementViewCountAsync(product.Id);
+            return Ok(new ApiResult(data: product));
         }
 
         /// <summary>
@@ -92,7 +90,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetVendorProducts(int vendorId)
         {
             var products = await _productService.GetVendorProductsAsync(vendorId);
-            return Ok(new Errors.ApiResult(data: products));
+            return Ok(new ApiResult(data: products));
         }
 
         /// <summary>
@@ -114,7 +112,7 @@ namespace Graduation.API.Controllers
                 return NotFound(new ApiResponse(404, "You don't have a vendor account"));
 
             var products = await _productService.GetVendorProductsAsync(vendor.Id);
-            return Ok(new Errors.ApiResult(data: products));
+            return Ok(new ApiResult(data: products));
         }
 
         /// <summary>
@@ -132,29 +130,21 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
 
-            var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
-            if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to create products");
-
-            if (!vendor.IsApproved)
-                throw new UnauthorizedException("Your vendor account must be approved before adding products");
-
-            var product = await _productService.CreateProductAsync(vendor.Id, dto);
-
-            return StatusCode(201, new Errors.ApiResult(data: product, message: "Product created successfully"));
+            var product = await _productService.CreateProductAsync(dto);
+            return StatusCode(201, new ApiResult(data: product, message: "Product created successfully"));
         }
 
         /// <summary>
         /// Update product (vendor owner only)
         /// </summary>
-        [HttpPut("{id}")]
+        [HttpPut("{productCode}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
-        public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
+        public async Task<IActionResult> UpdateProduct(string productCode, [FromBody] ProductUpdateDto dto)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -164,20 +154,19 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to update products");
 
-            var product = await _productService.UpdateProductAsync(id, vendor.Id, dto);
-
-            return Ok(new Errors.ApiResult(data: product, message: "Product updated successfully"));
+            var product = await _productService.UpdateProductAsync(productCode, vendor.Code, dto);
+            return Ok(new ApiResult(data: product, message: "Product updated successfully"));
         }
 
         /// <summary>
         /// Delete product (vendor owner only)
         /// </summary>
-        [HttpDelete("{id}")]
+        [HttpDelete("{productCode}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteProduct(int id)
+        public async Task<IActionResult> DeleteProduct(string productCode)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -187,9 +176,8 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to delete products");
 
-            await _productService.DeleteProductAsync(id, vendor.Id);
-
-            return Ok(new Errors.ApiResult(message: "Product deleted successfully"));
+            await _productService.DeleteProductAsync(productCode, vendor.Code);
+            return Ok(new ApiResult(message: "Product deleted successfully"));
         }
 
         /// <summary>
@@ -203,10 +191,6 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateStock(int id, [FromBody] UpdateStockDto dto)
         {
-            // FIXED BUG: Was using User.FindFirst("userId")?.Value which only checks the
-            // custom "userId" claim and misses the standard ClaimTypes.NameIdentifier claim,
-            // causing 401 for users whose JWT was issued with the standard claim type.
-            // Now uses the GetUserId() extension which checks both claim types consistently.
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized(new ApiResponse(401, "User not authenticated"));
@@ -216,8 +200,7 @@ namespace Graduation.API.Controllers
                 throw new UnauthorizedException("You must be a vendor to update product stock");
 
             await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
-
-            return Ok(new Errors.ApiResult(message: "Stock updated successfully"));
+            return Ok(new ApiResult(message: "Stock updated successfully"));
         }
     }
 
