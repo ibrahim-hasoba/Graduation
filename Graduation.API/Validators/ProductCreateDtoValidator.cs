@@ -49,11 +49,7 @@ namespace Graduation.API.Validators
             RuleFor(x => x.CategoryId)
                 .GreaterThan(0).WithMessage("A valid category must be selected.");
 
-            RuleFor(x => x.MadeInCity)
-                .NotEmpty().WithMessage("City of manufacture is required when product is Egyptian made.")
-                .MinimumLength(2).WithMessage("City name must be at least 2 characters.")
-                .MaximumLength(100).WithMessage("City name cannot exceed 100 characters.")
-                .When(x => x.IsEgyptianMade);
+           
 
             RuleFor(x => x.MadeInGovernorate)
                 .IsInEnum().WithMessage("A valid Egyptian governorate must be selected.")

@@ -52,12 +52,6 @@ namespace Shared.DTOs.Product
         [Range(1, int.MaxValue, ErrorMessage = "Category ID must be valid")]
         public int CategoryId { get; set; }
 
-        public bool IsEgyptianMade { get; set; } = true;
-
-        [MinLength(2, ErrorMessage = "City name must be at least 2 characters")]
-        [MaxLength(100)]
-        public string? MadeInCity { get; set; }
-
         public EgyptianGovernorate? MadeInGovernorate { get; set; }
 
         public bool IsFeatured { get; set; } = false;

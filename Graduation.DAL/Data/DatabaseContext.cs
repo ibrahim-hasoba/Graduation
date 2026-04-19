@@ -158,7 +158,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(p => p.VendorId);
                 entity.HasIndex(p => p.Price);
                 entity.HasIndex(p => p.IsFeatured);
-                entity.HasIndex(p => p.IsEgyptianMade);
                 entity.HasIndex(p => p.StockQuantity);
                 entity.HasIndex(p => p.CreatedAt);
                 entity.HasIndex(p => p.ViewCount);
