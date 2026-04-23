@@ -10,7 +10,7 @@ namespace Shared.DTOs.Product
     {
         [Required(ErrorMessage = "Vendor code is required")]
         [RegularExpression(@"^V-[A-F0-9]{6}$", ErrorMessage = "Invalid vendor code format")]
-        public string Code { get; set; } = string.Empty;
+        public string VendorCode { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Product name in Arabic is required")]
         [MinLength(3, ErrorMessage = "Product name must be at least 3 characters")]

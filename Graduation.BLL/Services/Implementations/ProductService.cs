@@ -20,9 +20,9 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductDto> CreateProductAsync(ProductCreateDto dto)
         {
-            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Code == dto.Code);
+            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Code == dto.VendorCode);
             if (vendor == null)
-                throw new NotFoundException($"Vendor with code '{dto.Code}' was not found");
+                throw new NotFoundException($"Vendor with code '{dto.VendorCode}' was not found");
 
             if (!vendor.IsApproved || !vendor.IsActive)
                 throw new UnauthorizedException("Vendor is not approved or inactive");
@@ -54,7 +54,7 @@ namespace Graduation.BLL.Services.Implementations
                 DiscountPrice = dto.DiscountPrice,
                 StockQuantity = dto.StockQuantity,
                 SKU = dto.SKU,
-                Code = dto.Code,
+                Code = null,
                 CategoryId = dto.CategoryId,
                 VendorId = vendor.Id,
                 MadeInGovernorate = dto.MadeInGovernorate,
@@ -65,7 +65,7 @@ namespace Graduation.BLL.Services.Implementations
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
-
+            await _codeAssignment.AssignProductCodeAsync(product);
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
                 for (int i = 0; i < dto.ImageUrls.Count; i++)
