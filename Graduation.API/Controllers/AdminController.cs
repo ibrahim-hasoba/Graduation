@@ -553,8 +553,14 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(message: "Category deleted successfully"));
         }
 
+        [HttpGet("products")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetAllProducts([FromQuery] ProductSearchDto searchDto)
+        {
+            var result = await _productService.SearchProductsAsync(searchDto);
+            return Ok(new ApiResult(data: result));
+        }
 
-        
         [HttpGet("products/{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
