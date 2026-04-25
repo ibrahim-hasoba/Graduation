@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
-using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Product;
 
 namespace Graduation.API.Controllers
@@ -48,13 +47,11 @@ namespace Graduation.API.Controllers
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20)
         {
-            var searchDto = new ProductSearchDto
+            var result = await _productService.SearchProductsAsync(new ProductSearchDto
             {
                 PageNumber = pageNumber,
                 PageSize = pageSize
-            };
-
-            var result = await _productService.SearchProductsAsync(searchDto);
+            });
             return Ok(new ApiResult(data: result));
         }
 
@@ -63,33 +60,48 @@ namespace Graduation.API.Controllers
         /// </summary>
         [HttpGet("featured")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetFeaturedProducts([FromQuery] int count = 10)
+        public async Task<IActionResult> GetFeaturedProducts(
+                [FromQuery] int pageNumber = 1,
+                [FromQuery] int pageSize = 10)
         {
-            var products = await _productService.GetFeaturedProductsAsync(count);
-            return Ok(new ApiResult(data: products));
+            var result = await _productService.GetFeaturedProductsAsync(pageNumber, pageSize);
+            return Ok(new ApiResult(data: result));
         }
 
         /// <summary>
-        /// Get product by code (public)
+        /// Get product by numeric id 
         /// </summary>
-        [HttpGet("{productCode}")]
+        [HttpGet("{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetProductByCode(string productCode)
+        public async Task<IActionResult> GetProductById(int id)
         {
-            var product = await _productService.GetProductByIdAsync(productCode);
+            var product = await _productService.GetProductByIdAsync(id);
             await _productService.IncrementViewCountAsync(product.Id);
             return Ok(new ApiResult(data: product));
         }
 
         /// <summary>
-        /// Get products by vendor (public)
+        /// Get product by code 
         /// </summary>
-        [HttpGet("vendor/{vendorId}")]
+        [HttpGet("{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetVendorProducts(int vendorId)
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetProductByCode(string code)
         {
-            var products = await _productService.GetVendorProductsAsync(vendorId);
+            var product = await _productService.GetProductByCodeAsync(code);
+            await _productService.IncrementViewCountAsync(product.Id);
+            return Ok(new ApiResult(data: product));
+        }
+
+        [HttpGet("vendor/{vendorId:int}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> GetVendorProducts(
+                 int vendorId,
+                [FromQuery] int pageNumber = 1,
+                [FromQuery] int pageSize = 20)
+        {
+            var products = await _productService.GetVendorProductsAsync(vendorId, pageNumber, pageSize);
             return Ok(new ApiResult(data: products));
         }
 
@@ -101,7 +113,9 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetMyProducts()
+        public async Task<IActionResult> GetMyProducts(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 20)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -111,8 +125,8 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 return NotFound(new ApiResponse(404, "You don't have a vendor account"));
 
-            var products = await _productService.GetVendorProductsAsync(vendor.Id);
-            return Ok(new ApiResult(data: products));
+            var result = await _productService.GetVendorProductsAsync(vendor.Id, pageNumber, pageSize);
+            return Ok(new ApiResult(data: result));
         }
 
         /// <summary>
@@ -135,16 +149,15 @@ namespace Graduation.API.Controllers
         }
 
         /// <summary>
-        /// Update product (vendor owner only)
+        /// Update product by id (vendor owner only)
         /// </summary>
-        [HttpPut("{productCode}")]
+        [HttpPut("{id:int}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        public async Task<IActionResult> UpdateProduct(string productCode, [FromBody] ProductUpdateDto dto)
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -154,19 +167,19 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to update products");
 
-            var product = await _productService.UpdateProductAsync(productCode, vendor.Code, dto);
+            var product = await _productService.UpdateProductAsync(id, vendor.Code, dto);
             return Ok(new ApiResult(data: product, message: "Product updated successfully"));
         }
 
         /// <summary>
-        /// Delete product (vendor owner only)
+        /// Delete product by id (vendor owner only)
         /// </summary>
-        [HttpDelete("{productCode}")]
+        [HttpDelete("{id:int}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteProduct(string productCode)
+        public async Task<IActionResult> DeleteProduct(int id)
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
@@ -176,14 +189,14 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new UnauthorizedException("You must be a vendor to delete products");
 
-            await _productService.DeleteProductAsync(productCode, vendor.Code);
+            await _productService.DeleteProductAsync(id, vendor.Code);
             return Ok(new ApiResult(message: "Product deleted successfully"));
         }
 
         /// <summary>
-        /// Update product stock (vendor owner only)
+        /// Update stock by id (vendor owner only)
         /// </summary>
-        [HttpPatch("{id}/stock")]
+        [HttpPatch("{id:int}/stock")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

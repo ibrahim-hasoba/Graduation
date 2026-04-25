@@ -60,9 +60,6 @@
   <data name="Email_AlreadyExists"><value>A user with this email already exists</value></data>
   <data name="Phone_AlreadyRegistered"><value>This phone number is already registered</value></data>
   <data name="OTP_RecentlySent"><value>OTP recently sent. Try again in a minute.</value></data>
-<data name="User_NotFound">
-  <value>User not found</value>
-</data>
   <data name="OTP_TooMany"><value>Too many OTP requests. Try again later.</value></data>
   <data name="Registration_Success"><value>Registration successful! Please verify your email.</value></data>
   <data name="Registration_EmailFailed"><value>Registration failed because the verification email could not be sent. Please try again later.</value></data>

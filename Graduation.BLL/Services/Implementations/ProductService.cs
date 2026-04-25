@@ -1,9 +1,10 @@
-﻿using Shared.Errors;
-using Graduation.BLL.Services.Interfaces;
+﻿using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
+using Shared.DTOs;
 using Shared.DTOs.Product;
+using Shared.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -66,6 +67,7 @@ namespace Graduation.BLL.Services.Implementations
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
             await _codeAssignment.AssignProductCodeAsync(product);
+
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
                 for (int i = 0; i < dto.ImageUrls.Count; i++)
@@ -81,17 +83,37 @@ namespace Graduation.BLL.Services.Implementations
                 await _context.SaveChangesAsync();
             }
 
-            return await GetProductByIdAsync(product.Code!);
+            return await GetProductByIdAsync(product.Id);
         }
 
-        public async Task<ProductDto> GetProductByIdAsync(string code)
-        {
-            var product = await _context.Products
+        // ── Private shared query builder ────────────────────────────────────────
+
+        private IQueryable<Product> ProductsWithIncludes()
+            => _context.Products
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .Include(p => p.Variants.Where(v => v.IsActive))
+                .Include(p => p.Variants.Where(v => v.IsActive));
+
+        // ── Public GET: by id ────────────────────────────────────────────────────
+
+        public async Task<ProductDto> GetProductByIdAsync(int id)
+        {
+            var product = await ProductsWithIncludes()
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
+
+            return MapToDto(product);
+        }
+
+        // ── Public GET: by code (shareable URL) ──────────────────────────────────
+
+        public async Task<ProductDto> GetProductByCodeAsync(string code)
+        {
+            var product = await ProductsWithIncludes()
                 .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
 
             if (product == null)
@@ -99,6 +121,8 @@ namespace Graduation.BLL.Services.Implementations
 
             return MapToDto(product);
         }
+
+        // ── Search ───────────────────────────────────────────────────────────────
 
         public async Task<ProductSearchResultDto> SearchProductsAsync(ProductSearchDto searchDto)
         {
@@ -178,62 +202,173 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        public async Task<List<ProductListDto>> GetVendorProductsAsync(int vendorId)
+        public async Task<PagedResult<ProductListDto>> GetVendorProductsAsync(int vendorId, int pageNumber = 1, int pageSize = 20)
         {
-            var products = await _context.Products
+            var query = _context.Products
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
                 .Where(p => p.VendorId == vendorId)
-                .OrderByDescending(p => p.CreatedAt)
+                .OrderByDescending(p => p.CreatedAt);
+
+            var totalCount = await query.CountAsync();
+
+            var products = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return products.Select(MapToListDto).ToList();
+            return new PagedResult<ProductListDto>
+            {
+                Items = products.Select(MapToListDto).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
-        public async Task<List<ProductListDto>> GetFeaturedProductsAsync(int count = 10)
+        public async Task<PagedResult<ProductListDto>> GetFeaturedProductsAsync(int pageNumber = 1, int pageSize = 10)
         {
-            var products = await _context.Products
+            var query = _context.Products
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
                 .Where(p => p.IsFeatured && p.IsActive && p.StockQuantity > 0)
-                .OrderByDescending(p => p.ViewCount)
-                .Take(count)
+                .OrderByDescending(p => p.ViewCount);
+
+            var totalCount = await query.CountAsync();
+
+            var products = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return products.Select(MapToListDto).ToList();
+            return new PagedResult<ProductListDto>
+            {
+                Items = products.Select(MapToListDto).ToList(),
+                TotalCount = totalCount,
+                PageNumber = pageNumber,
+                PageSize = pageSize
+            };
         }
 
-        public async Task<ProductDto> UpdateProductAsync(string code, string vendorCode, ProductUpdateDto dto)
+        // ── Vendor write operations (by id) ──────────────────────────────────────
+
+        public async Task<ProductDto> UpdateProductAsync(int id, string vendorCode, ProductUpdateDto dto)
         {
             var product = await _context.Products
                 .Include(p => p.Vendor)
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
-                throw new NotFoundException("Product", "Code", code);
+                throw new NotFoundException("Product", "Id", id);
 
             if (product.Vendor.Code != vendorCode)
                 throw new UnauthorizedException("You can only update your own products");
 
             await ApplyProductUpdate(product, dto);
-            return await GetProductByIdAsync(code);
+            return await GetProductByIdAsync(id);
         }
 
-        public async Task<ProductDto> AdminUpdateProductAsync(string code, ProductUpdateDto dto)
+        public async Task DeleteProductAsync(int id, string vendorCode)
         {
             var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
+                .Include(p => p.Vendor)
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
-                throw new NotFoundException("Product", "Code", code);
+                throw new NotFoundException("Product", "Id", id);
+
+            if (product.Vendor.Code != vendorCode)
+                throw new UnauthorizedException("You can only delete your own products");
+
+            product.IsActive = false;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<bool> UpdateStockAsync(int id, int quantity, int? vendorId = null)
+        {
+            var product = await _context.Products
+                .Include(p => p.Vendor)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
+
+            if (vendorId.HasValue && product.VendorId != vendorId.Value)
+                throw new UnauthorizedException("You can only update stock for your own products");
+
+            if (quantity < 0)
+                throw new BadRequestException("Stock quantity cannot be negative");
+
+            product.StockQuantity = quantity;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task IncrementViewCountAsync(int id)
+        {
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
+        }
+
+        // ── Admin operations (by id) ──────────────────────────────────────────────
+
+        public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
 
             await ApplyProductUpdate(product, dto);
-            return await GetProductByIdAsync(code);
+            return await GetProductByIdAsync(id);
         }
+
+        public async Task AdminDeleteProductAsync(int id)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
+
+            _context.Products.Remove(product);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task AdminUpdateStockAsync(int id, int quantity)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
+
+            if (quantity < 0)
+                throw new BadRequestException("Stock quantity cannot be negative");
+
+            product.StockQuantity = quantity;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task<ProductDto> AdminToggleProductStatusAsync(int id)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                throw new NotFoundException("Product", "Id", id);
+
+            product.IsActive = !product.IsActive;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return await GetProductByIdAsync(id);
+        }
+
+        // ── Private helpers ───────────────────────────────────────────────────────
 
         private async Task ApplyProductUpdate(Product product, ProductUpdateDto dto)
         {
@@ -264,93 +399,6 @@ namespace Graduation.BLL.Services.Implementations
             product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-        }
-
-        public async Task DeleteProductAsync(string code, string vendorCode)
-        {
-            var product = await _context.Products
-                .Include(p => p.Vendor)
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Code", code);
-
-            if (product.Vendor.Code != vendorCode)
-                throw new UnauthorizedException("You can only delete your own products");
-
-            product.IsActive = false;
-            product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
-
-        public async Task AdminDeleteProductAsync(string code)
-        {
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Code", code);
-
-            _context.Products.Remove(product);
-            await _context.SaveChangesAsync();
-        }
-
-        public async Task<bool> UpdateStockAsync(int id, int quantity, int? vendorId = null)
-        {
-            var product = await _context.Products
-                .Include(p => p.Vendor)
-                .FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-                throw new NotFoundException("Product", id);
-
-            if (vendorId.HasValue && product.VendorId != vendorId.Value)
-                throw new UnauthorizedException("You can only update stock for your own products");
-
-            if (quantity < 0)
-                throw new BadRequestException("Stock quantity cannot be negative");
-
-            product.StockQuantity = quantity;
-            product.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            return true;
-        }
-
-        public async Task AdminUpdateStockAsync(string code, int quantity)
-        {
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Code", code);
-
-            if (quantity < 0)
-                throw new BadRequestException("Stock quantity cannot be negative");
-
-            product.StockQuantity = quantity;
-            product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
-
-        public async Task<ProductDto> AdminToggleProductStatusAsync(string code)
-        {
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Code != null && p.Code == code);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Code", code);
-
-            product.IsActive = !product.IsActive;
-            product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            return await GetProductByIdAsync(code);
-        }
-
-        public async Task IncrementViewCountAsync(int id)
-        {
-            await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
         private ProductDto MapToDto(Product product)
@@ -416,10 +464,8 @@ namespace Graduation.BLL.Services.Implementations
                                 StockQuantity = v.StockQuantity,
                                 DisplayOrder = v.DisplayOrder,
                                 IsActive = v.IsActive
-                            })
-                            .ToList()
-                    })
-                    .ToList()
+                            }).ToList()
+                    }).ToList()
             };
         }
 

@@ -349,7 +349,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

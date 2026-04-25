@@ -554,21 +554,22 @@ namespace Graduation.API.Controllers
         }
 
 
-        [HttpGet("products")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetAllProducts([FromQuery] ProductSearchDto searchDto)
-        {
-            var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new ApiResult(data: result));
-        }
-
-       
-        [HttpGet("products/{productCode}")]
+        
+        [HttpGet("products/{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetProductByCode(string productCode)
+        public async Task<IActionResult> GetProductById(int id)
         {
-            var product = await _productService.GetProductByIdAsync(productCode);
+            var product = await _productService.GetProductByIdAsync(id);
+            return Ok(new ApiResult(data: product));
+        }
+
+        [HttpGet("products/{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> GetProductByCode(string code)
+        {
+            var product = await _productService.GetProductByCodeAsync(code);
             return Ok(new ApiResult(data: product));
         }
 
@@ -582,43 +583,40 @@ namespace Graduation.API.Controllers
             return StatusCode(201, new ApiResult(data: product, message: "Product created successfully"));
         }
 
-        
-        [HttpPut("products/{productCode}")]
+        [HttpPut("products/{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateProduct(string productCode, [FromBody] ProductUpdateDto dto)
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
-            var product = await _productService.AdminUpdateProductAsync(productCode, dto);
+            var product = await _productService.AdminUpdateProductAsync(id, dto);
             return Ok(new ApiResult(data: product, message: "Product updated successfully"));
         }
 
-        
-        [HttpDelete("products/{productCode}")]
+        [HttpDelete("products/{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> DeleteProduct(string productCode)
+        public async Task<IActionResult> DeleteProduct(int id)
         {
-            await _productService.AdminDeleteProductAsync(productCode);
+            await _productService.AdminDeleteProductAsync(id);
             return Ok(new ApiResult(message: "Product deleted successfully"));
         }
 
-        [HttpPatch("products/{productCode}/stock")]
+        [HttpPatch("products/{id:int}/stock")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> UpdateProductStock(string code, [FromBody] UpdateStockDto dto)
+        public async Task<IActionResult> UpdateProductStock(int id, [FromBody] UpdateStockDto dto)
         {
-            await _productService.AdminUpdateStockAsync(code, dto.Quantity);
+            await _productService.AdminUpdateStockAsync(id, dto.Quantity);
             return Ok(new ApiResult(message: "Stock updated successfully"));
         }
 
-        
-        [HttpPost("products/{productCode}/toggle-status")]
+        [HttpPost("products/{id:int}/toggle-status")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ToggleProductStatus(string productCode)
+        public async Task<IActionResult> ToggleProductStatus(int id)
         {
-            var product = await _productService.AdminToggleProductStatusAsync(productCode);
+            var product = await _productService.AdminToggleProductStatusAsync(id);
             var msg = product.IsActive ? "Product activated successfully" : "Product deactivated successfully";
             return Ok(new ApiResult(data: product, message: msg));
         }
