@@ -76,6 +76,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
+            // Check real users
             var existingByEmail = await _userManager.FindByEmailAsync(userDto.Email!);
             if (existingByEmail != null)
                 throw new ConflictException(_lang.GetMessage("Email_AlreadyExists"));
@@ -88,6 +89,7 @@ namespace Graduation.API.Controllers
                     throw new ConflictException(_lang.GetMessage("Phone_AlreadyRegistered"));
             }
 
+            // Rate limiting (now against EmailOtps as before — no change here)
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == userDto.Email && e.CreatedAt >= oneMinuteAgo);
@@ -99,37 +101,46 @@ namespace Graduation.API.Controllers
             if (lastHourCount >= 5)
                 return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_TooMany")));
 
-            var user = new AppUser
+            // Hash password before persisting
+            var hasher = new PasswordHasher<AppUser>();
+            var passwordHash = hasher.HashPassword(null!, userDto.Password!);
+
+            // Replace any previous pending registration for this email
+            var existing = await _context.PendingRegistrations
+                .Where(p => p.Email == userDto.Email!)
+                .ToListAsync();
+            _context.PendingRegistrations.RemoveRange(existing);
+
+            _context.PendingRegistrations.Add(new PendingRegistration
             {
                 FirstName = userDto.FirstName ?? string.Empty,
                 LastName = userDto.LastName ?? string.Empty,
-                Email = userDto.Email,
-                UserName = userDto.Email,
-                EmailConfirmed = false,
-                CreatedAt = DateTime.UtcNow,
-                PhoneNumber = userDto.PhoneNumber
-            };
+                Email = userDto.Email!,
+                PhoneNumber = userDto.PhoneNumber,
+                PasswordHash = passwordHash,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10)
+            });
 
-            var result = await _userManager.CreateAsync(user, userDto.Password!);
-            if (!result.Succeeded)
-                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+            await _context.SaveChangesAsync();
 
-            await _userManager.AddToRoleAsync(user, "Customer");
-            await _codeAssignment.AssignUserCodeAsync(user);
-
+            // Send OTP (reuses your existing _otpService + _emailService)
             try
             {
-                await SendVerificationEmail(user);
+                var code = await _otpService.GenerateOtpAsync(userDto.Email!);
+                await _emailService.SendEmailOtpAsync(userDto.Email!, userDto.FirstName ?? string.Empty, code);
             }
             catch (Exception)
             {
-                await _userManager.DeleteAsync(user);
+                // Rollback pending record if email fails
+                var pending = await _context.PendingRegistrations
+                    .FirstOrDefaultAsync(p => p.Email == userDto.Email!);
+                if (pending != null) _context.PendingRegistrations.Remove(pending);
+                await _context.SaveChangesAsync();
                 throw new BadRequestException(_lang.GetMessage("Registration_EmailFailed"));
             }
 
             return StatusCode(201, new ApiResult(message: _lang.GetMessage("Registration_Success")));
         }
-
         [HttpPost("login")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -561,24 +572,64 @@ namespace Graduation.API.Controllers
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
                 throw new BadRequestException("Email and code are required");
 
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
-
+            // Validate OTP first
             var isValid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
             if (!isValid)
                 throw new BadRequestException(_lang.GetMessage("Password_CodeInvalid"));
 
-            if (user.EmailConfirmed)
-                return Ok(new ApiResult(message: _lang.GetMessage("Email_AlreadyVerified")));
+            // Check if already a verified user (re-verify case)
+            var existingUser = await _userManager.FindByEmailAsync(dto.Email);
+            if (existingUser != null)
+            {
+                if (!existingUser.EmailConfirmed)
+                {
+                    existingUser.EmailConfirmed = true;
+                    await _userManager.UpdateAsync(existingUser);
+                }
+                return await GenerateAuthResponse(existingUser);
+            }
 
-            user.EmailConfirmed = true;
-            var updateResult = await _userManager.UpdateAsync(user);
-            if (!updateResult.Succeeded)
-                throw new BadRequestException(_lang.GetMessage("Email_ConfirmFailed"));
+            // Find the pending registration
+            var pending = await _context.PendingRegistrations
+                .FirstOrDefaultAsync(p => p.Email == dto.Email);
+
+            if (pending == null)
+                throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+
+            if (pending.ExpiresAt < DateTime.UtcNow)
+            {
+                _context.PendingRegistrations.Remove(pending);
+                await _context.SaveChangesAsync();
+                throw new BadRequestException(_lang.GetMessage("OTP_Expired"));
+            }
+
+            // Create the real user now
+            var user = new AppUser
+            {
+                FirstName = pending.FirstName,
+                LastName = pending.LastName,
+                Email = pending.Email,
+                UserName = pending.Email,
+                PhoneNumber = pending.PhoneNumber,
+                EmailConfirmed = true,           // verified by OTP
+                CreatedAt = DateTime.UtcNow,
+                PasswordHash = pending.PasswordHash  // assign directly, skip re-hashing
+            };
+
+            // CreateAsync() without password arg — hash already set above
+            var result = await _userManager.CreateAsync(user);
+            if (!result.Succeeded)
+                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            await _userManager.AddToRoleAsync(user, "Customer");
+            await _codeAssignment.AssignUserCodeAsync(user);
+
+            // Clean up
+            _context.PendingRegistrations.Remove(pending);
+            await _context.SaveChangesAsync();
 
             return await GenerateAuthResponse(user);
         }
-
         [HttpPost("verify-reset-code")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

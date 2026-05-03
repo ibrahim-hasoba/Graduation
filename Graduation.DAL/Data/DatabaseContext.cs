@@ -28,6 +28,8 @@ namespace Graduation.DAL.Data
         public DbSet<Payment> Payments { get; set; }
         public DbSet<CartItemVariant> CartItemVariants { get; set; }
         public DbSet<OrderItemVariant> OrderItemVariants { get; set; }
+
+        public DbSet<PendingRegistration> PendingRegistrations { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
