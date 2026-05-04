@@ -203,8 +203,11 @@ namespace Graduation.BLL.Services.Implementations
 
             // Build base query — root categories only (parent = null) unless a specific
             // parent is requested. Sub-categories are returned nested inside their parent.
+            // AFTER
             var dbQuery = _context.Categories
                 .Include(c => c.SubCategories)
+                    .ThenInclude(s => s.SubCategories)
+                        .ThenInclude(ss => ss.SubCategories)
                 .AsQueryable();
 
             // Status filter
@@ -267,8 +270,11 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<CategoryDto> GetCategoryByCodeAsync(string categoryCode)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
+            // AFTER
             var category = await _context.Categories
                 .Include(c => c.SubCategories)
+                    .ThenInclude(s => s.SubCategories)
+                        .ThenInclude(ss => ss.SubCategories)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)

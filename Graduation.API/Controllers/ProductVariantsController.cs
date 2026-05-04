@@ -7,7 +7,6 @@ using Shared.DTOs.Product;
 
 namespace Graduation.API.Controllers
 {
-
     [Route("api/products/{productId:int}/variants")]
     [ApiController]
     public class ProductVariantsController : ControllerBase
@@ -22,7 +21,6 @@ namespace Graduation.API.Controllers
             _variantService = variantService;
             _vendorService = vendorService;
         }
-
 
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -42,9 +40,8 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: variant));
         }
 
-
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin,Vendor")]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -52,14 +49,13 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> AddVariant(int productId, [FromBody] CreateProductVariantDto dto)
         {
-            var vendorId = await GetVendorIdAsync();
-            var variant = await _variantService.AddVariantAsync(productId, vendorId, dto);
+            var (vendorId, isAdmin) = await GetUserContextAsync();
+            var variant = await _variantService.AddVariantAsync(productId, vendorId, isAdmin, dto);
             return StatusCode(201, new ApiResult(data: variant, message: "Variant added successfully."));
         }
 
-
         [HttpPost("bulk")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Vendor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -68,15 +64,15 @@ namespace Graduation.API.Controllers
             int productId,
             [FromBody] BulkUpsertVariantTypeDto dto)
         {
-            var vendorId = await GetVendorIdAsync();
-            var group = await _variantService.BulkUpsertVariantTypeAsync(productId, vendorId, dto);
+            var (vendorId, isAdmin) = await GetUserContextAsync();
+            var group = await _variantService.BulkUpsertVariantTypeAsync(productId, vendorId, isAdmin, dto);
             return Ok(new ApiResult(
                 data: group,
                 message: $"Variants for type '{group.TypeName}' updated successfully."));
         }
 
         [HttpPut("{variantId:int}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Vendor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -87,51 +83,52 @@ namespace Graduation.API.Controllers
             int variantId,
             [FromBody] UpdateProductVariantDto dto)
         {
-            var vendorId = await GetVendorIdAsync();
-            var variant = await _variantService.UpdateVariantAsync(variantId, vendorId, dto);
+            var (vendorId, isAdmin) = await GetUserContextAsync();
+            var variant = await _variantService.UpdateVariantAsync(variantId, vendorId, isAdmin, dto);
             return Ok(new ApiResult(data: variant, message: "Variant updated successfully."));
         }
 
         [HttpDelete("{variantId:int}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Vendor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteVariant(int productId, int variantId)
         {
-            var vendorId = await GetVendorIdAsync();
-            await _variantService.DeleteVariantAsync(variantId, vendorId);
+            var (vendorId, isAdmin) = await GetUserContextAsync();
+            await _variantService.DeleteVariantAsync(variantId, vendorId, isAdmin);
             return Ok(new ApiResult(message: "Variant removed successfully."));
         }
 
-
         [HttpDelete("type/{typeName}")]
-        [Authorize]
+        [Authorize(Roles = "Admin,Vendor")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteVariantType(int productId, string typeName)
         {
-            var vendorId = await GetVendorIdAsync();
-            await _variantService.DeleteVariantTypeAsync(productId, vendorId, typeName);
+            var (vendorId, isAdmin) = await GetUserContextAsync();
+            await _variantService.DeleteVariantTypeAsync(productId, vendorId, isAdmin, typeName);
             return Ok(new ApiResult(message: $"All '{typeName}' variants removed successfully."));
         }
 
-
-        private async Task<int> GetVendorIdAsync()
+        private async Task<(int? vendorId, bool isAdmin)> GetUserContextAsync()
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
                 throw new UnauthorizedException("User not authenticated.");
 
+            if (User.IsInRole("Admin"))
+                return (null, true);
+
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to manage product variants.");
+                throw new UnauthorizedException("You must be a vendor or an admin to manage product variants.");
 
             if (!vendor.IsApproved)
                 throw new UnauthorizedException("Your vendor account must be approved before managing variants.");
 
-            return vendor.Id;
+            return (vendor.Id, false);
         }
     }
 }

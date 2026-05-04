@@ -8,7 +8,6 @@ using Shared.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Graduation.BLL.Services.Implementations
@@ -24,8 +23,7 @@ namespace Graduation.BLL.Services.Implementations
             _logger = logger;
         }
 
-
-        private async Task<Product> GetProductAndVerifyOwnerAsync(int productId, int vendorId)
+        private async Task<Product> GetProductAndVerifyOwnerAsync(int productId, int? vendorId, bool isAdmin)
         {
             var product = await _context.Products
                 .FirstOrDefaultAsync(p => p.Id == productId);
@@ -33,7 +31,7 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null)
                 throw new NotFoundException("Product", productId);
 
-            if (product.VendorId != vendorId)
+            if (!isAdmin && product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only manage variants for your own products.");
 
             return product;
@@ -61,7 +59,6 @@ namespace Graduation.BLL.Services.Implementations
                 .Select(MapToDto)
                 .ToList()
             };
-
 
         public async Task<List<ProductVariantGroupDto>> GetProductVariantsAsync(int productId)
         {
@@ -93,11 +90,10 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(variant);
         }
 
-
         public async Task<ProductVariantDto> AddVariantAsync(
-            int productId, int vendorId, CreateProductVariantDto dto)
+            int productId, int? vendorId, bool isAdmin, CreateProductVariantDto dto)
         {
-            await GetProductAndVerifyOwnerAsync(productId, vendorId);
+            await GetProductAndVerifyOwnerAsync(productId, vendorId, isAdmin);
 
             var duplicate = await _context.ProductVariants
                 .AnyAsync(v => v.ProductId == productId
@@ -133,9 +129,9 @@ namespace Graduation.BLL.Services.Implementations
         }
 
         public async Task<ProductVariantGroupDto> BulkUpsertVariantTypeAsync(
-            int productId, int vendorId, BulkUpsertVariantTypeDto dto)
+            int productId, int? vendorId, bool isAdmin, BulkUpsertVariantTypeDto dto)
         {
-            await GetProductAndVerifyOwnerAsync(productId, vendorId);
+            await GetProductAndVerifyOwnerAsync(productId, vendorId, isAdmin);
 
             var normalizedType = NormalizeTypeName(dto.TypeName);
 
@@ -182,7 +178,7 @@ namespace Graduation.BLL.Services.Implementations
         }
 
         public async Task<ProductVariantDto> UpdateVariantAsync(
-            int variantId, int vendorId, UpdateProductVariantDto dto)
+            int variantId, int? vendorId, bool isAdmin, UpdateProductVariantDto dto)
         {
             var variant = await _context.ProductVariants
                 .Include(v => v.Product)
@@ -191,7 +187,7 @@ namespace Graduation.BLL.Services.Implementations
             if (variant == null)
                 throw new NotFoundException("Variant", variantId);
 
-            if (variant.Product.VendorId != vendorId)
+            if (!isAdmin && variant.Product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only update variants for your own products.");
 
             var isDuplicate = await _context.ProductVariants
@@ -222,7 +218,7 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(variant);
         }
 
-        public async Task DeleteVariantAsync(int variantId, int vendorId)
+        public async Task DeleteVariantAsync(int variantId, int? vendorId, bool isAdmin)
         {
             var variant = await _context.ProductVariants
                 .Include(v => v.Product)
@@ -231,7 +227,7 @@ namespace Graduation.BLL.Services.Implementations
             if (variant == null)
                 throw new NotFoundException("Variant", variantId);
 
-            if (variant.Product.VendorId != vendorId)
+            if (!isAdmin && variant.Product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only delete variants for your own products.");
 
             variant.IsActive = false;
@@ -240,9 +236,9 @@ namespace Graduation.BLL.Services.Implementations
             _logger.LogInformation("Variant soft-deleted: VariantId={VariantId}", variantId);
         }
 
-        public async Task DeleteVariantTypeAsync(int productId, int vendorId, string typeName)
+        public async Task DeleteVariantTypeAsync(int productId, int? vendorId, bool isAdmin, string typeName)
         {
-            await GetProductAndVerifyOwnerAsync(productId, vendorId);
+            await GetProductAndVerifyOwnerAsync(productId, vendorId, isAdmin);
 
             var normalized = NormalizeTypeName(typeName);
 
@@ -262,7 +258,6 @@ namespace Graduation.BLL.Services.Implementations
                 "Variant type deleted: ProductId={ProductId}, Type={Type}, Count={Count}",
                 productId, normalized, variants.Count);
         }
-
 
         private static string NormalizeTypeName(string typeName)
         {

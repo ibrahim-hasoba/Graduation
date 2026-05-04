@@ -9,29 +9,39 @@ namespace Graduation.BLL.Services.Interfaces
 {
     public interface IProductVariantService
     {
-        /// <summary>Get all variant groups for a product (public)</summary>
-        Task<List<ProductVariantGroupDto>> GetProductVariantsAsync(int productId);
+        
+            Task<List<ProductVariantGroupDto>> GetProductVariantsAsync(int productId);
 
-        /// <summary>Get a single variant by its ID</summary>
-        Task<ProductVariantDto> GetVariantByIdAsync(int variantId);
+            Task<ProductVariantDto> GetVariantByIdAsync(int variantId);
 
-        /// <summary>Add a single variant option to a product (vendor only)</summary>
-        Task<ProductVariantDto> AddVariantAsync(int productId, int vendorId, CreateProductVariantDto dto);
+            Task<ProductVariantDto> AddVariantAsync(
+                int productId,
+                int? vendorId,
+                bool isAdmin,
+                CreateProductVariantDto dto);
 
-        /// <summary>
-        /// Bulk upsert: replace all options for a given type on a product.
-        /// Existing options not in the new list are soft-deleted (IsActive=false).
-        /// </summary>
-        Task<ProductVariantGroupDto> BulkUpsertVariantTypeAsync(
-            int productId, int vendorId, BulkUpsertVariantTypeDto dto);
+            Task<ProductVariantGroupDto> BulkUpsertVariantTypeAsync(
+                int productId,
+                int? vendorId,
+                bool isAdmin,
+                BulkUpsertVariantTypeDto dto);
 
-        /// <summary>Update a single variant option (vendor only)</summary>
-        Task<ProductVariantDto> UpdateVariantAsync(int variantId, int vendorId, UpdateProductVariantDto dto);
+            Task<ProductVariantDto> UpdateVariantAsync(
+                int variantId,
+                int? vendorId,
+                bool isAdmin,
+                UpdateProductVariantDto dto);
 
-        /// <summary>Soft-delete a single variant option (vendor only)</summary>
-        Task DeleteVariantAsync(int variantId, int vendorId);
+            Task DeleteVariantAsync(
+                int variantId,
+                int? vendorId,
+                bool isAdmin);
 
-        /// <summary>Delete all variants of a specific type for a product (vendor only)</summary>
-        Task DeleteVariantTypeAsync(int productId, int vendorId, string typeName);
+            Task DeleteVariantTypeAsync(
+                int productId,
+                int? vendorId,
+                bool isAdmin,
+                string typeName);
+        
     }
 }
