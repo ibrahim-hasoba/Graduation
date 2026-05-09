@@ -17,11 +17,16 @@ namespace Graduation.API.Controllers
     {
         private readonly DatabaseContext _context;
         private readonly ICodeLookupService _codeLookup;
+        private readonly ILanguageService _lang;
 
-        public CategoriesController(DatabaseContext context, ICodeLookupService codeLookup)
+        public CategoriesController(
+            DatabaseContext context,
+            ICodeLookupService codeLookup,
+            ILanguageService lang)
         {
             _context = context;
             _codeLookup = codeLookup;
+            _lang = lang;
         }
 
         [HttpGet]
@@ -101,7 +106,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id && c.Status == CategoryStatus.Active);
 
             if (category == null)
-                return NotFound(new ApiResponse(404, "Category not found"));
+                return NotFound(new ApiResponse(404, _lang.GetMessage("Category_NotFound")));
 
             var productCount = await _context.Products
                 .CountAsync(p => p.CategoryId == id && p.IsActive);
@@ -227,7 +232,7 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(
                 data: leafDtos,
-                message: "All leaf categories where products can be added",
+                message: _lang.GetMessage("Category_LeafCategories"),
                 count: leafDtos.Count));
         }
 

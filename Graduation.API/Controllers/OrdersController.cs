@@ -17,15 +17,18 @@ namespace Graduation.API.Controllers
         private readonly IOrderService _orderService;
         private readonly IVendorService _vendorService;
         private readonly IPaymentService _paymentService;
+        private readonly ILanguageService _lang;
 
         public OrdersController(
             IOrderService orderService,
             IVendorService vendorService,
-            IPaymentService paymentService)
+            IPaymentService paymentService,
+            ILanguageService lang)
         {
             _orderService = orderService;
             _vendorService = vendorService;
             _paymentService = paymentService;
+            _lang = lang;
         }
 
         [HttpPost]
@@ -36,10 +39,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var order = await _orderService.CreateOrderAsync(userId, dto);
-            return StatusCode(201, new Errors.ApiResult(data: order, message: "Order placed successfully!"));
+            return StatusCode(201, new ApiResult(data: order, message: _lang.GetMessage("Order_Placed")));
         }
 
         [HttpPost("{id}/initiate-payment")]
@@ -51,12 +54,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var order = await _orderService.GetOrderByIdAsync(id, userId);
 
             var result = await _paymentService.InitiatePaymentAsync(id);
-            return Ok(new Errors.ApiResult(data: result));
+            return Ok(new ApiResult(data: result));
         }
 
         
@@ -68,11 +71,11 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var payment = await _paymentService.GetByOrderNumberAsync(orderNumber, userId);
 
-            return Ok(new Errors.ApiResult(data: new
+            return Ok(new ApiResult(data: new
             {
                 orderNumber,
                 paymentStatus = payment.Status,
@@ -92,12 +95,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             
             var pagedOrders = await _orderService.GetUserOrdersAsync(userId, pageNumber, pageSize);
 
-            return Ok(new Errors.ApiResult(data: pagedOrders));
+            return Ok(new ApiResult(data: pagedOrders));
         }
 
         [HttpGet("{id}")]
@@ -108,10 +111,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var order = await _orderService.GetOrderByIdAsync(id, userId);
-            return Ok(new Errors.ApiResult(data: order));
+            return Ok(new ApiResult(data: order));
         }
 
         [HttpGet("vendor")]
@@ -122,14 +125,14 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to view vendor orders");
+                throw new UnauthorizedException(_lang.GetMessage("Order_NotVendor"));
 
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
-            return Ok(new Errors.ApiResult(data: orders));
+            return Ok(new ApiResult(data: orders));
         }
 
         [HttpPatch("{id}/status")]
@@ -141,14 +144,14 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to update order status");
+                throw new UnauthorizedException(_lang.GetMessage("Order_UpdateNotVendor"));
 
             var order = await _orderService.UpdateOrderStatusAsync(id, vendor.Id, dto);
-            return Ok(new Errors.ApiResult(data: order, message: "Order status updated successfully"));
+            return Ok(new ApiResult(data: order, message: _lang.GetMessage("Order_StatusUpdated")));
         }
 
         [HttpPost("{id}/cancel")]
@@ -160,12 +163,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var order = await _orderService.CancelOrderAsync(
                 id, userId, dto.Reason ?? "Cancelled by customer");
 
-            return Ok(new Errors.ApiResult(data: order, message: "Order cancelled successfully"));
+            return Ok(new ApiResult(data: order, message: _lang.GetMessage("Order_Cancelled")));
         }
 
         [HttpGet("{orderNumber}/track")]
@@ -176,7 +179,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var trackingData = await _orderService.GetOrderMapTrackingAsync(orderNumber, userId);
             return Ok(new ApiResult(data: trackingData));

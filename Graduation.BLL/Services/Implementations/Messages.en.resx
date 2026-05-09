@@ -107,6 +107,7 @@
   <data name="Category_Activated"><value>Category activated successfully</value></data>
   <data name="Category_Deactivated"><value>Category deactivated successfully</value></data>
   <data name="Category_Deleted"><value>Category deleted successfully</value></data>
+  <data name="Category_LeafCategories"><value>All leaf categories where products can be added</value></data>
 
   <!-- Images -->
   <data name="Image_NoFile"><value>No file provided</value></data>
@@ -133,6 +134,8 @@
   <data name="Order_Cancelled"><value>Order cancelled successfully</value></data>
   <data name="Order_NotVendor"><value>You must be a vendor to view vendor orders</value></data>
   <data name="Order_UpdateNotVendor"><value>You must be a vendor to update order status</value></data>
+  <data name="Order_LocationShippedOnly"><value>Location updates are only allowed for Shipped orders.</value></data>
+  <data name="Order_LocationUpdated"><value>GPS location synchronized successfully</value></data>
 
   <!-- Products -->
   <data name="Product_Created"><value>Product created successfully</value></data>
@@ -160,6 +163,20 @@
   <data name="Variant_NotVendor"><value>You must be a vendor to manage product variants.</value></data>
   <data name="Variant_VendorNotApproved"><value>Your vendor account must be approved before managing variants.</value></data>
 
+  <!-- Cart -->
+  <data name="Cart_ItemAdded"><value>Item added to cart successfully</value></data>
+  <data name="Cart_ItemUpdated"><value>Cart item updated successfully</value></data>
+  <data name="Cart_ItemRemoved"><value>Item removed from cart successfully</value></data>
+  <data name="Cart_Cleared"><value>Cart cleared successfully</value></data>
+
+  <!-- Reports (Review Reports) -->
+  <data name="Report_DateRangeRequired"><value>Start date and end date are required</value></data>
+  <data name="Report_NotFoundOrResolved"><value>Report not found or already resolved</value></data>
+  <data name="Report_Approved"><value>Report approved. The review has been hidden.</value></data>
+  <data name="Report_Dismissed"><value>Report dismissed. No action taken on the review.</value></data>
+  <data name="Report_ReviewDeleted"><value>Review deleted and report resolved successfully.</value></data>
+  <data name="Role_NotFound"><value>Role not found</value></data>
+
   <!-- Reviews -->
   <data name="Review_Submitted"><value>Review submitted successfully. It will be visible after admin approval.</value></data>
   <data name="Review_Deleted"><value>Review deleted successfully</value></data>
@@ -167,9 +184,11 @@
   <data name="Review_Approved"><value>Review approved successfully</value></data>
   <data name="Review_Rejected"><value>Review rejected successfully</value></data>
   <data name="Review_NotFoundSimple"><value>Review not found</value></data>
+  <data name="Review_Reported"><value>Review reported successfully. An admin will review it.</value></data>
 
   <!-- Vendors -->
   <data name="Vendor_NotFound"><value>Vendor profile not found</value></data>
+  <data name="Vendor_OrderNotFound"><value>Access denied: Order not found for this vendor.</value></data>
   <data name="Vendor_Approved"><value>Vendor approved successfully</value></data>
   <data name="Vendor_Rejected"><value>Vendor rejected</value></data>
   <data name="Vendor_Activated"><value>Vendor activated</value></data>

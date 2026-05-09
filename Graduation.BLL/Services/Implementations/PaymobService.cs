@@ -94,7 +94,7 @@ namespace Graduation.BLL.Services.Implementations
                 AmountCents = amountCents,
                 MerchantOrderId = merchantOrderId,
                 Currency = "EGP",
-                DeliveryNeeded = "false",
+                DeliveryNeeded = false,
                 Items = new List<object>()
             };
 

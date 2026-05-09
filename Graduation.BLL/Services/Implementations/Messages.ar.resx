@@ -108,6 +108,7 @@
   <data name="Category_Activated"><value>تم تفعيل الفئة بنجاح</value></data>
   <data name="Category_Deactivated"><value>تم تعطيل الفئة بنجاح</value></data>
   <data name="Category_Deleted"><value>تم حذف الفئة بنجاح</value></data>
+  <data name="Category_LeafCategories"><value>جميع الفئات الفرعية حيث يمكن إضافة المنتجات</value></data>
 
   <!-- Images -->
   <data name="Image_NoFile"><value>لم يتم توفير ملف</value></data>
@@ -134,6 +135,8 @@
   <data name="Order_Cancelled"><value>تم إلغاء الطلب بنجاح</value></data>
   <data name="Order_NotVendor"><value>يجب أن تكون بائعاً لعرض الطلبات</value></data>
   <data name="Order_UpdateNotVendor"><value>يجب أن تكون بائعاً لتحديث حالة الطلب</value></data>
+  <data name="Order_LocationShippedOnly"><value>تحديث الموقع مسموح فقط للطلبات التي تم شحنها.</value></data>
+  <data name="Order_LocationUpdated"><value>تم مزامنة موقع GPS بنجاح</value></data>
 
   <!-- Products -->
   <data name="Product_Created"><value>تم إنشاء المنتج بنجاح</value></data>
@@ -161,6 +164,20 @@
   <data name="Variant_NotVendor"><value>يجب أن تكون بائعاً لإدارة خيارات المنتج.</value></data>
   <data name="Variant_VendorNotApproved"><value>يجب أن يكون حساب البائع معتمداً قبل إدارة الخيارات.</value></data>
 
+  <!-- Cart -->
+  <data name="Cart_ItemAdded"><value>تمت إضافة المنتج إلى السلة بنجاح</value></data>
+  <data name="Cart_ItemUpdated"><value>تم تحديث عنصر السلة بنجاح</value></data>
+  <data name="Cart_ItemRemoved"><value>تم حذف العنصر من السلة بنجاح</value></data>
+  <data name="Cart_Cleared"><value>تم مسح السلة بنجاح</value></data>
+
+  <!-- Reports (Review Reports) -->
+  <data name="Report_DateRangeRequired"><value>تاريخ البداية والنهاية مطلوبان</value></data>
+  <data name="Report_NotFoundOrResolved"><value>التقرير غير موجود أو تم حله بالفعل</value></data>
+  <data name="Report_Approved"><value>تم اعتماد التقرير. تم إخفاء التقييم.</value></data>
+  <data name="Report_Dismissed"><value>تم رفض التقرير. لم يتم اتخاذ إجراء.</value></data>
+  <data name="Report_ReviewDeleted"><value>تم حذف التقييم وحل التقرير بنجاح.</value></data>
+  <data name="Role_NotFound"><value>الدور غير موجود</value></data>
+
   <!-- Reviews -->
   <data name="Review_Submitted"><value>تم إرسال التقييم بنجاح. سيظهر بعد مراجعة المسؤول.</value></data>
   <data name="Review_Deleted"><value>تم حذف التقييم بنجاح</value></data>
@@ -168,9 +185,11 @@
   <data name="Review_Approved"><value>تم اعتماد التقييم بنجاح</value></data>
   <data name="Review_Rejected"><value>تم رفض التقييم بنجاح</value></data>
   <data name="Review_NotFoundSimple"><value>التقييم غير موجود</value></data>
+  <data name="Review_Reported"><value>تم الإبلاغ عن التقييم بنجاح. سيقوم المسؤول بمراجعته.</value></data>
 
   <!-- Vendors -->
   <data name="Vendor_NotFound"><value>ملف البائع غير موجود</value></data>
+  <data name="Vendor_OrderNotFound"><value>وصول مرفوض: الطلب غير موجود لهذا البائع.</value></data>
   <data name="Vendor_Approved"><value>تم اعتماد البائع بنجاح</value></data>
   <data name="Vendor_Rejected"><value>تم رفض البائع</value></data>
   <data name="Vendor_Activated"><value>تم تفعيل البائع</value></data>

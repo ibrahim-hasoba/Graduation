@@ -24,8 +24,8 @@ namespace Graduation.BLL.Services.Implementations
             {
                 TotalUsers = await _context.Users.CountAsync(),
                 TotalVendors = await _context.Vendors.CountAsync(),
-                PendingVendors = await _context.Vendors.CountAsync(v => !v.IsApproved),
-                ActiveVendors = await _context.Vendors.CountAsync(v => v.IsApproved && v.IsActive),
+                PendingVendors = await _context.Vendors.CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Pending),
+                ActiveVendors = await _context.Vendors.CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Approved && v.IsActive),
                 TotalProducts = await _context.Products.CountAsync(),
                 ActiveProducts = await _context.Products.CountAsync(p => p.IsActive),
                 OutOfStockProducts = await _context.Products.CountAsync(p => p.StockQuantity == 0),
@@ -39,7 +39,7 @@ namespace Graduation.BLL.Services.Implementations
                 MonthlyRevenue = await _context.Orders
                     .Where(o => o.Status == OrderStatus.Delivered && o.OrderDate >= firstDayOfMonth)
                     .SumAsync(o => o.TotalAmount),
-                TotalCategories = await _context.Categories.CountAsync(c => c.IsActive),
+                TotalCategories = await _context.Categories.CountAsync(c => c.Status == CategoryStatus.Active),
 
                 // FIXED BUG: Was counting users where LockoutEnd == null (just unlocked users).
                 // Now correctly counts users registered today using the CreatedAt field.
@@ -90,7 +90,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<TopVendorDto>> GetTopVendorsAsync(int count = 10)
         {
             var approvedVendors = await _context.Vendors
-                .Where(v => v.IsApproved)
+                .Where(v => v.ApprovalStatus == VendorApprovalStatus.Approved)
                 .Select(v => new
                 {
                     v.Id,

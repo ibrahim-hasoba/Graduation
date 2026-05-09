@@ -159,6 +159,8 @@ namespace Graduation.BLL.Services.Implementations
                     return;
                 }
 
+                await _context.Entry(payment).ReloadAsync();
+
                 if (!string.IsNullOrEmpty(transactionId) &&
                     !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
                     payment.PaymobTransactionId == transactionId)
@@ -167,8 +169,6 @@ namespace Graduation.BLL.Services.Implementations
                     await transaction.CommitAsync();
                     return;
                 }
-
-                await _context.Entry(payment).ReloadAsync();
 
                 payment.PaymobTransactionId = transactionId;
                 payment.IsSuccess = isSuccess;

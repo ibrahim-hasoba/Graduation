@@ -30,6 +30,7 @@ namespace Graduation.DAL.Data
         public DbSet<OrderItemVariant> OrderItemVariants { get; set; }
 
         public DbSet<PendingRegistration> PendingRegistrations { get; set; }
+        public DbSet<ReviewReport> ReviewReports { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -251,6 +252,35 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(pr => pr.CreatedAt);
                 entity.HasIndex(pr => new { pr.ProductId, pr.IsApproved });
                 entity.HasIndex(pr => new { pr.UserId, pr.ProductId }).IsUnique();
+            });
+
+            // Review Report Configuration
+            builder.Entity<ReviewReport>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+
+                entity.HasOne(r => r.Review)
+                    .WithMany()
+                    .HasForeignKey(r => r.ReviewId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(r => r.ReportedByUser)
+                    .WithMany()
+                    .HasForeignKey(r => r.ReportedByUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(r => r.ResolvedBy)
+                    .WithMany()
+                    .HasForeignKey(r => r.ResolvedById)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.Property(r => r.Reason).IsRequired().HasMaxLength(500);
+                entity.Property(r => r.Status).IsRequired();
+
+                entity.HasIndex(r => r.Status);
+                entity.HasIndex(r => r.ReviewId);
+                entity.HasIndex(r => r.ReportedByUserId);
+                entity.HasIndex(r => new { r.ReviewId, r.ReportedByUserId, r.Status });
             });
 
             // Cart Item Configuration

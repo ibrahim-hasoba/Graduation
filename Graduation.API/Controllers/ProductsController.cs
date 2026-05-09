@@ -16,15 +16,18 @@ namespace Graduation.API.Controllers
         private readonly IProductService _productService;
         private readonly IVendorService _vendorService;
         private readonly DatabaseContext _context;
+        private readonly ILanguageService _lang;
 
         public ProductsController(
             IProductService productService,
             IVendorService vendorService,
-            DatabaseContext context)
+            DatabaseContext context,
+            ILanguageService lang)
         {
             _productService = productService;
             _vendorService = vendorService;
             _context = context;
+            _lang = lang;
         }
 
         /// <summary>
@@ -119,11 +122,11 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                return NotFound(new ApiResponse(404, "You don't have a vendor account"));
+                return NotFound(new ApiResponse(404, _lang.GetMessage("Product_NoVendor")));
 
             var result = await _productService.GetVendorProductsAsync(vendor.Id, pageNumber, pageSize);
             return Ok(new ApiResult(data: result));
@@ -142,10 +145,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var product = await _productService.CreateProductAsync(dto);
-            return StatusCode(201, new ApiResult(data: product, message: "Product created successfully"));
+            return StatusCode(201, new ApiResult(data: product, message: _lang.GetMessage("Product_Created")));
         }
 
         /// <summary>
@@ -161,14 +164,14 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to update products");
+                throw new UnauthorizedException(_lang.GetMessage("Product_NotVendor"));
 
             var product = await _productService.UpdateProductAsync(id, vendor.Code, dto);
-            return Ok(new ApiResult(data: product, message: "Product updated successfully"));
+            return Ok(new ApiResult(data: product, message: _lang.GetMessage("Product_Updated")));
         }
 
         /// <summary>
@@ -183,14 +186,14 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to delete products");
+                throw new UnauthorizedException(_lang.GetMessage("Product_DeleteNotVendor"));
 
             await _productService.DeleteProductAsync(id, vendor.Code);
-            return Ok(new ApiResult(message: "Product deleted successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Product_Deleted")));
         }
 
         /// <summary>
@@ -206,14 +209,14 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor to update product stock");
+                throw new UnauthorizedException(_lang.GetMessage("Product_StockNotVendor"));
 
             await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
-            return Ok(new ApiResult(message: "Stock updated successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Product_StockUpdated")));
         }
     }
 

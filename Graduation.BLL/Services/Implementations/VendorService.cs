@@ -298,8 +298,8 @@ namespace Graduation.BLL.Services.Implementations
 
 
         public async Task<PagedResult<PublicVendorDto>> GetPublicVendorsListAsync(
-    int pageNumber = 1,
-    int pageSize = 10)
+            int pageNumber = 1,
+            int pageSize = 10)
         {
             var query = _context.Vendors
                 .Where(v => v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved);
@@ -310,20 +310,40 @@ namespace Graduation.BLL.Services.Implementations
                 .OrderByDescending(v => v.CreatedAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
-                .Select(v => new PublicVendorDto
+                .ToListAsync();
+
+            var vendorIds = vendors.Select(v => v.Id).ToList();
+
+            var ratingStats = await _context.ProductReviews
+                .Where(r => r.IsApproved && vendorIds.Contains(r.Product.VendorId))
+                .GroupBy(r => r.Product.VendorId)
+                .Select(g => new
+                {
+                    VendorId = g.Key,
+                    AverageRating = g.Average(r => (double)r.Rating),
+                    TotalReviews = g.Count()
+                })
+                .ToListAsync();
+
+            var ratingDict = ratingStats.ToDictionary(x => x.VendorId);
+
+            var result = vendors.Select(v =>
+            {
+                var stats = ratingDict.GetValueOrDefault(v.Id);
+                return new PublicVendorDto
                 {
                     Id = v.Id,
                     StoreName = v.StoreName,
                     StoreNameAr = v.StoreNameAr ?? string.Empty,
                     LogoUrl = v.LogoUrl ?? string.Empty,
-                    AverageRating = 4.5,
-                    TotalReviews = 120
-                })
-                .ToListAsync();
+                    AverageRating = stats != null ? Math.Round(stats.AverageRating, 1) : 0.0,
+                    TotalReviews = stats?.TotalReviews ?? 0
+                };
+            }).ToList();
 
             return new PagedResult<PublicVendorDto>
             {
-                Items = vendors,
+                Items = result,
                 TotalCount = totalCount,
                 PageNumber = pageNumber,
                 PageSize = pageSize
@@ -332,7 +352,6 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id)
         {
-            
             var vendor = await _context.Vendors
                 .Where(v => v.Id == id && v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved)
                 .Select(v => new PublicVendorDetailsDto
@@ -344,13 +363,29 @@ namespace Graduation.BLL.Services.Implementations
                     LogoUrl = v.LogoUrl ?? string.Empty,
                     BannerImageUrl = v.BannerUrl ?? string.Empty,
                     JoinedDate = v.CreatedAt,
-                    AverageRating = 4.5,
-                    TotalReviews = 120
+                    AverageRating = 0,
+                    TotalReviews = 0
                 })
                 .FirstOrDefaultAsync();
 
             if (vendor == null)
                 throw new NotFoundException("Vendor not found, or the store is currently inactive.");
+
+            var ratingStats = await _context.ProductReviews
+                .Where(r => r.IsApproved && r.Product.VendorId == id)
+                .GroupBy(r => r.Product.VendorId)
+                .Select(g => new
+                {
+                    AverageRating = g.Average(r => (double)r.Rating),
+                    TotalReviews = g.Count()
+                })
+                .FirstOrDefaultAsync();
+
+            if (ratingStats != null)
+            {
+                vendor.AverageRating = Math.Round(ratingStats.AverageRating, 1);
+                vendor.TotalReviews = ratingStats.TotalReviews;
+            }
 
             return vendor;
         }

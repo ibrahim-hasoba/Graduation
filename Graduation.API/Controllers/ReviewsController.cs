@@ -13,10 +13,17 @@ namespace Graduation.API.Controllers
     public class ReviewsController : ControllerBase
     {
         private readonly IReviewService _reviewService;
+        private readonly IReviewReportService _reviewReportService;
+        private readonly ILanguageService _lang;
 
-        public ReviewsController(IReviewService reviewService)
+        public ReviewsController(
+            IReviewService reviewService,
+            IReviewReportService reviewReportService,
+            ILanguageService lang)
         {
             _reviewService = reviewService;
+            _reviewReportService = reviewReportService;
+            _lang = lang;
         }
 
         [HttpGet("product/{productId}")]
@@ -43,7 +50,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 50) pageSize = 10;
@@ -61,12 +68,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var review = await _reviewService.CreateReviewAsync(userId, dto);
             return StatusCode(201, new ApiResult(
                 data: review,
-                message: "Review submitted successfully. It will be visible after admin approval."));
+                message: _lang.GetMessage("Review_Submitted")));
         }
 
         [HttpDelete("{reviewId}")]
@@ -78,15 +85,32 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             // FIX: DeleteReviewAsync now returns bool instead of throwing
             var deleted = await _reviewService.DeleteReviewAsync(reviewId, userId);
             if (!deleted)
-                throw new NotFoundException("Review not found or you don't have permission to delete it");
+                throw new NotFoundException(_lang.GetMessage("Review_NotFound"));
 
-            return Ok(new ApiResult(message: "Review deleted successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Review_Deleted")));
         }
         
+        [HttpPost("report")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> ReportReview([FromBody] CreateReviewReportDto dto)
+        {
+            var userId = User.GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
+
+            var report = await _reviewReportService.CreateReportAsync(userId, dto);
+            return StatusCode(201, new ApiResult(
+                data: report,
+                message: _lang.GetMessage("Review_Reported")));
+        }
     }
 }

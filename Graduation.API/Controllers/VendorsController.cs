@@ -20,17 +20,20 @@ namespace Graduation.API.Controllers
         private readonly IOrderService _orderService;
         private readonly IProductService _productService;
         private readonly DatabaseContext _context;
+        private readonly ILanguageService _lang;
 
         public VendorsController(
             IVendorService vendorService,
             IOrderService orderService,
             IProductService productService,
-            DatabaseContext context)
+            DatabaseContext context,
+            ILanguageService lang)
         {
             _vendorService = vendorService;
             _orderService = orderService;
             _productService = productService;
             _context = context;
+            _lang = lang;
         }
 
         [HttpGet("me")]
@@ -41,7 +44,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             return Ok(new ApiResult(data: vendor));
         }
@@ -54,7 +57,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var updated = await _vendorService.UpdateVendorAsync(vendor.Id, userId!, dto);
             return Ok(new ApiResult(data: updated));
@@ -68,7 +71,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
             return Ok(new ApiResult(data: orders));
@@ -82,7 +85,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -109,7 +112,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var updated = await _orderService.UpdateOrderStatusAsync(orderId, vendor.Id, dto);
             return Ok(new ApiResult(data: updated));
@@ -124,7 +127,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             // Verify vendor ownership and filter by vendor's products
             var order = await _context.Orders
@@ -175,7 +178,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var products = await _productService.GetVendorProductsAsync(vendor.Id);
             return Ok(new ApiResult(data: products));
@@ -189,7 +192,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var totalProducts = await _context.Products
                 .CountAsync(p => p.VendorId == vendor.Id && p.IsActive);
@@ -224,23 +227,23 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId!);
             if (vendor == null)
-                throw new NotFoundException("Vendor profile not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var order = await _context.Orders
                 .FirstOrDefaultAsync(o => o.Id == orderId
                     && o.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id));
 
             if (order == null)
-                throw new UnauthorizedException("Access denied: Order not found for this vendor.");
+                throw new UnauthorizedException(_lang.GetMessage("Vendor_OrderNotFound"));
 
             if (order.Status != OrderStatus.Shipped)
             {
-                return BadRequest(new ApiResult(message: "Location updates are only allowed for Shipped orders."));
+                return BadRequest(new ApiResult(message: _lang.GetMessage("Order_LocationShippedOnly")));
             }
 
             await _vendorService.UpdateOrderLocationAsync(orderId, dto.Latitude, dto.Longitude);
 
-            return Ok(new ApiResult(message: "GPS location synchronized successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Order_LocationUpdated")));
         }
         public class UpdateLocationDto
         {

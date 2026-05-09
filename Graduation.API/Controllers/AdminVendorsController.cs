@@ -21,19 +21,22 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
+        private readonly ILanguageService _lang;
 
         public AdminVendorsController(
             IVendorService vendorService,
             ICodeLookupService codeLookup,
             ICodeAssignmentService codeAssignment,
             DatabaseContext context,
-            UserManager<AppUser> userManager)
+            UserManager<AppUser> userManager,
+            ILanguageService lang)
         {
             _vendorService = vendorService;
             _codeLookup = codeLookup;
             _codeAssignment = codeAssignment;
             _context = context;
             _userManager = userManager;
+            _lang = lang;
         }
 
         [HttpGet]
@@ -111,7 +114,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException("Vendor not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             return Ok(new ApiResult(data: MapToDto(vendor)));
         }
@@ -127,16 +130,16 @@ namespace Graduation.API.Controllers
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new NotFoundException("User not found");
+                throw new NotFoundException(_lang.GetMessage("User_NotFound"));
 
             var exists = await _context.Vendors.AnyAsync(v => v.UserId == userId);
             if (exists)
-                throw new ConflictException("This user already has a vendor account");
+                throw new ConflictException(_lang.GetMessage("Vendor_AlreadyExists"));
 
             var nameExists = await _context.Vendors
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
             if (nameExists)
-                throw new ConflictException("A vendor with this store name already exists");
+                throw new ConflictException(_lang.GetMessage("Vendor_NameExists"));
 
             var initialStatus = dto.IsApproved
                 ? VendorApprovalStatus.Approved
@@ -176,7 +179,7 @@ namespace Graduation.API.Controllers
 
             return StatusCode(201, new ApiResult(
                 data: MapToDto(vendor),
-                message: "Vendor created successfully"));
+                message: _lang.GetMessage("Vendor_Created")));
         }
 
         [HttpPut("{vendorCode}")]
@@ -194,7 +197,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException("Vendor not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             if (!string.IsNullOrWhiteSpace(dto.StoreName) &&
                 !dto.StoreName.Equals(vendor.StoreName, StringComparison.OrdinalIgnoreCase))
@@ -203,7 +206,7 @@ namespace Graduation.API.Controllers
                     .AnyAsync(v => v.Id != id &&
                                    v.StoreName.ToLower() == dto.StoreName.ToLower());
                 if (nameExists)
-                    throw new ConflictException("A vendor with this store name already exists");
+                    throw new ConflictException(_lang.GetMessage("Vendor_NameExists"));
 
                 vendor.StoreName = dto.StoreName;
             }
@@ -264,7 +267,7 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(
                 data: MapToDto(vendor),
-                message: "Vendor updated successfully"));
+                message: _lang.GetMessage("Vendor_Updated")));
         }
 
         [HttpDelete("{vendorCode}")]
@@ -279,7 +282,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException("Vendor not found");
+                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
 
             var appUser = await _userManager.FindByIdAsync(vendor.UserId);
             if (appUser != null && await _userManager.IsInRoleAsync(appUser, "Vendor"))
@@ -288,7 +291,7 @@ namespace Graduation.API.Controllers
             _context.Vendors.Remove(vendor);
             await _context.SaveChangesAsync();
 
-            return Ok(new ApiResult(message: "Vendor deleted successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Vendor_Deleted")));
         }
 
         [HttpPost("{vendorCode}/approve")]
@@ -298,7 +301,7 @@ namespace Graduation.API.Controllers
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(id, isApproved: true);
-            return Ok(new ApiResult(data: result, message: "Vendor approved successfully"));
+            return Ok(new ApiResult(data: result, message: _lang.GetMessage("Vendor_Approved")));
         }
 
         [HttpPost("{vendorCode}/reject")]
@@ -308,13 +311,13 @@ namespace Graduation.API.Controllers
             string vendorCode, [FromBody] VendorApprovalDto dto)
         {
             if (!dto.IsApproved && string.IsNullOrWhiteSpace(dto.RejectionReason))
-                throw new BadRequestException("A rejection reason is required when rejecting a vendor");
+                throw new BadRequestException(_lang.GetMessage("Vendor_RejectionRequired"));
 
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(
                 id, isApproved: false, rejectionReason: dto.RejectionReason);
 
-            return Ok(new ApiResult(data: result, message: "Vendor rejected"));
+            return Ok(new ApiResult(data: result, message: _lang.GetMessage("Vendor_Rejected")));
         }
 
         [HttpPost("{vendorCode}/toggle-status")]
@@ -324,7 +327,7 @@ namespace Graduation.API.Controllers
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ToggleVendorStatusAsync(id);
-            var msg = result.IsActive ? "Vendor activated" : "Vendor deactivated";
+            var msg = result.IsActive ? _lang.GetMessage("Vendor_Activated") : _lang.GetMessage("Vendor_Deactivated");
             return Ok(new ApiResult(data: result, message: msg));
         }
 

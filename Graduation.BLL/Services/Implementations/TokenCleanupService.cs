@@ -57,7 +57,7 @@ namespace Graduation.API.HostedServices
             var cutoff = DateTime.UtcNow;
 
             var deletedCount = await context.RefreshTokens
-                .Where(t => t.ExpiresAt <= cutoff)
+                .Where(t => t.ExpiresAt < cutoff)
                 .ExecuteDeleteAsync(ct);
 
             if (deletedCount > 0)

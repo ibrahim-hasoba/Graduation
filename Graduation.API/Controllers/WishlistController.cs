@@ -14,10 +14,12 @@ namespace Graduation.API.Controllers
     public class WishlistController : ControllerBase
     {
         private readonly IWishlistService _wishlistService;
+        private readonly ILanguageService _lang;
 
-        public WishlistController(IWishlistService wishlistService)
+        public WishlistController(IWishlistService wishlistService, ILanguageService lang)
         {
             _wishlistService = wishlistService;
+            _lang = lang;
         }
 
         /// <summary>
@@ -34,7 +36,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
@@ -49,7 +51,7 @@ namespace Graduation.API.Controllers
                 .Take(pageSize)
                 .ToList();
 
-            return Ok(new Errors.ApiResult(
+            return Ok(new ApiResult(
                 data: new
                 {
                     items = paged,
@@ -73,12 +75,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             try
             {
                 var wishlistItem = await _wishlistService.AddToWishlistAsync(userId, dto.ProductId);
-                return StatusCode(201, new Errors.ApiResult(data: wishlistItem, message: "Product added to wishlist"));
+                return StatusCode(201, new ApiResult(data: wishlistItem, message: _lang.GetMessage("Wishlist_Added")));
             }
             catch (NotFoundException ex)
             {
@@ -101,12 +103,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             try
             {
                 await _wishlistService.RemoveFromWishlistAsync(userId, productId);
-                return Ok(new Errors.ApiResult(message: "Product removed from wishlist"));
+                return Ok(new ApiResult(message: _lang.GetMessage("Wishlist_Removed")));
             }
             catch (NotFoundException ex)
             {
@@ -125,9 +127,9 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
             var isInWishlist = await _wishlistService.IsInWishlistAsync(userId, productId);
-            return Ok(new Errors.ApiResult(data: new { isInWishlist }));
+            return Ok(new ApiResult(data: new { isInWishlist }));
         }
 
         /// <summary>
@@ -141,9 +143,9 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
             await _wishlistService.ClearWishlistAsync(userId);
-            return Ok(new Errors.ApiResult(message: "Wishlist cleared"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Wishlist_Cleared")));
         }
     }
 }

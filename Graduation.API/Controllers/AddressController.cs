@@ -1,5 +1,6 @@
 ﻿using Graduation.DAL.Data;
 using Graduation.API.Errors;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -16,13 +17,18 @@ namespace Graduation.API.Controllers
     {
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
+        private readonly ILanguageService _lang;
 
         private const int MaxAddressesPerUser = 10;
 
-        public AddressController(DatabaseContext context, UserManager<AppUser> userManager)
+        public AddressController(
+            DatabaseContext context,
+            UserManager<AppUser> userManager,
+            ILanguageService lang)
         {
             _context = context;
             _userManager = userManager;
+            _lang = lang;
         }
 
         [HttpGet]
@@ -49,7 +55,7 @@ namespace Graduation.API.Controllers
             var userId = _userManager.GetUserId(User);
             var count = await _context.UserAddresses.CountAsync(a => a.UserId == userId);
             if (count >= MaxAddressesPerUser)
-                throw new BadRequestException($"You can save a maximum of {MaxAddressesPerUser} addresses.");
+                throw new BadRequestException(_lang.GetMessage("Address_MaxReached", MaxAddressesPerUser));
 
             var isFirstAddress = count == 0;
             var makeDefault = dto.IsDefault || isFirstAddress;
@@ -82,7 +88,7 @@ namespace Graduation.API.Controllers
                 await transaction.CommitAsync();
 
                 return StatusCode(201, new ApiResult(
-                    message: "Address added successfully.",
+                    message: _lang.GetMessage("Address_Added"),
                     data: MapToDto(address)));
             }
             catch
@@ -102,7 +108,7 @@ namespace Graduation.API.Controllers
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException("Address not found.");
+            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -126,7 +132,7 @@ namespace Graduation.API.Controllers
                 await transaction.CommitAsync();
 
                 return Ok(new ApiResult(
-                    message: "Address updated successfully.",
+                    message: _lang.GetMessage("Address_Updated"),
                     data: MapToDto(address)));
             }
             catch
@@ -145,11 +151,11 @@ namespace Graduation.API.Controllers
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException("Address not found.");
+            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
 
             if (address.IsDefault)
                 return Ok(new ApiResult(
-                    message: "This address is already your default.",
+                    message: _lang.GetMessage("Address_AlreadyDefault"),
                     data: MapToDto(address)));
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -165,7 +171,7 @@ namespace Graduation.API.Controllers
                 await transaction.CommitAsync();
 
                 return Ok(new ApiResult(
-                    message: "Default address updated successfully.",
+                    message: _lang.GetMessage("Address_DefaultUpdated"),
                     data: MapToDto(address)));
             }
             catch
@@ -185,7 +191,7 @@ namespace Graduation.API.Controllers
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException("Address not found.");
+            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
 
             var wasDefault = address.IsDefault;
 
@@ -216,7 +222,7 @@ namespace Graduation.API.Controllers
                 throw;
             }
 
-            return Ok(new ApiResult(message: "Address deleted successfully."));
+            return Ok(new ApiResult(message: _lang.GetMessage("Address_Deleted")));
         }
 
         private static AddressResponseDto MapToDto(UserAddress a) => new()

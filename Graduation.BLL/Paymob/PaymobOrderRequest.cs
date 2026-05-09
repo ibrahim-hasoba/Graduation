@@ -8,7 +8,7 @@ namespace Graduation.BLL.Paymob
         public string AuthToken { get; set; } = string.Empty;
 
         [JsonPropertyName("delivery_needed")]
-        public string DeliveryNeeded { get; set; } = "false";
+        public bool DeliveryNeeded { get; set; } = false;
 
         [JsonPropertyName("amount_cents")]
         public int AmountCents { get; set; }

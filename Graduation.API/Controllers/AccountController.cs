@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
+using Shared.BackgroundTasks;
 using Shared.Errors;
 using System.Security.Claims;
 
@@ -35,6 +36,7 @@ namespace Graduation.API.Controllers
         private readonly IOrderService _orderService;
         private readonly ILanguageService _lang;
         private readonly INotificationService _notificationService;
+        private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ILogger<AccountController> _logger; 
 
         public AccountController(
@@ -51,7 +53,8 @@ namespace Graduation.API.Controllers
             IOrderService orderService,
             ILanguageService lang,
             INotificationService notificationService,
-            ILogger<AccountController> logger) 
+            ILogger<AccountController> logger,
+            IBackgroundTaskQueue? taskQueue = null) 
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -66,6 +69,7 @@ namespace Graduation.API.Controllers
             _orderService = orderService;
             _lang = lang;
             _notificationService = notificationService;
+            _taskQueue = taskQueue;
             _logger = logger;
         }
 
@@ -170,18 +174,14 @@ namespace Graduation.API.Controllers
             await _userManager.ResetAccessFailedCountAsync(user);
 
             
-            _ = Task.Run(async () =>
+            _taskQueue?.QueueBackgroundWorkItem(async token =>
             {
-                try
-                {
-                    await _notificationService.CreateNotificationAsync(
-                        user.Id,
-                        "New Login Detected",
-                        $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
-                        "If this wasn't you, please change your password immediately.",
-                        "Security");
-                }
-                catch { }
+                await _notificationService.CreateNotificationAsync(
+                    user.Id,
+                    "New Login Detected",
+                    $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                    "If this wasn't you, please change your password immediately.",
+                    "Security");
             });
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);
@@ -272,18 +272,14 @@ namespace Graduation.API.Controllers
 
             if (isNewToken)
             {
-                _ = Task.Run(async () =>
+                _taskQueue?.QueueBackgroundWorkItem(async token =>
                 {
-                    try
-                    {
-                        await _notificationService.CreateNotificationAsync(
-                            userId,
-                            "New Login Detected",
-                            $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
-                            "If this wasn't you, please change your password immediately.",
-                            "Security");
-                    }
-                    catch { }
+                    await _notificationService.CreateNotificationAsync(
+                        userId,
+                        "New Login Detected",
+                        $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                        "If this wasn't you, please change your password immediately.",
+                        "Security");
                 });
             }
 
@@ -438,18 +434,14 @@ namespace Graduation.API.Controllers
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
-            _ = Task.Run(async () =>
+            _taskQueue?.QueueBackgroundWorkItem(async token =>
             {
-                try
-                {
-                    await _notificationService.CreateNotificationAsync(
-                        user.Id,
-                        "New Login Detected",
-                        $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
-                        "If this wasn't you, please change your password immediately.",
-                        "Security");
-                }
-                catch { }
+                await _notificationService.CreateNotificationAsync(
+                    user.Id,
+                    "New Login Detected",
+                    $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
+                    "If this wasn't you, please change your password immediately.",
+                    "Security");
             });
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);

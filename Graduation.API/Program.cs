@@ -223,6 +223,7 @@ namespace Graduation.API
                 builder.Services.AddScoped<ICartService, CartService>();
                 builder.Services.AddScoped<IOrderService, OrderService>();
                 builder.Services.AddScoped<IReviewService, ReviewService>();
+                builder.Services.AddScoped<IReviewReportService, ReviewReportService>();
                 builder.Services.AddScoped<IAdminService, AdminService>();
                 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
                 builder.Services.AddScoped<IImageService, ImageService>();
@@ -356,7 +357,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

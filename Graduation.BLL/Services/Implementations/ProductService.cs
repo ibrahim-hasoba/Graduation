@@ -49,6 +49,10 @@ namespace Graduation.BLL.Services.Implementations
             if (vendor == null)
                 throw new NotFoundException($"Vendor with code '{dto.VendorCode}' was not found");
 
+            var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId) && vendor.UserId != userId)
+                throw new UnauthorizedException("You are not authorized to create products for this vendor");
+
             if (!vendor.IsApproved || !vendor.IsActive)
                 throw new UnauthorizedException("Vendor is not approved or inactive");
 

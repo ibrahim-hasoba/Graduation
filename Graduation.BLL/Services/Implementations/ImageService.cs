@@ -156,7 +156,7 @@ namespace Graduation.BLL.Services.Implementations
             }
         }
 
-        public string GetFullImageUrl(string relativePath)
+        public string? GetFullImageUrl(string relativePath)
         {
             if (string.IsNullOrEmpty(relativePath))
                 return null;

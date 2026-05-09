@@ -14,10 +14,12 @@ namespace Graduation.API.Controllers
     public class CartController : ControllerBase
     {
         private readonly ICartService _cartService;
+        private readonly ILanguageService _lang;
 
-        public CartController(ICartService cartService)
+        public CartController(ICartService cartService, ILanguageService lang)
         {
             _cartService = cartService;
+            _lang = lang;
         }
 
         /// <summary>
@@ -30,10 +32,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var cart = await _cartService.GetUserCartAsync(userId);
-            return Ok(new Errors.ApiResult(data: cart));
+            return Ok(new ApiResult(data: cart));
         }
 
         /// <summary>
@@ -46,10 +48,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var count = await _cartService.GetCartItemsCountAsync(userId);
-            return Ok(new Errors.ApiResult(data: new { count }));
+            return Ok(new ApiResult(data: new { count }));
         }
 
         /// <summary>
@@ -63,10 +65,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var cartItem = await _cartService.AddToCartAsync(userId, dto);
-            return StatusCode(201, new Errors.ApiResult(data: cartItem, message: "Item added to cart successfully"));
+            return StatusCode(201, new ApiResult(data: cartItem, message: _lang.GetMessage("Cart_ItemAdded")));
         }
 
         /// <summary>
@@ -81,11 +83,11 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var cartItem = await _cartService.UpdateCartItemAsync(userId, cartItemId, dto);
 
-            return Ok(new Errors.ApiResult(data: cartItem, message: "Cart item updated successfully"));
+            return Ok(new ApiResult(data: cartItem, message: _lang.GetMessage("Cart_ItemUpdated")));
         }
 
         /// <summary>
@@ -99,10 +101,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             await _cartService.RemoveFromCartAsync(userId, cartItemId);
-            return Ok(new Errors.ApiResult(message: "Item removed from cart successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Cart_ItemRemoved")));
         }
 
         /// <summary>
@@ -119,10 +121,10 @@ namespace Graduation.API.Controllers
             // Now uses the GetUserId() extension which checks both claim types consistently.
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             await _cartService.ClearCartAsync(userId);
-            return Ok(new Errors.ApiResult(message: "Cart cleared successfully"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Cart_Cleared")));
         }
     }
 }

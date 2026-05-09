@@ -13,10 +13,12 @@ namespace Graduation.API.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly INotificationService _notificationService;
+        private readonly ILanguageService _lang;
 
-        public NotificationsController(INotificationService notificationService)
+        public NotificationsController(INotificationService notificationService, ILanguageService lang)
         {
             _notificationService = notificationService;
+            _lang = lang;
         }
 
         
@@ -31,7 +33,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
@@ -50,7 +52,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var count = await _notificationService.GetUnreadCountAsync(userId);
             return Ok(new ApiResult(data: new { unreadCount = count }));
@@ -64,12 +66,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             try
             {
                 await _notificationService.MarkAsReadAsync(notificationId, userId);
-                return Ok(new ApiResult(message: "Notification marked as read"));
+                return Ok(new ApiResult(message: _lang.GetMessage("Notification_MarkedRead")));
             }
             catch (NotFoundException ex)
             {
@@ -84,10 +86,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             await _notificationService.MarkAllAsReadAsync(userId);
-            return Ok(new ApiResult(message: "All notifications marked as read"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Notification_AllMarkedRead")));
         }
 
         [HttpDelete("{notificationId}")]
@@ -98,12 +100,12 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             try
             {
                 await _notificationService.DeleteNotificationAsync(notificationId, userId);
-                return Ok(new ApiResult(message: "Notification deleted"));
+                return Ok(new ApiResult(message: _lang.GetMessage("Notification_Deleted")));
             }
             catch (NotFoundException ex)
             {
@@ -118,10 +120,10 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             await _notificationService.BulkDeleteAsync(dto.Ids, userId);
-            return Ok(new ApiResult(message: "Notifications deleted permanently"));
+            return Ok(new ApiResult(message: _lang.GetMessage("Notification_BulkDeleted")));
         }
     }
 }

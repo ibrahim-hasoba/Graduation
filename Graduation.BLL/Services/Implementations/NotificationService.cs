@@ -62,9 +62,7 @@ namespace Graduation.BLL.Services.Implementations
                 PageNumber = pageNumber,
                 PageSize = pageSize,
                 TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
-                UnreadCount = unreadOnly
-                    ? items.Count(n => !n.IsRead)
-                    : await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead)
+                UnreadCount = await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead)
             };
         }
 

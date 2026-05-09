@@ -19,13 +19,20 @@ namespace Graduation.API.HostedServices
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
-            using var scope = _serviceProvider.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
 
-            await BackfillUsersAsync(context, cancellationToken);
-            await BackfillProductsAsync(context, cancellationToken);
-            await BackfillVendorsAsync(context, cancellationToken);
-            await BackfillCategoriesAsync(context, cancellationToken);
+                await BackfillUsersAsync(context, cancellationToken);
+                await BackfillProductsAsync(context, cancellationToken);
+                await BackfillVendorsAsync(context, cancellationToken);
+                await BackfillCategoriesAsync(context, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Business code backfill failed — skipping (non-fatal)");
+            }
         }
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

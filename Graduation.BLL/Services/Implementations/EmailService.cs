@@ -1,5 +1,6 @@
 ﻿using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Mail;
 
@@ -8,20 +9,27 @@ namespace Graduation.BLL.Services.Implementations
     public class EmailService : IEmailService
     {
         private readonly IConfiguration _configuration;
+        private readonly ILogger<EmailService> _logger;
         private readonly string _smtpServer;
         private readonly int _smtpPort;
         private readonly string _senderEmail;
         private readonly string _senderPassword;
         private readonly string _senderName;
 
-        public EmailService(IConfiguration configuration)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
             _configuration = configuration;
-            _smtpServer = _configuration["EmailSettings:SmtpServer"]!;
-            _smtpPort = int.Parse(_configuration["EmailSettings:SmtpPort"]!);
-            _senderEmail = _configuration["EmailSettings:SenderEmail"]!;
-            _senderPassword = _configuration["EmailSettings:SenderPassword"]!;
-            _senderName = _configuration["EmailSettings:SenderName"]!;
+            _logger = logger;
+            _smtpServer = _configuration["EmailSettings:SmtpServer"] 
+                ?? throw new InvalidOperationException("EmailSettings:SmtpServer is not configured");
+            _smtpPort = int.Parse(_configuration["EmailSettings:SmtpPort"] 
+                ?? throw new InvalidOperationException("EmailSettings:SmtpPort is not configured"));
+            _senderEmail = _configuration["EmailSettings:SenderEmail"] 
+                ?? throw new InvalidOperationException("EmailSettings:SenderEmail is not configured");
+            _senderPassword = _configuration["EmailSettings:SenderPassword"] 
+                ?? throw new InvalidOperationException("EmailSettings:SenderPassword is not configured");
+            _senderName = _configuration["EmailSettings:SenderName"] 
+                ?? throw new InvalidOperationException("EmailSettings:SenderName is not configured");
         }
 
        
@@ -151,7 +159,7 @@ namespace Graduation.BLL.Services.Implementations
             {
                 // Log the error but don't throw - email failures shouldn't break the app
                 // TODO: Add proper logging
-                Console.WriteLine($"Email sending failed: {ex.Message}");
+                _logger.LogError(ex, "Email sending failed");
             }
         }
         public async Task SendVerificationWarningEmailAsync(string email, string firstName, int hoursRemaining)

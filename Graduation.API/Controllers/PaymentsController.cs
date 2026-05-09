@@ -14,13 +14,16 @@ namespace Graduation.API.Controllers
     {
         private readonly IPaymentService _paymentService;
         private readonly ILogger<PaymentsController> _logger;
+        private readonly ILanguageService _lang;
 
         public PaymentsController(
             IPaymentService paymentService,
-            ILogger<PaymentsController> logger)
+            ILogger<PaymentsController> logger,
+            ILanguageService lang)
         {
             _paymentService = paymentService;
             _logger = logger;
+            _lang = lang;
         }
 
         [HttpGet("{orderNumber}")]
@@ -31,7 +34,7 @@ namespace Graduation.API.Controllers
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, "User not authenticated"));
+                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
 
             var payment = await _paymentService.GetByOrderNumberAsync(orderNumber, userId);
             return Ok(new ApiResult(data: payment));

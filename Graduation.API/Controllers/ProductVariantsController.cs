@@ -13,13 +13,16 @@ namespace Graduation.API.Controllers
     {
         private readonly IProductVariantService _variantService;
         private readonly IVendorService _vendorService;
+        private readonly ILanguageService _lang;
 
         public ProductVariantsController(
             IProductVariantService variantService,
-            IVendorService vendorService)
+            IVendorService vendorService,
+            ILanguageService lang)
         {
             _variantService = variantService;
             _vendorService = vendorService;
+            _lang = lang;
         }
 
         [HttpGet]
@@ -51,7 +54,7 @@ namespace Graduation.API.Controllers
         {
             var (vendorId, isAdmin) = await GetUserContextAsync();
             var variant = await _variantService.AddVariantAsync(productId, vendorId, isAdmin, dto);
-            return StatusCode(201, new ApiResult(data: variant, message: "Variant added successfully."));
+            return StatusCode(201, new ApiResult(data: variant, message: _lang.GetMessage("Variant_Added")));
         }
 
         [HttpPost("bulk")]
@@ -68,7 +71,7 @@ namespace Graduation.API.Controllers
             var group = await _variantService.BulkUpsertVariantTypeAsync(productId, vendorId, isAdmin, dto);
             return Ok(new ApiResult(
                 data: group,
-                message: $"Variants for type '{group.TypeName}' updated successfully."));
+                message: _lang.GetMessage("Variant_TypeUpdated", group.TypeName)));
         }
 
         [HttpPut("{variantId:int}")]
@@ -85,7 +88,7 @@ namespace Graduation.API.Controllers
         {
             var (vendorId, isAdmin) = await GetUserContextAsync();
             var variant = await _variantService.UpdateVariantAsync(variantId, vendorId, isAdmin, dto);
-            return Ok(new ApiResult(data: variant, message: "Variant updated successfully."));
+            return Ok(new ApiResult(data: variant, message: _lang.GetMessage("Variant_Updated")));
         }
 
         [HttpDelete("{variantId:int}")]
@@ -97,7 +100,7 @@ namespace Graduation.API.Controllers
         {
             var (vendorId, isAdmin) = await GetUserContextAsync();
             await _variantService.DeleteVariantAsync(variantId, vendorId, isAdmin);
-            return Ok(new ApiResult(message: "Variant removed successfully."));
+            return Ok(new ApiResult(message: _lang.GetMessage("Variant_Deleted")));
         }
 
         [HttpDelete("type/{typeName}")]
@@ -109,24 +112,24 @@ namespace Graduation.API.Controllers
         {
             var (vendorId, isAdmin) = await GetUserContextAsync();
             await _variantService.DeleteVariantTypeAsync(productId, vendorId, isAdmin, typeName);
-            return Ok(new ApiResult(message: $"All '{typeName}' variants removed successfully."));
+            return Ok(new ApiResult(message: _lang.GetMessage("Variant_TypeDeleted", typeName)));
         }
 
         private async Task<(int? vendorId, bool isAdmin)> GetUserContextAsync()
         {
             var userId = User.GetUserId();
             if (string.IsNullOrEmpty(userId))
-                throw new UnauthorizedException("User not authenticated.");
+                throw new UnauthorizedException(_lang.GetMessage("NotAuthenticated"));
 
             if (User.IsInRole("Admin"))
                 return (null, true);
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException("You must be a vendor or an admin to manage product variants.");
+                throw new UnauthorizedException(_lang.GetMessage("Variant_NotVendor"));
 
             if (!vendor.IsApproved)
-                throw new UnauthorizedException("Your vendor account must be approved before managing variants.");
+                throw new UnauthorizedException(_lang.GetMessage("Variant_VendorNotApproved"));
 
             return (vendor.Id, false);
         }
