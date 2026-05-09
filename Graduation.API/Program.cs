@@ -167,9 +167,15 @@ namespace Graduation.API
                 });
 
                 builder.Services.AddDbContext<DatabaseContext>(options =>
-                {
-                    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
-                });
+                                 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlOptions =>
+        {
+            // This is the critical fix for the Error 64/Transient Failure
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null);
+        }));
 
                 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
                 {
@@ -305,6 +311,7 @@ namespace Graduation.API
                             .AllowCredentials();
                     });
                 });
+
 
                 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
                 if (!Directory.Exists(wwwrootPath))

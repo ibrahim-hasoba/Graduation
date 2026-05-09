@@ -2,6 +2,8 @@
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using System.Security.Claims;
 using Shared.DTOs;
 using Shared.DTOs.Product;
 using Shared.Errors;
@@ -12,12 +14,34 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly ICodeAssignmentService _codeAssignment;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public ProductService(DatabaseContext context, ICodeAssignmentService codeAssignment)
+        public ProductService(
+            DatabaseContext context,
+            ICodeAssignmentService codeAssignment,
+            IHttpContextAccessor httpContextAccessor)
         {
             _context = context;
             _codeAssignment = codeAssignment;
+            _httpContextAccessor = httpContextAccessor;
         }
+
+
+        private async Task<HashSet<int>> GetUserWishlistIdsAsync()
+        {
+            var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+                return new HashSet<int>();
+
+            var ids = await _context.Wishlists
+                .Where(w => w.UserId == userId)
+                .Select(w => w.ProductId)
+                .ToListAsync();
+
+            return new HashSet<int>(ids);
+        }
+
 
         public async Task<ProductDto> CreateProductAsync(ProductCreateDto dto)
         {
@@ -86,8 +110,6 @@ namespace Graduation.BLL.Services.Implementations
             return await GetProductByIdAsync(product.Id);
         }
 
-        // ── Private shared query builder ────────────────────────────────────────
-
         private IQueryable<Product> ProductsWithIncludes()
             => _context.Products
                 .Include(p => p.Vendor)
@@ -95,8 +117,6 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
                 .Include(p => p.Variants.Where(v => v.IsActive));
-
-        // ── Public GET: by id ────────────────────────────────────────────────────
 
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
@@ -106,10 +126,9 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null)
                 throw new NotFoundException("Product", "Id", id);
 
-            return MapToDto(product);
+            var wishlistIds = await GetUserWishlistIdsAsync();
+            return MapToDto(product, wishlistIds);
         }
-
-        // ── Public GET: by code (shareable URL) ──────────────────────────────────
 
         public async Task<ProductDto> GetProductByCodeAsync(string code)
         {
@@ -119,10 +138,9 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null)
                 throw new NotFoundException("Product", "Code", code);
 
-            return MapToDto(product);
+            var wishlistIds = await GetUserWishlistIdsAsync();
+            return MapToDto(product, wishlistIds);
         }
-
-        // ── Search ───────────────────────────────────────────────────────────────
 
         public async Task<ProductSearchResultDto> SearchProductsAsync(ProductSearchDto searchDto)
         {
@@ -188,11 +206,12 @@ namespace Graduation.BLL.Services.Implementations
                 .Take(searchDto.PageSize)
                 .ToListAsync();
 
+            var wishlistIds = await GetUserWishlistIdsAsync();
             var totalPages = (int)Math.Ceiling(totalCount / (double)searchDto.PageSize);
 
             return new ProductSearchResultDto
             {
-                Products = products.Select(MapToListDto).ToList(),
+                Products = products.Select(p => MapToListDto(p, wishlistIds)).ToList(),
                 TotalCount = totalCount,
                 PageNumber = searchDto.PageNumber,
                 PageSize = searchDto.PageSize,
@@ -213,15 +232,12 @@ namespace Graduation.BLL.Services.Implementations
                 .OrderByDescending(p => p.CreatedAt);
 
             var totalCount = await query.CountAsync();
-
-            var products = await query
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            var products = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+            var wishlistIds = await GetUserWishlistIdsAsync();
 
             return new PagedResult<ProductListDto>
             {
-                Items = products.Select(MapToListDto).ToList(),
+                Items = products.Select(p => MapToListDto(p, wishlistIds)).ToList(),
                 TotalCount = totalCount,
                 PageNumber = pageNumber,
                 PageSize = pageSize
@@ -239,22 +255,18 @@ namespace Graduation.BLL.Services.Implementations
                 .OrderByDescending(p => p.ViewCount);
 
             var totalCount = await query.CountAsync();
-
-            var products = await query
-                .Skip((pageNumber - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
+            var products = await query.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+            var wishlistIds = await GetUserWishlistIdsAsync();
 
             return new PagedResult<ProductListDto>
             {
-                Items = products.Select(MapToListDto).ToList(),
+                Items = products.Select(p => MapToListDto(p, wishlistIds)).ToList(),
                 TotalCount = totalCount,
                 PageNumber = pageNumber,
                 PageSize = pageSize
             };
         }
 
-        // ── Vendor write operations (by id) ──────────────────────────────────────
 
         public async Task<ProductDto> UpdateProductAsync(int id, string vendorCode, ProductUpdateDto dto)
         {
@@ -316,14 +328,11 @@ namespace Graduation.BLL.Services.Implementations
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
-        // ── Admin operations (by id) ──────────────────────────────────────────────
 
         public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
         {
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Id", id);
+            if (product == null) throw new NotFoundException("Product", "Id", id);
 
             await ApplyProductUpdate(product, dto);
             return await GetProductByIdAsync(id);
@@ -332,9 +341,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task AdminDeleteProductAsync(int id)
         {
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Id", id);
+            if (product == null) throw new NotFoundException("Product", "Id", id);
 
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
@@ -343,12 +350,9 @@ namespace Graduation.BLL.Services.Implementations
         public async Task AdminUpdateStockAsync(int id, int quantity)
         {
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            if (product == null) throw new NotFoundException("Product", "Id", id);
 
-            if (product == null)
-                throw new NotFoundException("Product", "Id", id);
-
-            if (quantity < 0)
-                throw new BadRequestException("Stock quantity cannot be negative");
+            if (quantity < 0) throw new BadRequestException("Stock quantity cannot be negative");
 
             product.StockQuantity = quantity;
             product.UpdatedAt = DateTime.UtcNow;
@@ -358,9 +362,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<ProductDto> AdminToggleProductStatusAsync(int id)
         {
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-                throw new NotFoundException("Product", "Id", id);
+            if (product == null) throw new NotFoundException("Product", "Id", id);
 
             product.IsActive = !product.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
@@ -368,7 +370,6 @@ namespace Graduation.BLL.Services.Implementations
             return await GetProductByIdAsync(id);
         }
 
-        // ── Private helpers ───────────────────────────────────────────────────────
 
         private async Task ApplyProductUpdate(Product product, ProductUpdateDto dto)
         {
@@ -401,7 +402,7 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
         }
 
-        private ProductDto MapToDto(Product product)
+        private ProductDto MapToDto(Product product, HashSet<int> wishlistIds)
         {
             var finalPrice = product.DiscountPrice ?? product.Price;
             var discountPercentage = product.DiscountPrice.HasValue
@@ -426,6 +427,7 @@ namespace Graduation.BLL.Services.Implementations
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
                 InStock = product.StockQuantity > 0,
+                IsInWishlist = wishlistIds.Contains(product.Id), 
                 ViewCount = product.ViewCount,
                 AverageRating = Math.Round(avgRating, 1),
                 TotalReviews = product.Reviews.Count,
@@ -469,7 +471,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        private ProductListDto MapToListDto(Product product)
+        private ProductListDto MapToListDto(Product product, HashSet<int> wishlistIds)
         {
             var finalPrice = product.DiscountPrice ?? product.Price;
             var discountPercentage = product.DiscountPrice.HasValue
@@ -489,6 +491,7 @@ namespace Graduation.BLL.Services.Implementations
                 FinalPrice = finalPrice,
                 DiscountPercentage = discountPercentage,
                 InStock = product.StockQuantity > 0,
+                IsInWishlist = wishlistIds.Contains(product.Id), 
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
                 PrimaryImageUrl = primaryImage,

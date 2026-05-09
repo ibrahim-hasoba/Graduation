@@ -25,6 +25,8 @@ namespace Shared.DTOs.Product
         public string VendorName { get; set; } = string.Empty;
         public string CategoryNameEn { get; set; } = string.Empty;
         public string CategoryNameAr { get; set; } = string.Empty;
+
+        public bool IsInWishlist { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
     }

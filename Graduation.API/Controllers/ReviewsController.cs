@@ -87,49 +87,6 @@ namespace Graduation.API.Controllers
 
             return Ok(new ApiResult(message: "Review deleted successfully"));
         }
-
-        [HttpPost("{reviewId}/approve")]
-        [Authorize(Roles = "Admin")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> ApproveReview(int reviewId)
-        {
-            // FIX: ApproveReviewAsync now returns bool and takes isApproved param (defaults to true)
-            var approved = await _reviewService.ApproveReviewAsync(reviewId);
-            if (!approved)
-                throw new NotFoundException("Review not found");
-
-            return Ok(new ApiResult(message: "Review approved successfully"));
-        }
-
-        [HttpPost("{reviewId}/reject")]
-        [Authorize(Roles = "Admin")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> RejectReview(int reviewId)
-        {
-            var rejected = await _reviewService.ApproveReviewAsync(reviewId, isApproved: false);
-            if (!rejected)
-                throw new NotFoundException("Review not found");
-
-            return Ok(new ApiResult(message: "Review rejected successfully"));
-        }
-
-        [HttpGet("pending")]
-        [Authorize(Roles = "Admin")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> GetPendingReviews(
-                    [FromQuery] int pageNumber = 1,
-                    [FromQuery] int pageSize = 20)
-        {
-            if (pageNumber < 1) pageNumber = 1;
-            if (pageSize < 1 || pageSize > 100) pageSize = 20;
-
-            var result = await _reviewService.GetPendingReviewsAsync(pageNumber, pageSize);
-            return Ok(new ApiResult(data: result, count: result.TotalCount));
-        }
+        
     }
 }

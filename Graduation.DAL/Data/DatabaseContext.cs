@@ -40,6 +40,8 @@ namespace Graduation.DAL.Data
             builder.Entity<OrderItemVariant>()
                 .HasKey(oiv => new { oiv.OrderItemId, oiv.ProductVariantId });
 
+            builder.Entity<CartItemVariant>().HasQueryFilter(civ => civ.CartItem.Product.IsActive);
+
             // Payment Configuration
             builder.Entity<Payment>(entity =>
             {
