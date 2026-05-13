@@ -6,11 +6,16 @@ namespace Graduation.API.HostedServices
     public class BackgroundProcessingService : BackgroundService
     {
         private readonly IBackgroundTaskQueue _taskQueue;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<BackgroundProcessingService> _logger;
 
-        public BackgroundProcessingService(IBackgroundTaskQueue taskQueue, ILogger<BackgroundProcessingService> logger)
+        public BackgroundProcessingService(
+            IBackgroundTaskQueue taskQueue,
+            IServiceScopeFactory scopeFactory,
+            ILogger<BackgroundProcessingService> logger)
         {
             _taskQueue = taskQueue;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
@@ -34,7 +39,10 @@ namespace Graduation.API.HostedServices
                         attempt++;
                         try
                         {
-                            await workItem(stoppingToken);
+                            using (var scope = _scopeFactory.CreateScope())
+                            {
+                                await workItem(scope.ServiceProvider, stoppingToken);
+                            }
                             succeeded = true;
                         }
                         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

@@ -50,7 +50,8 @@ namespace Graduation.BLL.Services.Implementations
                 throw new NotFoundException($"Vendor with code '{dto.VendorCode}' was not found");
 
             var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrEmpty(userId) && vendor.UserId != userId)
+            var isAdmin = _httpContextAccessor.HttpContext?.User?.IsInRole("Admin") == true;
+            if (!isAdmin && !string.IsNullOrEmpty(userId) && vendor.UserId != userId)
                 throw new UnauthorizedException("You are not authorized to create products for this vendor");
 
             if (!vendor.IsApproved || !vendor.IsActive)

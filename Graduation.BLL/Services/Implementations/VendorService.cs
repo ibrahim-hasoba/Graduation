@@ -3,6 +3,7 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Shared.BackgroundTasks;
 using Shared.DTOs;
@@ -14,23 +15,23 @@ namespace Graduation.BLL.Services.Implementations
     public class VendorService : IVendorService
     {
         private readonly DatabaseContext _context;
-        private readonly IEmailService _emailService;
         private readonly UserManager<AppUser> _userManager;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
 
         public VendorService(
             DatabaseContext context,
-            IEmailService emailService,
             UserManager<AppUser> userManager,
+            IServiceScopeFactory scopeFactory,
             ILogger<VendorService> logger,
             ICodeAssignmentService codeAssignment,
             IBackgroundTaskQueue? taskQueue = null)
         {
             _context = context;
-            _emailService = emailService;
             _userManager = userManager;
+            _scopeFactory = scopeFactory;
             _taskQueue = taskQueue;
             _codeAssignment = codeAssignment;
             _logger = logger;
@@ -236,25 +237,32 @@ namespace Graduation.BLL.Services.Implementations
 
                 if (_taskQueue != null)
                 {
-                    _taskQueue.QueueBackgroundWorkItem(async token =>
+                    _taskQueue.QueueBackgroundWorkItem(async (sp, token) =>
                     {
-                        await _emailService.SendVendorApprovalEmailAsync(
+                        var emailService = sp.GetRequiredService<IEmailService>();
+                        await emailService.SendVendorApprovalEmailAsync(
                             emailCopy, storeNameCopy, isApproved, rejectionReason);
                     });
                 }
                 else
                 {
+                    var scope = _scopeFactory.CreateScope();
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await _emailService.SendVendorApprovalEmailAsync(
+                            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                            await emailService.SendVendorApprovalEmailAsync(
                                 emailCopy, storeNameCopy, isApproved, rejectionReason);
                         }
                         catch (Exception ex)
                         {
                             _logger.LogError(ex,
                                 "Failed to send vendor approval email to {Email}", emailCopy);
+                        }
+                        finally
+                        {
+                            scope.Dispose();
                         }
                     });
                 }

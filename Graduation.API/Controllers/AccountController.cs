@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
@@ -35,7 +36,7 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IOrderService _orderService;
         private readonly ILanguageService _lang;
-        private readonly INotificationService _notificationService;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ILogger<AccountController> _logger; 
 
@@ -52,7 +53,7 @@ namespace Graduation.API.Controllers
             ICodeAssignmentService codeAssignment,
             IOrderService orderService,
             ILanguageService lang,
-            INotificationService notificationService,
+            IServiceScopeFactory scopeFactory,
             ILogger<AccountController> logger,
             IBackgroundTaskQueue? taskQueue = null) 
         {
@@ -68,7 +69,7 @@ namespace Graduation.API.Controllers
             _codeAssignment = codeAssignment;
             _orderService = orderService;
             _lang = lang;
-            _notificationService = notificationService;
+            _scopeFactory = scopeFactory;
             _taskQueue = taskQueue;
             _logger = logger;
         }
@@ -174,9 +175,10 @@ namespace Graduation.API.Controllers
             await _userManager.ResetAccessFailedCountAsync(user);
 
             
-            _taskQueue?.QueueBackgroundWorkItem(async token =>
+            _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
             {
-                await _notificationService.CreateNotificationAsync(
+                var notificationService = sp.GetRequiredService<INotificationService>();
+                await notificationService.CreateNotificationAsync(
                     user.Id,
                     "New Login Detected",
                     $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
@@ -272,9 +274,10 @@ namespace Graduation.API.Controllers
 
             if (isNewToken)
             {
-                _taskQueue?.QueueBackgroundWorkItem(async token =>
+                _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
                 {
-                    await _notificationService.CreateNotificationAsync(
+                    var notificationService = sp.GetRequiredService<INotificationService>();
+                    await notificationService.CreateNotificationAsync(
                         userId,
                         "New Login Detected",
                         $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
@@ -434,9 +437,10 @@ namespace Graduation.API.Controllers
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
-            _taskQueue?.QueueBackgroundWorkItem(async token =>
+            _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
             {
-                await _notificationService.CreateNotificationAsync(
+                var notificationService = sp.GetRequiredService<INotificationService>();
+                await notificationService.CreateNotificationAsync(
                     user.Id,
                     "New Login Detected",
                     $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +

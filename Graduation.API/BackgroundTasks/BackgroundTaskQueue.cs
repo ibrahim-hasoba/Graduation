@@ -6,7 +6,7 @@ namespace Graduation.API.BackgroundTasks
 {
     public class BackgroundTaskQueue : IBackgroundTaskQueue
     {
-        private readonly Channel<Func<CancellationToken, Task>> _queue;
+        private readonly Channel<Func<IServiceProvider, CancellationToken, Task>> _queue;
         private readonly ILogger<BackgroundTaskQueue>? _logger;
         private readonly int _capacity;
 
@@ -18,11 +18,11 @@ namespace Graduation.API.BackgroundTasks
                 FullMode = BoundedChannelFullMode.DropOldest
             };
 
-            _queue = Channel.CreateBounded<Func<CancellationToken, Task>>(options);
+            _queue = Channel.CreateBounded<Func<IServiceProvider, CancellationToken, Task>>(options);
             _logger = logger;
         }
 
-        public void QueueBackgroundWorkItem(Func<CancellationToken, Task> workItem)
+        public void QueueBackgroundWorkItem(Func<IServiceProvider, CancellationToken, Task> workItem)
         {
             if (workItem == null) throw new ArgumentNullException(nameof(workItem));
 
@@ -43,7 +43,7 @@ namespace Graduation.API.BackgroundTasks
             }
         }
 
-        public async Task<Func<CancellationToken, Task>> DequeueAsync(CancellationToken cancellationToken)
+        public async Task<Func<IServiceProvider, CancellationToken, Task>> DequeueAsync(CancellationToken cancellationToken)
         {
             return await _queue.Reader.ReadAsync(cancellationToken);
         }
