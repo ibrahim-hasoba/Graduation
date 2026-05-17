@@ -5,7 +5,7 @@ namespace Shared.DTOs.Review
     public class ReviewReportDto
     {
         public int Id { get; set; }
-        public int ReviewId { get; set; }
+        public int? ReviewId { get; set; }
         public string Reason { get; set; } = string.Empty;
         public ReviewReportStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }

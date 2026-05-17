@@ -16,7 +16,7 @@ namespace Graduation.DAL.Entities
         public DateTime? ResolvedAt { get; set; }
         public string? ResolvedById { get; set; }
 
-        public int ReviewId { get; set; }
+        public int? ReviewId { get; set; }
         public ProductReview? Review { get; set; }
 
         public string ReportedByUserId { get; set; } = string.Empty;

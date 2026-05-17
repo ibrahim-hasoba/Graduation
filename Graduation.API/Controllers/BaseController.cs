@@ -2,6 +2,7 @@ using Graduation.API.Extensions;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Shared.Errors;
 
 namespace Graduation.API.Controllers
@@ -34,33 +35,41 @@ namespace Graduation.API.Controllers
 
         protected async Task<T> ExecuteInTransactionAsync<T>(DatabaseContext context, Func<Task<T>> action)
         {
-            await using var transaction = await context.Database.BeginTransactionAsync();
-            try
+            var strategy = context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                var result = await action();
-                await transaction.CommitAsync();
-                return result;
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                await using var transaction = await context.Database.BeginTransactionAsync();
+                try
+                {
+                    var result = await action();
+                    await transaction.CommitAsync();
+                    return result;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
 
         protected async Task ExecuteInTransactionAsync(DatabaseContext context, Func<Task> action)
         {
-            await using var transaction = await context.Database.BeginTransactionAsync();
-            try
+            var strategy = context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
             {
-                await action();
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                await using var transaction = await context.Database.BeginTransactionAsync();
+                try
+                {
+                    await action();
+                    await transaction.CommitAsync();
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
 
         protected IActionResult OkResult(object? data = null, string? message = null, int? count = null)
