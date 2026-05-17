@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Entities;
+using Graduation.DAL.Entities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -21,7 +21,6 @@ namespace Shared.DTOs.Order
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public string? ShippingAddress { get; set; }
-
 
         [Required(ErrorMessage = "Payment method is required")]
         public PaymentMethod PaymentMethod { get; set; }

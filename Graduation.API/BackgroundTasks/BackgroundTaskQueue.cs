@@ -1,4 +1,4 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Shared.BackgroundTasks;
 
@@ -29,11 +29,11 @@ namespace Graduation.API.BackgroundTasks
             if (!_queue.Writer.TryWrite(workItem))
             {
                 _logger?.LogError(
-                    "BackgroundTaskQueue: failed to enqueue work item — channel is full and oldest item " +
+                    "BackgroundTaskQueue: failed to enqueue work item � channel is full and oldest item " +
                     "was dropped (DropOldest). Consider increasing queue capacity beyond {Capacity}.",
                     _capacity);
             }
-            
+
             else if (_queue.Reader.Count >= _capacity * 0.8)
             {
                 _logger?.LogWarning(

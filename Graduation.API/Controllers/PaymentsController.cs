@@ -1,8 +1,6 @@
-﻿using Shared.Errors;
 using Graduation.API.Extensions;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -10,47 +8,44 @@ namespace Graduation.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class PaymentsController : ControllerBase
+    public class PaymentsController : BaseController
     {
         private readonly IPaymentService _paymentService;
         private readonly ILogger<PaymentsController> _logger;
-        private readonly ILanguageService _lang;
 
         public PaymentsController(
             IPaymentService paymentService,
             ILogger<PaymentsController> logger,
             ILanguageService lang)
+            : base(lang)
         {
             _paymentService = paymentService;
             _logger = logger;
-            _lang = lang;
         }
-
-        [HttpGet("{orderNumber}")]
-        [Authorize]
+        /// <summary>Gets payment details for a specific order.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("{orderNumber}")]
+        [Authorize]
         public async Task<IActionResult> GetPayment(string orderNumber)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var payment = await _paymentService.GetByOrderNumberAsync(orderNumber, userId);
-            return Ok(new ApiResult(data: payment));
+            return OkResult(data: payment);
         }
-
-
+        /// <summary>Handles incoming payment gateway POST webhook callbacks to process transaction results.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("webhook")]
         [AllowAnonymous]
-        public async Task<IActionResult> WebhookPost([FromQuery] string hmac) // Get HMAC from Query
+        public async Task<IActionResult> WebhookPost([FromQuery] string hmac)
         {
             try
             {
                 if (string.IsNullOrEmpty(hmac))
                 {
                     _logger.LogWarning("Webhook POST received without HMAC — ignored");
-                    return Ok(); 
+                    return Ok();
                 }
 
                 using var reader = new StreamReader(Request.Body);
@@ -62,15 +57,10 @@ namespace Graduation.API.Controllers
                 {
                     var jsonDoc = JsonDocument.Parse(body);
 
-                    
                     if (jsonDoc.RootElement.TryGetProperty("obj", out var objElement))
-                    {
                         callbackData = FlattenJson(objElement);
-                    }
                     else
-                    {
                         callbackData = FlattenJson(jsonDoc.RootElement);
-                    }
                 }
                 else
                 {
@@ -88,9 +78,7 @@ namespace Graduation.API.Controllers
                 return Ok();
             }
         }
-
-
-
+        /// <summary>Handles incoming GET webhook callbacks from the payment gateway (redirect after payment).</summary>
         [HttpGet("webhook")]
         [AllowAnonymous]
         public IActionResult WebhookGet()
@@ -133,10 +121,10 @@ namespace Graduation.API.Controllers
                 return Redirect("https://heka-eg.netlify.app/payment-failed");
             }
         }
-
+        /// <summary>Gets a paginated list of all payments, optionally filtered by status.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpGet]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllPayments(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20,
@@ -144,7 +132,7 @@ namespace Graduation.API.Controllers
         {
             var result = await _paymentService.GetAllAsync(pageNumber, pageSize, status);
 
-            return Ok(new ApiResult(
+            return OkResult(
                 data: new
                 {
                     payments = result.Payments,
@@ -155,7 +143,7 @@ namespace Graduation.API.Controllers
                     hasPreviousPage = result.HasPreviousPage,
                     hasNextPage = result.HasNextPage
                 },
-                count: result.TotalCount));
+                count: result.TotalCount);
         }
 
         private static Dictionary<string, string> FlattenJson(

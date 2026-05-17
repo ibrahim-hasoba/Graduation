@@ -1,13 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Graduation.BLL.Services.Interfaces
+﻿namespace Graduation.BLL.Services.Interfaces
 {
+    public enum FcmSendResult
+    {
+        Success,
+        InvalidToken,
+        Error
+    }
+
     public interface IFirebaseService
     {
-        Task SendPushNotificationAsync(string fcmToken, string title, string body, Dictionary<string, string>? data = null);
+        Task<FcmSendResult> SendPushNotificationAsync(string fcmToken, string title, string body, Dictionary<string, string>? data = null);
     }
 }

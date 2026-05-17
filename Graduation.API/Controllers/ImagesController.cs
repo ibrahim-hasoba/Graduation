@@ -1,4 +1,4 @@
-﻿using Shared.Errors;
+using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -20,9 +20,7 @@ namespace Graduation.API.Controllers
             _lang = lang;
         }
 
-        /// <summary>
-        /// Upload a single image
-        /// </summary>
+        /// <summary>Uploads a single image to a specified folder. Returns the image URL.</summary>
         [HttpPost("upload")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -43,9 +41,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>
-        /// Upload multiple images
-        /// </summary>
+        /// <summary>Uploads multiple images to a specified folder. Returns an array of image URLs.</summary>
         [HttpPost("upload-multiple")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -66,9 +62,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>
-        /// Upload product images
-        /// </summary>
+        /// <summary>Uploads up to 5 images for a product. Returns an array of image URLs.</summary>
         [HttpPost("upload-product")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -92,9 +86,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>
-        /// Upload vendor logo
-        /// </summary>
+        /// <summary>Uploads a vendor logo image to the vendors/logos folder.</summary>
         [HttpPost("upload-logo")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -115,9 +107,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>
-        /// Upload vendor banner
-        /// </summary>
+        /// <summary>Uploads a vendor banner image to the vendors/banners folder.</summary>
         [HttpPost("upload-banner")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -138,9 +128,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>
-        /// Delete an image
-        /// </summary>
+        /// <summary>Deletes an image from the server by its URL path.</summary>
         [HttpDelete]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -164,7 +152,6 @@ namespace Graduation.API.Controllers
         }
     }
 
-    // DTOs for file uploads (Swagger-compatible)
     public class ImageUploadRequest
     {
         public IFormFile File { get; set; } = null!;

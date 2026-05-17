@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -7,7 +7,6 @@ namespace Graduation.DAL.Entities
 {
     public class AppUser : IdentityUser
     {
-
 
         public string? Code { get; set; }
         public string FirstName { get; set; } = string.Empty;

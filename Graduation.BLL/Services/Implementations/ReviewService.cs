@@ -1,4 +1,4 @@
-ï»¿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +56,6 @@ namespace Graduation.BLL.Services.Implementations
             _context.ProductReviews.Add(review);
             await _context.SaveChangesAsync();
 
-            // FIX #20: Notify the vendor
             if (product.VendorId > 0)
             {
                 await _notificationService.CreateNotificationForVendorAsync(
@@ -110,7 +109,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>Admin overload â€” all pending reviews across all vendors.</summary>
+        /// <summary>Admin overload — all pending reviews across all vendors.</summary>
         public async Task<PagedResult<ReviewDto>> GetPendingReviewsAsync(int pageNumber, int pageSize)
         {
             var query = _context.ProductReviews
@@ -135,8 +134,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-
-        /// <summary>Vendor overload â€” pending reviews for a specific vendor's products.</summary>
+        /// <summary>Vendor overload — pending reviews for a specific vendor's products.</summary>
         public async Task<List<ReviewDto>> GetPendingReviewsAsync(int vendorId)
         {
             var reviews = await _context.ProductReviews
@@ -191,7 +189,6 @@ namespace Graduation.BLL.Services.Implementations
             review.IsApproved = isApproved;
             await _context.SaveChangesAsync();
 
-            // FIX #20: Notify the reviewer
             if (!string.IsNullOrEmpty(review.UserId))
             {
                 var statusText = isApproved ? "Approved" : "Rejected";

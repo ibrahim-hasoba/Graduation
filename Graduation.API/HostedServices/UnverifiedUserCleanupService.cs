@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Data;
+using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +20,7 @@ namespace Graduation.API.HostedServices
     ///   2. Before deletion, a "final warning" email is sent at the 48-hour mark giving the
     ///      user 24 more hours and a direct link to resend the verification email.
     ///   3. Users who have no OTP record at all (meaning our OTP system never successfully
-    ///      sent them a code) are skipped — deleting them would hide an email-delivery bug.
+    ///      sent them a code) are skipped � deleting them would hide an email-delivery bug.
     ///   4. Service run interval is configurable via UnverifiedUserCleanup:RunIntervalHours.
     /// </summary>
     public class UnverifiedUserCleanupService : BackgroundService
@@ -29,7 +29,7 @@ namespace Graduation.API.HostedServices
         private readonly ILogger<UnverifiedUserCleanupService> _logger;
         private readonly TimeSpan _runInterval;
         private readonly int _gracePeriodHours;
-        private readonly int _warningThresholdHours; // send warning email after this many hours
+        private readonly int _warningThresholdHours;
 
         public UnverifiedUserCleanupService(
             IServiceProvider serviceProvider,
@@ -43,7 +43,6 @@ namespace Graduation.API.HostedServices
             var runIntervalHours = configuration.GetValue<int>("UnverifiedUserCleanup:RunIntervalHours", 6);
             _runInterval = TimeSpan.FromHours(runIntervalHours);
 
-            // Send warning email halfway through grace period
             _warningThresholdHours = _gracePeriodHours / 2;
         }
 
@@ -84,9 +83,6 @@ namespace Graduation.API.HostedServices
             var graceCutoff = now.AddHours(-_gracePeriodHours);
             var warningCutoff = now.AddHours(-_warningThresholdHours);
 
-            // FIX #10: Only target users for whom we have evidence that an OTP was actually
-            // sent. Skip accounts with no OTP record — they indicate a broken email delivery
-            // on our side, not user inaction.
             var candidateUsers = await context.Users
                 .Where(u => !u.EmailConfirmed
                          && u.CreatedAt <= warningCutoff
@@ -104,12 +100,11 @@ namespace Graduation.API.HostedServices
                 }
                 else if (!user.WarningEmailSentAt.HasValue)
                 {
-                    // Reached the halfway warning mark but not yet the deletion cutoff
+
                     toWarn.Add(user);
                 }
             }
 
-            // Send warning emails
             foreach (var user in toWarn)
             {
                 try
@@ -131,7 +126,6 @@ namespace Graduation.API.HostedServices
                 }
             }
 
-            // Delete expired unverified accounts
             int deleted = 0;
             foreach (var user in toDelete)
             {

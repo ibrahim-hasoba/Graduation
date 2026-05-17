@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,7 +25,6 @@ namespace Shared.Utilities
 
         public static string ForCategory(int id)
             => Build(CategoryPrefix, id.ToString());
-
 
         private static string Build(string prefix, string rawId)
         {

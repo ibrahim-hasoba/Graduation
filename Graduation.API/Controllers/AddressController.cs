@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Data;
+using Graduation.DAL.Data;
 using Graduation.API.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Entities;
@@ -13,11 +13,10 @@ namespace Graduation.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class AddressController : ControllerBase
+    public class AddressController : BaseController
     {
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
-        private readonly ILanguageService _lang;
 
         private const int MaxAddressesPerUser = 10;
 
@@ -25,15 +24,15 @@ namespace Graduation.API.Controllers
             DatabaseContext context,
             UserManager<AppUser> userManager,
             ILanguageService lang)
+            : base(lang)
         {
             _context = context;
             _userManager = userManager;
-            _lang = lang;
         }
-
-        [HttpGet]
+        /// <summary>Gets all saved addresses for the authenticated user, ordered by default then creation date.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpGet]
         public async Task<IActionResult> GetAddresses()
         {
             var userId = _userManager.GetUserId(User);
@@ -43,25 +42,24 @@ namespace Graduation.API.Controllers
                 .ThenByDescending(a => a.CreatedAt)
                 .ToListAsync();
 
-            return Ok(new ApiResult(data: addresses.Select(MapToDto)));
+            return OkResult(data: addresses.Select(MapToDto));
         }
-
-        [HttpPost]
+        /// <summary>Adds a new shipping address. The first address is auto-set as the default.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpPost]
         public async Task<IActionResult> AddAddress([FromBody] UserAddressDto dto)
         {
             var userId = _userManager.GetUserId(User);
             var count = await _context.UserAddresses.CountAsync(a => a.UserId == userId);
             if (count >= MaxAddressesPerUser)
-                throw new BadRequestException(_lang.GetMessage("Address_MaxReached", MaxAddressesPerUser));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Address.MaxReached, MaxAddressesPerUser));
 
             var isFirstAddress = count == 0;
             var makeDefault = dto.IsDefault || isFirstAddress;
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var address = await ExecuteInTransactionAsync(_context, async () =>
             {
                 if (makeDefault)
                 {
@@ -85,33 +83,25 @@ namespace Graduation.API.Controllers
 
                 _context.UserAddresses.Add(address);
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                return address;
+            });
 
-                return StatusCode(201, new ApiResult(
-                    message: _lang.GetMessage("Address_Added"),
-                    data: MapToDto(address)));
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            return CreatedResult(data: MapToDto(address), message: Lang.GetMessage(LangKeys.Address.Added));
         }
-
-        [HttpPut("{id:int}")]
+        /// <summary>Updates an existing address for the authenticated user.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPut("{id:int}")]
         public async Task<IActionResult> UpdateAddress(int id, [FromBody] UserAddressDto dto)
         {
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
+            if (address == null) throw new NotFoundException(Lang.GetMessage(LangKeys.Address.NotFound));
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var updated = await ExecuteInTransactionAsync(_context, async () =>
             {
                 if (dto.IsDefault && !address.IsDefault)
                 {
@@ -129,37 +119,30 @@ namespace Graduation.API.Controllers
                 address.PhoneNumber = dto.PhoneNumber?.Trim();
 
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                return address;
+            });
 
-                return Ok(new ApiResult(
-                    message: _lang.GetMessage("Address_Updated"),
-                    data: MapToDto(address)));
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            return OkResult(data: MapToDto(updated), message: Lang.GetMessage(LangKeys.Address.Updated));
         }
-
-        [HttpPut("{id:int}/default")]
+        /// <summary>Sets a specific address as the default shipping address.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPut("{id:int}/default")]
         public async Task<IActionResult> SetDefault(int id)
         {
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
+            if (address == null) throw new NotFoundException(Lang.GetMessage(LangKeys.Address.NotFound));
 
             if (address.IsDefault)
-                return Ok(new ApiResult(
-                    message: _lang.GetMessage("Address_AlreadyDefault"),
-                    data: MapToDto(address)));
+                return OkResult(
+                    message: Lang.GetMessage(LangKeys.Address.AlreadyDefault),
+                    data: MapToDto(address));
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            await ExecuteInTransactionAsync(_context, async () =>
             {
                 await _context.UserAddresses
                     .Where(a => a.UserId == userId && a.IsDefault)
@@ -168,40 +151,30 @@ namespace Graduation.API.Controllers
                 address.IsDefault = true;
                 address.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+            });
 
-                return Ok(new ApiResult(
-                    message: _lang.GetMessage("Address_DefaultUpdated"),
-                    data: MapToDto(address)));
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            return OkResult(
+                message: Lang.GetMessage(LangKeys.Address.DefaultUpdated),
+                data: MapToDto(address));
         }
-
-
-        [HttpDelete("{id:int}")]
+        /// <summary>Deletes an address by ID and promotes the next address as default if needed.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteAddress(int id)
         {
             var userId = _userManager.GetUserId(User);
             var address = await _context.UserAddresses
                 .FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
-            if (address == null) throw new NotFoundException(_lang.GetMessage("Address_NotFound"));
+            if (address == null) throw new NotFoundException(Lang.GetMessage(LangKeys.Address.NotFound));
 
             var wasDefault = address.IsDefault;
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            await ExecuteInTransactionAsync(_context, async () =>
             {
                 _context.UserAddresses.Remove(address);
 
-                // FIX #11: Promote the next address BEFORE SaveChangesAsync so both
-                // the deletion and the promotion are committed atomically.
                 if (wasDefault)
                 {
                     var next = await _context.UserAddresses
@@ -214,15 +187,9 @@ namespace Graduation.API.Controllers
                 }
 
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            });
 
-            return Ok(new ApiResult(message: _lang.GetMessage("Address_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Address.Deleted));
         }
 
         private static AddressResponseDto MapToDto(UserAddress a) => new()

@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -65,217 +65,225 @@ namespace Graduation.BLL.Services.Implementations
                 resolvedLng = dto.Longitude;
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync(
-                System.Data.IsolationLevel.Serializable);
+            var strategy = _context.Database.CreateExecutionStrategy();
 
-            try
+            List<CartItem> cartItems = null!;
+            List<Order> createdOrders = null!;
+
+            await strategy.ExecuteAsync(async () =>
             {
-                var cartItems = await _context.CartItems
-                    .Include(ci => ci.Product)
-                        .ThenInclude(p => p.Vendor)
-                    .Include(ci => ci.SelectedVariants)
-                        .ThenInclude(sv => sv.ProductVariant)
-                    .Where(ci => ci.UserId == userId)
-                    .ToListAsync();
+                using var transaction = await _context.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable);
 
-                if (!cartItems.Any())
-                    throw new BadRequestException("Your cart is empty");
-
-                var invalidItems = cartItems
-                    .Where(ci => !ci.Product.Vendor.IsApproved || !ci.Product.Vendor.IsActive)
-                    .Select(ci => ci.Product.Vendor.StoreName)
-                    .Distinct()
-                    .ToList();
-
-                if (invalidItems.Any())
-                    throw new BadRequestException(
-                        $"The following vendors are currently unavailable: {string.Join(", ", invalidItems)}. " +
-                        "Please remove their products from your cart before placing an order.");
-
-                var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
-                var createdOrders = new List<Order>();
-                var allOrderItems = new List<OrderItem>();
-
-                foreach (var vendorGroup in vendorGroups)
+                try
                 {
-                    var items = vendorGroup.ToList();
+                    cartItems = await _context.CartItems
+                        .Include(ci => ci.Product)
+                            .ThenInclude(p => p.Vendor)
+                        .Include(ci => ci.SelectedVariants)
+                            .ThenInclude(sv => sv.ProductVariant)
+                        .Where(ci => ci.UserId == userId)
+                        .ToListAsync();
 
-                    foreach (var item in items)
+                    if (!cartItems.Any())
+                        throw new BadRequestException("Your cart is empty");
+
+                    var invalidItems = cartItems
+                        .Where(ci => !ci.Product.Vendor.IsApproved || !ci.Product.Vendor.IsActive)
+                        .Select(ci => ci.Product.Vendor.StoreName)
+                        .Distinct()
+                        .ToList();
+
+                    if (invalidItems.Any())
+                        throw new BadRequestException(
+                            $"The following vendors are currently unavailable: {string.Join(", ", invalidItems)}. " +
+                            "Please remove their products from your cart before placing an order.");
+
+                    var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
+                    createdOrders = new List<Order>();
+                    var allOrderItems = new List<OrderItem>();
+
+                    foreach (var vendorGroup in vendorGroups)
                     {
-                        if (item.SelectedVariants != null && item.SelectedVariants.Any())
+                        var items = vendorGroup.ToList();
+
+                        foreach (var item in items)
                         {
-                            foreach (var sv in item.SelectedVariants)
+                            if (item.SelectedVariants != null && item.SelectedVariants.Any())
+                            {
+                                foreach (var sv in item.SelectedVariants)
+                                {
+                                    int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                        UPDATE ProductVariants
+                                        SET StockQuantity = StockQuantity - {item.Quantity}
+                                        WHERE Id = {sv.ProductVariantId}
+                                          AND StockQuantity >= {item.Quantity}
+                                          AND IsActive = 1");
+
+                                    if (rowsAffected == 0)
+                                        throw new BadRequestException(
+                                            $"Product '{item.Product.NameEn}' with variant " +
+                                            $"'{sv.ProductVariant.TypeName}: {sv.ProductVariant.Value}' has insufficient stock.");
+                                }
+                            }
+                            else
                             {
                                 int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                                    UPDATE ProductVariants
+                                    UPDATE Products
                                     SET StockQuantity = StockQuantity - {item.Quantity}
-                                    WHERE Id = {sv.ProductVariantId}
+                                    WHERE Id = {item.ProductId}
                                       AND StockQuantity >= {item.Quantity}
                                       AND IsActive = 1");
 
                                 if (rowsAffected == 0)
-                                    throw new BadRequestException(
-                                        $"Product '{item.Product.NameEn}' with variant " +
-                                        $"'{sv.ProductVariant.TypeName}: {sv.ProductVariant.Value}' has insufficient stock.");
+                                {
+                                    var product = await _context.Products
+                                        .AsNoTracking()
+                                        .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+
+                                    if (product == null)
+                                        throw new NotFoundException($"Product with ID {item.ProductId} not found");
+                                    if (!product.IsActive)
+                                        throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
+
+                                    throw new BadRequestException($"Product '{product.NameEn}' has insufficient stock.");
+                                }
                             }
                         }
-                        else
+
+                        var subTotal = items.Sum(i =>
                         {
-                            int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
-                                UPDATE Products
-                                SET StockQuantity = StockQuantity - {item.Quantity}
-                                WHERE Id = {item.ProductId}
-                                  AND StockQuantity >= {item.Quantity}
-                                  AND IsActive = 1");
+                            var basePrice = i.Product.DiscountPrice ?? i.Product.Price;
+                            var adjustment = i.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
+                            return (basePrice + adjustment) * i.Quantity;
+                        });
 
-                            if (rowsAffected == 0)
+                        const decimal shippingCost = 50m;
+                        var totalAmount = subTotal + shippingCost;
+
+                        var order = new Order
+                        {
+                            OrderNumber = GenerateOrderNumber(),
+                            UserId = userId,
+                            SubTotal = subTotal,
+                            ShippingCost = shippingCost,
+                            TotalAmount = totalAmount,
+                            Status = OrderStatus.Pending,
+                            PaymentMethod = dto.PaymentMethod,
+                            PaymentStatus = PaymentStatus.Pending,
+                            OrderDate = DateTime.UtcNow,
+                            ShippingFirstName = dto.ShippingFirstName,
+                            ShippingLastName = dto.ShippingLastName,
+                            ShippingPhone = dto.ShippingPhone,
+                            ShippingAddress = resolvedAddress,
+                            ShippingLatitude = resolvedLat,
+                            ShippingLongitude = resolvedLng,
+                            ClientType = clientType,
+                            Notes = dto.Notes
+                        };
+
+                        _context.Orders.Add(order);
+                        createdOrders.Add(order);
+
+                        foreach (var cartItem in items)
+                        {
+                            var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
+                            var adjustment = cartItem.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
+                            var unitPrice = basePrice + adjustment;
+
+                            allOrderItems.Add(new OrderItem
                             {
-                                var product = await _context.Products
-                                    .AsNoTracking()
-                                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
-
-                                if (product == null)
-                                    throw new NotFoundException($"Product with ID {item.ProductId} not found");
-                                if (!product.IsActive)
-                                    throw new BadRequestException($"Product '{product.NameEn}' is no longer available");
-
-                                throw new BadRequestException($"Product '{product.NameEn}' has insufficient stock.");
-                            }
+                                Order = order,
+                                ProductId = cartItem.ProductId,
+                                Quantity = cartItem.Quantity,
+                                UnitPrice = unitPrice,
+                                TotalPrice = unitPrice * cartItem.Quantity,
+                                SelectedVariants = cartItem.SelectedVariants?.Select(sv => new OrderItemVariant
+                                {
+                                    ProductVariantId = sv.ProductVariantId
+                                }).ToList() ?? new List<OrderItemVariant>()
+                            });
                         }
                     }
 
-                    var subTotal = items.Sum(i =>
-                    {
-                        var basePrice = i.Product.DiscountPrice ?? i.Product.Price;
-                        var adjustment = i.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
-                        return (basePrice + adjustment) * i.Quantity;
-                    });
+                    _context.OrderItems.AddRange(allOrderItems);
 
-                    const decimal shippingCost = 50m;
-                    var totalAmount = subTotal + shippingCost;
+                    _context.CartItems.RemoveRange(cartItems);
 
-                    var order = new Order
-                    {
-                        OrderNumber = GenerateOrderNumber(),
-                        UserId = userId,
-                        SubTotal = subTotal,
-                        ShippingCost = shippingCost,
-                        TotalAmount = totalAmount,
-                        Status = OrderStatus.Pending,
-                        PaymentMethod = dto.PaymentMethod,
-                        PaymentStatus = PaymentStatus.Pending,
-                        OrderDate = DateTime.UtcNow,
-                        ShippingFirstName = dto.ShippingFirstName,
-                        ShippingLastName = dto.ShippingLastName,
-                        ShippingPhone = dto.ShippingPhone,
-                        ShippingAddress = resolvedAddress,
-                        ShippingLatitude = resolvedLat,
-                        ShippingLongitude = resolvedLng,
-                        ClientType = clientType,
-                        Notes = dto.Notes
-                    };
-
-                    _context.Orders.Add(order);
-                    createdOrders.Add(order);
-
-                    foreach (var cartItem in items)
-                    {
-                        var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
-                        var adjustment = cartItem.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
-                        var unitPrice = basePrice + adjustment;
-
-                        allOrderItems.Add(new OrderItem
-                        {
-                            Order = order,
-                            ProductId = cartItem.ProductId,
-                            Quantity = cartItem.Quantity,
-                            UnitPrice = unitPrice,
-                            TotalPrice = unitPrice * cartItem.Quantity,
-                            SelectedVariants = cartItem.SelectedVariants?.Select(sv => new OrderItemVariant
-                            {
-                                ProductVariantId = sv.ProductVariantId
-                            }).ToList() ?? new List<OrderItemVariant>()
-                        });
-                    }
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
                 }
-
-                _context.OrderItems.AddRange(allOrderItems);
-
-                _context.CartItems.RemoveRange(cartItems);
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                _logger.LogInformation(
-                    "Order(s) created: {OrderNumbers} for user {UserId}",
-                    string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
-
-                if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
+                catch
                 {
-                    var user = await _context.Users.FindAsync(userId);
-                    if (user?.Email != null)
-                    {
-                        var first = createdOrders.First();
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await _emailService.SendOrderConfirmationEmailAsync(
-                                    user.Email, first.OrderNumber, first.TotalAmount);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "Failed to send order confirmation email");
-                            }
-                        });
-                    }
+                    await transaction.RollbackAsync();
+                    throw;
                 }
+            });
 
-                PaymentDto? paymentInfo = null;
+            _logger.LogInformation(
+                "Order(s) created: {OrderNumbers} for user {UserId}",
+                string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
-                if (dto.PaymentMethod != PaymentMethod.CashOnDelivery)
+            if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user?.Email != null)
                 {
-                    foreach (var o in createdOrders)
+                    var first = createdOrders.First();
+                    _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await _paymentService.InitiatePaymentAsync(o.Id, o.ClientType);
+                            await _emailService.SendOrderConfirmationEmailAsync(
+                                user.Email, first.OrderNumber, first.TotalAmount);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex,
-                                "Failed to initiate Paymob payment for order {OrderNumber}",
-                                o.OrderNumber);
+                            _logger.LogError(ex, "Failed to send order confirmation email");
                         }
-                    }
+                    });
+                }
+            }
 
+            PaymentDto? paymentInfo = null;
+
+            if (dto.PaymentMethod != PaymentMethod.CashOnDelivery)
+            {
+                foreach (var o in createdOrders)
+                {
                     try
                     {
-                        paymentInfo = await _paymentService
-                            .GetByOrderNumberAsync(createdOrders.First().OrderNumber, userId);
+                        await _paymentService.InitiatePaymentAsync(o.Id, o.ClientType);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to retrieve payment info after initiation");
+                        _logger.LogError(ex,
+                            "Failed to initiate Paymob payment for order {OrderNumber}",
+                            o.OrderNumber);
                     }
                 }
 
-                var orderDtos = new List<OrderDto>();
-                foreach (var o in createdOrders)
-                    orderDtos.Add(await GetOrderByIdInternalAsync(o.Id));
-
-                return new CreateOrderResultDto
+                try
                 {
-                    Orders = orderDtos,
-                    TotalOrdersCreated = orderDtos.Count,
-                    Payment = paymentInfo
-                };
+                    paymentInfo = await _paymentService
+                        .GetByOrderNumberAsync(createdOrders.First().OrderNumber, userId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to retrieve payment info after initiation");
+                }
             }
-            catch
+
+            var orderDtos = new List<OrderDto>();
+            foreach (var o in createdOrders)
+                orderDtos.Add(await GetOrderByIdInternalAsync(o.Id));
+
+            return new CreateOrderResultDto
             {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                Orders = orderDtos,
+                TotalOrdersCreated = orderDtos.Count,
+                Payment = paymentInfo
+            };
         }
 
         public async Task<OrderDto> GetOrderByIdAsync(int id, string userId)
@@ -299,28 +307,23 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
-        
-
         public async Task<PagedResult<OrderListDto>> GetUserOrdersAsync(string userId, int pageNumber = 1, int pageSize = 10)
         {
-            
+
             var query = _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Vendor)
                 .Where(o => o.UserId == userId);
 
-            
             var totalCount = await query.CountAsync();
 
-            
             var orders = await query
                 .OrderByDescending(o => o.OrderDate)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
 
-            
             return new PagedResult<OrderListDto>
             {
                 Items = orders.Select(o => MapToListDto(o, null)).ToList(),
@@ -428,7 +431,6 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
-
         private async Task RestoreStockAsync(IEnumerable<OrderItem> items)
         {
             foreach (var item in items)
@@ -516,8 +518,6 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        
-
         private static string GenerateOrderNumber()
             => $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpper()}";
 
@@ -542,7 +542,7 @@ namespace Graduation.BLL.Services.Implementations
             Notes = order.Notes,
             VendorId = order.OrderItems.FirstOrDefault()?.Product.VendorId ?? 0,
             VendorName = order.OrderItems.FirstOrDefault()?.Product.Vendor?.StoreName ?? "Unknown",
-            CurrentLatitude = order.CurrentLatitude, 
+            CurrentLatitude = order.CurrentLatitude,
             CurrentLongitude = order.CurrentLongitude ,
             Items = order.OrderItems.Select(oi => new OrderItemDto
             {

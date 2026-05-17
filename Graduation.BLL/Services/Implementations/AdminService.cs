@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -41,8 +41,6 @@ namespace Graduation.BLL.Services.Implementations
                     .SumAsync(o => o.TotalAmount),
                 TotalCategories = await _context.Categories.CountAsync(c => c.Status == CategoryStatus.Active),
 
-                // FIXED BUG: Was counting users where LockoutEnd == null (just unlocked users).
-                // Now correctly counts users registered today using the CreatedAt field.
                 NewUsersToday = await _context.Users.CountAsync(u => u.CreatedAt >= today),
 
                 NewOrdersToday = await _context.Orders.CountAsync(o => o.OrderDate >= today)
@@ -102,7 +100,6 @@ namespace Graduation.BLL.Services.Implementations
 
             var vendorIds = approvedVendors.Select(v => v.Id).ToList();
 
-            // Single query: order counts and revenue per vendor
             var vendorOrderStats = await _context.OrderItems
                 .Where(oi => vendorIds.Contains(oi.Product.VendorId))
                 .GroupBy(oi => oi.Product.VendorId)
@@ -114,7 +111,6 @@ namespace Graduation.BLL.Services.Implementations
                 })
                 .ToListAsync();
 
-            // Single query: average rating per vendor
             var vendorRatingStats = await _context.ProductReviews
                 .Where(r => r.IsApproved && vendorIds.Contains(r.Product.VendorId))
                 .GroupBy(r => r.Product.VendorId)

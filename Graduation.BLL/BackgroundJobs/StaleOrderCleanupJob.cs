@@ -1,11 +1,11 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Graduation.BLL.BackgroundJobs
 {
-   
+
     public class StaleOrderCleanupJob : BackgroundService
     {
         private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
@@ -24,7 +24,7 @@ namespace Graduation.BLL.BackgroundJobs
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("StaleOrderCleanupJob started — interval {Interval}.", Interval);
+            _logger.LogInformation("StaleOrderCleanupJob started � interval {Interval}.", Interval);
 
             await Task.Delay(Interval, stoppingToken);
 

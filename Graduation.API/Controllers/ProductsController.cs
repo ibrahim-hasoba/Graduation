@@ -1,8 +1,6 @@
-﻿using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
 using Shared.DTOs.Product;
@@ -11,41 +9,34 @@ namespace Graduation.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class ProductsController : ControllerBase
+    public class ProductsController : BaseController
     {
         private readonly IProductService _productService;
         private readonly IVendorService _vendorService;
         private readonly DatabaseContext _context;
-        private readonly ILanguageService _lang;
 
         public ProductsController(
             IProductService productService,
             IVendorService vendorService,
             DatabaseContext context,
             ILanguageService lang)
+            : base(lang)
         {
             _productService = productService;
             _vendorService = vendorService;
             _context = context;
-            _lang = lang;
         }
-
-        /// <summary>
-        /// Search and filter products (public)
-        /// </summary>
-        [HttpGet("search")]
+        /// <summary>Searches and filters products using the provided criteria.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [HttpGet("search")]
         public async Task<IActionResult> SearchProducts([FromQuery] ProductSearchDto searchDto)
         {
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new ApiResult(data: result));
+            return OkResult(data: result);
         }
-
-        /// <summary>
-        /// Get all products (public)
-        /// </summary>
-        [HttpGet]
+        /// <summary>Gets a paginated list of all active products.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [HttpGet]
         public async Task<IActionResult> GetAllProducts(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20)
@@ -55,168 +46,123 @@ namespace Graduation.API.Controllers
                 PageNumber = pageNumber,
                 PageSize = pageSize
             });
-            return Ok(new ApiResult(data: result));
+            return OkResult(data: result);
         }
-
-        /// <summary>
-        /// Get featured products (public)
-        /// </summary>
-        [HttpGet("featured")]
+        /// <summary>Gets a paginated list of featured products.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [HttpGet("featured")]
         public async Task<IActionResult> GetFeaturedProducts(
                 [FromQuery] int pageNumber = 1,
                 [FromQuery] int pageSize = 10)
         {
             var result = await _productService.GetFeaturedProductsAsync(pageNumber, pageSize);
-            return Ok(new ApiResult(data: result));
+            return OkResult(data: result);
         }
-
-        /// <summary>
-        /// Get product by numeric id 
-        /// </summary>
-        [HttpGet("{id:int}")]
+        /// <summary>Gets a single product by its numeric ID.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("{id:int}")]
         public async Task<IActionResult> GetProductById(int id)
         {
             var product = await _productService.GetProductByIdAsync(id);
             await _productService.IncrementViewCountAsync(product.Id);
-            return Ok(new ApiResult(data: product));
+            return OkResult(data: product);
         }
-
-        /// <summary>
-        /// Get product by code 
-        /// </summary>
-        [HttpGet("{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
+        /// <summary>Gets a single product by its alphanumeric code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
         public async Task<IActionResult> GetProductByCode(string code)
         {
             var product = await _productService.GetProductByCodeAsync(code);
             await _productService.IncrementViewCountAsync(product.Id);
-            return Ok(new ApiResult(data: product));
+            return OkResult(data: product);
         }
-
-        [HttpGet("vendor/{vendorId:int}")]
+        /// <summary>Gets a paginated list of products for a specific vendor.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("vendor/{vendorId:int}")]
         public async Task<IActionResult> GetVendorProducts(
                  int vendorId,
                 [FromQuery] int pageNumber = 1,
                 [FromQuery] int pageSize = 20)
         {
             var products = await _productService.GetVendorProductsAsync(vendorId, pageNumber, pageSize);
-            return Ok(new ApiResult(data: products));
+            return OkResult(data: products);
         }
-
-        /// <summary>
-        /// Get my products (vendor only)
-        /// </summary>
+        /// <summary>Gets the authenticated vendor's own products with pagination.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpGet("my-products")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetMyProducts(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                return NotFound(new ApiResponse(404, _lang.GetMessage("Product_NoVendor")));
+                return NotFound(new Shared.Errors.ApiResponse(404, Lang.GetMessage(LangKeys.Product.NoVendor)));
 
             var result = await _productService.GetVendorProductsAsync(vendor.Id, pageNumber, pageSize);
-            return Ok(new ApiResult(data: result));
+            return OkResult(data: result);
         }
-
-        /// <summary>
-        /// Create new product (vendor only)
-        /// </summary>
-        [HttpPost]
-        [Authorize]
+        /// <summary>Creates a new product for the authenticated vendor.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [HttpPost]
+        [Authorize]
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var product = await _productService.CreateProductAsync(dto);
-            return StatusCode(201, new ApiResult(data: product, message: _lang.GetMessage("Product_Created")));
+            return CreatedResult(data: product, message: Lang.GetMessage(LangKeys.Product.Created));
         }
-
-        /// <summary>
-        /// Update product by id (vendor owner only)
-        /// </summary>
+        /// <summary>Updates an existing product owned by the authenticated vendor.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPut("{id:int}")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException(_lang.GetMessage("Product_NotVendor"));
+                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.NotVendor));
 
             var product = await _productService.UpdateProductAsync(id, vendor.Code, dto);
-            return Ok(new ApiResult(data: product, message: _lang.GetMessage("Product_Updated")));
+            return OkResult(data: product, message: Lang.GetMessage(LangKeys.Product.Updated));
         }
-
-        /// <summary>
-        /// Delete product by id (vendor owner only)
-        /// </summary>
+        /// <summary>Deletes a product owned by the authenticated vendor.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpDelete("{id:int}")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteProduct(int id)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException(_lang.GetMessage("Product_DeleteNotVendor"));
+                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.DeleteNotVendor));
 
             await _productService.DeleteProductAsync(id, vendor.Code);
-            return Ok(new ApiResult(message: _lang.GetMessage("Product_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Product.Deleted));
         }
-
-        /// <summary>
-        /// Update stock by id (vendor owner only)
-        /// </summary>
-        [HttpPatch("{id:int}/stock")]
-        [Authorize]
+        /// <summary>Updates the stock quantity of a product owned by the authenticated vendor.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPatch("{id:int}/stock")]
+        [Authorize]
         public async Task<IActionResult> UpdateStock(int id, [FromBody] UpdateStockDto dto)
         {
-            var userId = User.GetUserId();
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized(new ApiResponse(401, _lang.GetMessage("NotAuthenticated")));
-
+            var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new UnauthorizedException(_lang.GetMessage("Product_StockNotVendor"));
+                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.StockNotVendor));
 
             await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
-            return Ok(new ApiResult(message: _lang.GetMessage("Product_StockUpdated")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Product.StockUpdated));
         }
     }
 

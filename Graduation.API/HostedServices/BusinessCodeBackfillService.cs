@@ -1,4 +1,4 @@
-ï»¿using Graduation.DAL.Data;
+using Graduation.DAL.Data;
 using Microsoft.EntityFrameworkCore;
 using Shared.Utilities;
 
@@ -31,12 +31,11 @@ namespace Graduation.API.HostedServices
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Business code backfill failed â€” skipping (non-fatal)");
+                _logger.LogWarning(ex, "Business code backfill failed — skipping (non-fatal)");
             }
         }
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
 
         private async Task BackfillUsersAsync(DatabaseContext ctx, CancellationToken ct)
         {
@@ -46,7 +45,7 @@ namespace Graduation.API.HostedServices
 
             if (!users.Any()) return;
 
-            _logger.LogInformation("Backfilling business codes for {Count} user(s)â€¦", users.Count);
+            _logger.LogInformation("Backfilling business codes for {Count} user(s)…", users.Count);
             foreach (var u in users)
                 u.Code = BusinessCodeGenerator.ForUser(u.Id);
 
@@ -62,7 +61,7 @@ namespace Graduation.API.HostedServices
 
             if (!products.Any()) return;
 
-            _logger.LogInformation("Backfilling business codes for {Count} product(s)â€¦", products.Count);
+            _logger.LogInformation("Backfilling business codes for {Count} product(s)…", products.Count);
             foreach (var p in products)
                 p.Code = BusinessCodeGenerator.ForProduct(p.Id);
 
@@ -78,7 +77,7 @@ namespace Graduation.API.HostedServices
 
             if (!vendors.Any()) return;
 
-            _logger.LogInformation("Backfilling business codes for {Count} vendor(s)â€¦", vendors.Count);
+            _logger.LogInformation("Backfilling business codes for {Count} vendor(s)…", vendors.Count);
             foreach (var v in vendors)
                 v.Code = BusinessCodeGenerator.ForVendor(v.Id);
 
@@ -94,7 +93,7 @@ namespace Graduation.API.HostedServices
 
             if (!categories.Any()) return;
 
-            _logger.LogInformation("Backfilling business codes for {Count} categor(ies)â€¦", categories.Count);
+            _logger.LogInformation("Backfilling business codes for {Count} categor(ies)…", categories.Count);
             foreach (var c in categories)
                 c.Code = BusinessCodeGenerator.ForCategory(c.Id);
 

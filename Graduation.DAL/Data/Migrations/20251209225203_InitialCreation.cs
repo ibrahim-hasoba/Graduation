@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+#pragma warning disable CA1814
 
 namespace Graduation.DAL.Data.Migrations
 {
@@ -419,16 +419,16 @@ namespace Graduation.DAL.Data.Migrations
                 columns: new[] { "Id", "Description", "ImageUrl", "IsActive", "NameAr", "NameEn", "ParentCategoryId" },
                 values: new object[,]
                 {
-                    { 1, "Traditional Egyptian food products", null, true, "منتجات غذائية", "Food Products", null },
-                    { 2, "Egyptian handicrafts and traditional arts", null, true, "الحرف اليدوية", "Handicrafts", null },
-                    { 3, "Egyptian cotton and traditional fabrics", null, true, "المنسوجات", "Textiles", null },
-                    { 4, "Egyptian jewelry and accessories", null, true, "المجوهرات", "Jewelry", null },
-                    { 5, "Egyptian furniture and home decor", null, true, "الأثاث والديكور", "Furniture & Decor", null },
-                    { 6, "Egyptian essential oils and perfumes", null, true, "العطور والزيوت", "Perfumes & Oils", null },
-                    { 7, "Egyptian carpets and traditional rugs", null, true, "السجاد والكليم", "Carpets & Rugs", null },
-                    { 8, "Papyrus art and handmade paper", null, true, "البردي والورق", "Papyrus & Paper", null },
-                    { 9, "Egyptian pottery and ceramics", null, true, "الفخار والخزف", "Pottery & Ceramics", null },
-                    { 10, "Copper crafts and metalwork", null, true, "النحاس والمعادن", "Copper & Metals", null }
+                    { 1, "Traditional Egyptian food products", null, true, "?????? ??????", "Food Products", null },
+                    { 2, "Egyptian handicrafts and traditional arts", null, true, "????? ???????", "Handicrafts", null },
+                    { 3, "Egyptian cotton and traditional fabrics", null, true, "?????????", "Textiles", null },
+                    { 4, "Egyptian jewelry and accessories", null, true, "?????????", "Jewelry", null },
+                    { 5, "Egyptian furniture and home decor", null, true, "?????? ????????", "Furniture & Decor", null },
+                    { 6, "Egyptian essential oils and perfumes", null, true, "?????? ???????", "Perfumes & Oils", null },
+                    { 7, "Egyptian carpets and traditional rugs", null, true, "?????? ???????", "Carpets & Rugs", null },
+                    { 8, "Papyrus art and handmade paper", null, true, "?????? ??????", "Papyrus & Paper", null },
+                    { 9, "Egyptian pottery and ceramics", null, true, "?????? ??????", "Pottery & Ceramics", null },
+                    { 10, "Copper crafts and metalwork", null, true, "?????? ????????", "Copper & Metals", null }
                 });
 
             migrationBuilder.CreateIndex(

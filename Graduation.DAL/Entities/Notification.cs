@@ -7,7 +7,7 @@ namespace Graduation.DAL.Entities
     public AppUser? User { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
-    public string Type { get; set; } = string.Empty; // "OrderStatus", "Review", "Product", "Vendor", "SystemAlert"
+    public string Type { get; set; } = string.Empty;
     public int? OrderId { get; set; }
     public int? ProductId { get; set; }
     public int? VendorId { get; set; }

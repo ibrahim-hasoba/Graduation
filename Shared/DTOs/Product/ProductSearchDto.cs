@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -15,7 +15,7 @@ namespace Shared.DTOs.Product
         public int? GovernorateId { get; set; }
         public bool? InStock { get; set; }
         public bool? IsFeatured { get; set; }
-        public string? SortBy { get; set; } 
+        public string? SortBy { get; set; }
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 20;
         public DateTime? CreatedAfter { get; set; }

@@ -1,4 +1,4 @@
-﻿using Shared.DTOs.Payment;
+using Shared.DTOs.Payment;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,10 +9,9 @@ namespace Graduation.BLL.Services.Interfaces
 {
     public interface IPaymentService
     {
-       
+
         Task<PaymentDto> InitiatePaymentAsync(int orderId , string clientType = "web");
 
-        
         Task HandleWebhookAsync(
             Dictionary<string, string> callbackData,
             string receivedHmac);

@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Shared.DTOs.Product;
 
 namespace Graduation.API.Validators
@@ -48,8 +48,6 @@ namespace Graduation.API.Validators
 
             RuleFor(x => x.CategoryId)
                 .GreaterThan(0).WithMessage("A valid category must be selected.");
-
-           
 
             RuleFor(x => x.MadeInGovernorate)
                 .IsInEnum().WithMessage("A valid Egyptian governorate must be selected.")

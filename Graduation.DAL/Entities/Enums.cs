@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Graduation.DAL.Entities
 {
@@ -65,13 +65,4 @@ namespace Graduation.DAL.Entities
         Sohag = 27
     }
 
-    /*
-    [JsonConverter(typeof(JsonStringEnumConverter))]
-    public enum ProductStatus
-    {
-        Pending = 0,
-        Approved = 1,
-        Rejected = 2
-    }
-    */
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,7 +13,7 @@ namespace Shared.Errors
     /// Example JSON:
     /// {
     ///   "success": true,
-    ///   "data": { /* resource or list */ },
+    ///   "data": {  },
     ///   "message": "Optional human readable message",
     ///   "count": 12
     /// }

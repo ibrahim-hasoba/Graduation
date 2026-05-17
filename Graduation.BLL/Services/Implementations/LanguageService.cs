@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Localization;
 
@@ -13,7 +13,7 @@ namespace Graduation.BLL.Services.Implementations
             IStringLocalizerFactory factory,
             IHttpContextAccessor httpContextAccessor)
         {
-            // This will look for Messages.resx files in the same namespace as the Messages class
+
             _localizer = factory.Create(typeof(Messages));
             _httpContextAccessor = httpContextAccessor;
         }
@@ -37,6 +37,5 @@ namespace Graduation.BLL.Services.Implementations
         }
     }
 
-    // This is the Messages class that matches your resource files
     public class Messages { }
 }

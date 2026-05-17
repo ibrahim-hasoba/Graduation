@@ -159,7 +159,6 @@ namespace Graduation.BLL.Services.Implementations
             return await GetCategoryByCodeAsync(categoryCode);
         }
 
-
         public async Task DeleteCategoryAsync(string categoryCode)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
@@ -169,7 +168,7 @@ namespace Graduation.BLL.Services.Implementations
                 throw new NotFoundException("Category not found");
 
             var allIdsToDelete = await GetAllSubcategoryIdsRecursiveAsync(id);
-            allIdsToDelete.Add(id); 
+            allIdsToDelete.Add(id);
 
             var hasProducts = await _context.Products
                 .AnyAsync(p => allIdsToDelete.Contains(p.CategoryId));
@@ -179,7 +178,6 @@ namespace Graduation.BLL.Services.Implementations
                     $"Cannot delete category '{category.NameEn}' or its subcategories. " +
                     "There are products still assigned to this category tree. Reassign them first.");
 
-    
             var categoriesToDelete = await _context.Categories
                 .Where(c => allIdsToDelete.Contains(c.Id))
                 .ToListAsync();
@@ -209,7 +207,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return results;
         }
-
 
         public async Task<PagedCategoryResultDto> GetAllCategoriesAsync(CategoryQueryDto query)
         {

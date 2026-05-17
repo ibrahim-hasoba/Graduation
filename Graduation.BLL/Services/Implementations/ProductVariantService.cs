@@ -135,46 +135,50 @@ namespace Graduation.BLL.Services.Implementations
 
             var normalizedType = NormalizeTypeName(dto.TypeName);
 
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                var existing = await _context.ProductVariants
-                    .Where(v => v.ProductId == productId
-                             && v.TypeName == normalizedType
-                             && v.IsActive)
-                    .ToListAsync();
-
-                foreach (var v in existing)
-                    v.IsActive = false;
-
-                var newVariants = dto.Options.Select((opt, idx) => new ProductVariant
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    ProductId = productId,
-                    TypeName = normalizedType,
-                    Value = opt.Value.Trim(),
-                    ColorHex = opt.ColorHex?.Trim(),
-                    PriceAdjustment = opt.PriceAdjustment,
-                    StockQuantity = opt.StockQuantity,
-                    DisplayOrder = opt.DisplayOrder == 0 ? idx : opt.DisplayOrder,
-                    IsActive = true,
-                    CreatedAt = DateTime.UtcNow
-                }).ToList();
+                    var existing = await _context.ProductVariants
+                        .Where(v => v.ProductId == productId
+                                 && v.TypeName == normalizedType
+                                 && v.IsActive)
+                        .ToListAsync();
 
-                _context.ProductVariants.AddRange(newVariants);
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+                    foreach (var v in existing)
+                        v.IsActive = false;
 
-                _logger.LogInformation(
-                    "Bulk upsert variants: ProductId={ProductId}, Type={Type}, Count={Count}",
-                    productId, normalizedType, newVariants.Count);
+                    var newVariants = dto.Options.Select((opt, idx) => new ProductVariant
+                    {
+                        ProductId = productId,
+                        TypeName = normalizedType,
+                        Value = opt.Value.Trim(),
+                        ColorHex = opt.ColorHex?.Trim(),
+                        PriceAdjustment = opt.PriceAdjustment,
+                        StockQuantity = opt.StockQuantity,
+                        DisplayOrder = opt.DisplayOrder == 0 ? idx : opt.DisplayOrder,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow
+                    }).ToList();
 
-                return BuildGroup(normalizedType, newVariants);
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+                    _context.ProductVariants.AddRange(newVariants);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation(
+                        "Bulk upsert variants: ProductId={ProductId}, Type={Type}, Count={Count}",
+                        productId, normalizedType, newVariants.Count);
+
+                    return BuildGroup(normalizedType, newVariants);
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            });
         }
 
         public async Task<ProductVariantDto> UpdateVariantAsync(

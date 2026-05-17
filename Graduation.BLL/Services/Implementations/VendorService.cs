@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
@@ -70,7 +70,7 @@ namespace Graduation.BLL.Services.Implementations
                 City = dto.City,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                ApprovalStatus = VendorApprovalStatus.Pending, 
+                ApprovalStatus = VendorApprovalStatus.Pending,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 Latitude = dto.Latitude,
@@ -191,11 +191,10 @@ namespace Graduation.BLL.Services.Implementations
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
-            // ── Update approval status ────────────────────────────────────────
             if (isApproved)
             {
                 vendor.ApprovalStatus = VendorApprovalStatus.Approved;
-                vendor.RejectionReason = null;   // clear any previous rejection
+                vendor.RejectionReason = null;
             }
             else
             {
@@ -206,7 +205,6 @@ namespace Graduation.BLL.Services.Implementations
             vendor.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
-            // ── Sync Identity role ────────────────────────────────────────────
             if (vendor.User != null)
             {
                 var appUser = await _userManager.FindByIdAsync(vendor.UserId);
@@ -229,7 +227,6 @@ namespace Graduation.BLL.Services.Implementations
                 }
             }
 
-            // ── Send notification email ───────────────────────────────────────
             if (vendor.User != null && !string.IsNullOrEmpty(vendor.User.Email))
             {
                 var emailCopy = vendor.User.Email;
@@ -303,7 +300,6 @@ namespace Graduation.BLL.Services.Implementations
 
             _logger.LogInformation("Vendor deleted: {VendorId} - {StoreName}", id, vendor.StoreName);
         }
-
 
         public async Task<PagedResult<PublicVendorDto>> GetPublicVendorsListAsync(
             int pageNumber = 1,
@@ -436,10 +432,10 @@ namespace Graduation.BLL.Services.Implementations
             City = vendor.City,
             Latitude = vendor.Latitude,
             Longitude = vendor.Longitude,
-            ApprovalStatus = vendor.ApprovalStatus.ToString(),   
-            ApprovalStatusId = (int)vendor.ApprovalStatus,     
+            ApprovalStatus = vendor.ApprovalStatus.ToString(),
+            ApprovalStatusId = (int)vendor.ApprovalStatus,
             RejectionReason = vendor.RejectionReason,
-            IsApproved = vendor.IsApproved,                  
+            IsApproved = vendor.IsApproved,
             IsActive = vendor.IsActive,
             TotalProducts = vendor.Products?.Count ?? 0,
             TotalOrders = 0,

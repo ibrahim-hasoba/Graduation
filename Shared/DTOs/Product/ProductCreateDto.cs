@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Entities;
+using Graduation.DAL.Entities;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -16,7 +16,6 @@ namespace Shared.DTOs.Product
         [MinLength(3, ErrorMessage = "Product name must be at least 3 characters")]
         [MaxLength(300)]
         public string NameAr { get; set; } = string.Empty;
-
 
         [Required(ErrorMessage = "Product name in English is required")]
         [MinLength(3, ErrorMessage = "Product name must be at least 3 characters")]

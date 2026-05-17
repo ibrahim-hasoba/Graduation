@@ -30,7 +30,6 @@ namespace Graduation.BLL.Services.Implementations
 
             var orders = await query.ToListAsync();
 
-            // FIX #17: For vendor-scoped reports, only sum that vendor's items — not the full order total
             var totalRevenue = vendorId.HasValue
                 ? orders.SelectMany(o => o.OrderItems)
                         .Where(oi => oi.Product.VendorId == vendorId.Value)
@@ -73,7 +72,6 @@ namespace Graduation.BLL.Services.Implementations
                 .ToListAsync();
         }
 
-        
         public async Task<VendorPerformanceDto> GetVendorPerformanceAsync(int vendorId)
         {
             var vendor = await _context.Vendors
@@ -205,8 +203,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<TopProductDto>> GetTopProductsAsync(
             DateTime startDate, DateTime endDate, int take = 10)
         {
-            // Aggregate in DB first, then fetch images in a separate query
-            // to avoid EF GroupBy + navigation collection limitations.
+
             var grouped = await _context.OrderItems
                 .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
@@ -234,7 +231,6 @@ namespace Graduation.BLL.Services.Implementations
                 .Take(take)
                 .ToListAsync();
 
-            // Fetch primary images for the top products in a single focused query
             var productIds = grouped.Select(g => g.ProductId).ToList();
             var images = await _context.ProductImages
                 .Where(i => productIds.Contains(i.ProductId))

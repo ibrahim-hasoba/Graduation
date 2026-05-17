@@ -1,4 +1,4 @@
-﻿using Shared.Errors;
+using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
@@ -42,18 +42,15 @@ namespace Graduation.BLL.Services.Implementations
                 .FirstOrDefaultAsync(rt => rt.Token == token);
         }
 
-        // SECURITY FIX: This method now properly validates userId
         public async Task<RefreshToken?> ValidateRefreshTokenAsync(string token, string userId)
         {
             var refreshToken = await _context.RefreshTokens
                 .Include(rt => rt.User)
                 .FirstOrDefaultAsync(rt => rt.Token == token);
 
-            // CRITICAL: Validate that the token belongs to the specified user
             if (refreshToken == null || refreshToken.UserId != userId)
                 return null;
 
-            // Check if token is active
             if (!refreshToken.IsActive)
                 return null;
 

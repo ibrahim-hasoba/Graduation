@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -119,7 +119,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             if (!_paymob.VerifyHmac(callbackData, receivedHmac))
             {
-                _logger.LogWarning("Invalid HMAC — webhook rejected");
+                _logger.LogWarning("Invalid HMAC � webhook rejected");
                 return;
             }
 
@@ -134,132 +134,134 @@ namespace Graduation.BLL.Services.Implementations
             if (string.IsNullOrEmpty(orderNumber))
                 return;
 
-            using var transaction = await _context.Database.BeginTransactionAsync(
-                System.Data.IsolationLevel.Serializable);
-
-            try
+            var strategy = _context.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
             {
-                var order = await _context.Orders
-                    .Include(o => o.OrderItems)
-                        .ThenInclude(oi => oi.SelectedVariants)
-                    .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+                using var transaction = await _context.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable);
 
-                if (order == null)
+                try
                 {
-                    _logger.LogWarning("Webhook: order not found — {OrderNumber}", orderNumber);
-                    return;
-                }
+                    var order = await _context.Orders
+                        .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.SelectedVariants)
+                        .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
-                var payment = await _context.Payments
-                    .FirstOrDefaultAsync(p => p.OrderId == order.Id);
-
-                if (payment == null)
-                {
-                    _logger.LogWarning("Webhook: payment record not found for order {OrderNumber}", orderNumber);
-                    return;
-                }
-
-                await _context.Entry(payment).ReloadAsync();
-
-                if (!string.IsNullOrEmpty(transactionId) &&
-                    !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
-                    payment.PaymobTransactionId == transactionId)
-                {
-                    _logger.LogInformation("Duplicate webhook ignored for order {OrderNumber}", orderNumber);
-                    await transaction.CommitAsync();
-                    return;
-                }
-
-                payment.PaymobTransactionId = transactionId;
-                payment.IsSuccess = isSuccess;
-                payment.UpdatedAt = DateTime.UtcNow;
-
-                if (isRefund)
-                {
-                    payment.Status = PaymentStatus2.Refunded;
-                    order.PaymentStatus = PaymentStatus.Refunded;
-
-                    await _notifications.CreateNotificationAsync(
-                        order.UserId,
-                        "Payment Refunded",
-                        $"Your payment for order {orderNumber} has been refunded.",
-                        "Payment",
-                        order.Id);
-                }
-                else if (isSuccess)
-                {
-                    payment.Status = PaymentStatus2.Paid;
-                    payment.PaidAt = DateTime.UtcNow;
-
-                    order.PaymentStatus = PaymentStatus.Paid;
-                    order.Status = OrderStatus.Confirmed;
-                    order.ConfirmedAt = DateTime.UtcNow;
-
-                    
-                    var cartItems = await _context.CartItems
-                        .Where(ci => ci.UserId == order.UserId)
-                        .ToListAsync();
-
-                    if (cartItems.Any())
-                        _context.CartItems.RemoveRange(cartItems);
-
-                    await _notifications.CreateNotificationAsync(
-                        order.UserId,
-                        "Payment Successful ✅",
-                        $"Your order {orderNumber} has been confirmed.",
-                        "Payment",
-                        order.Id);
-
-                    var user = await _context.Users.FindAsync(order.UserId);
-                    if (user?.Email != null)
+                    if (order == null)
                     {
-                        try
+                        _logger.LogWarning("Webhook: order not found {OrderNumber}", orderNumber);
+                        return;
+                    }
+
+                    var payment = await _context.Payments
+                        .FirstOrDefaultAsync(p => p.OrderId == order.Id);
+
+                    if (payment == null)
+                    {
+                        _logger.LogWarning("Webhook: payment record not found for order {OrderNumber}", orderNumber);
+                        return;
+                    }
+
+                    await _context.Entry(payment).ReloadAsync();
+
+                    if (!string.IsNullOrEmpty(transactionId) &&
+                        !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
+                        payment.PaymobTransactionId == transactionId)
+                    {
+                        _logger.LogInformation("Duplicate webhook ignored for order {OrderNumber}", orderNumber);
+                        await transaction.CommitAsync();
+                        return;
+                    }
+
+                    payment.PaymobTransactionId = transactionId;
+                    payment.IsSuccess = isSuccess;
+                    payment.UpdatedAt = DateTime.UtcNow;
+
+                    if (isRefund)
+                    {
+                        payment.Status = PaymentStatus2.Refunded;
+                        order.PaymentStatus = PaymentStatus.Refunded;
+
+                        await _notifications.CreateNotificationAsync(
+                            order.UserId,
+                            "Payment Refunded",
+                            $"Your payment for order {orderNumber} has been refunded.",
+                            "Payment",
+                            order.Id);
+                    }
+                    else if (isSuccess)
+                    {
+                        payment.Status = PaymentStatus2.Paid;
+                        payment.PaidAt = DateTime.UtcNow;
+
+                        order.PaymentStatus = PaymentStatus.Paid;
+                        order.Status = OrderStatus.Confirmed;
+                        order.ConfirmedAt = DateTime.UtcNow;
+
+                        var cartItems = await _context.CartItems
+                            .Where(ci => ci.UserId == order.UserId)
+                            .ToListAsync();
+
+                        if (cartItems.Any())
+                            _context.CartItems.RemoveRange(cartItems);
+
+                        await _notifications.CreateNotificationAsync(
+                            order.UserId,
+                            "Payment Successful",
+                            $"Your order {orderNumber} has been confirmed.",
+                            "Payment",
+                            order.Id);
+
+                        var user = await _context.Users.FindAsync(order.UserId);
+                        if (user?.Email != null)
                         {
-                            await _emailService.SendOrderConfirmationEmailAsync(
-                                user.Email, orderNumber, order.TotalAmount);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex,
-                                "Order confirmation email failed for {OrderNumber}", orderNumber);
+                            try
+                            {
+                                await _emailService.SendOrderConfirmationEmailAsync(
+                                    user.Email, orderNumber, order.TotalAmount);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex,
+                                    "Order confirmation email failed for {OrderNumber}", orderNumber);
+                            }
                         }
                     }
+                    else
+                    {
+
+                        payment.Status = PaymentStatus2.Failed;
+                        order.PaymentStatus = PaymentStatus.Failed;
+                        order.Status = OrderStatus.Cancelled;
+                        order.CancelledAt = DateTime.UtcNow;
+                        order.CancellationReason = "Payment failed";
+
+                        if (order.OrderItems != null && order.OrderItems.Any())
+                            await RestoreStockAsync(order.OrderItems);
+
+                        await _notifications.CreateNotificationAsync(
+                            order.UserId,
+                            "Payment Failed",
+                            $"Payment for order {orderNumber} failed. Your cart items are still available.",
+                            "Payment",
+                            order.Id);
+                    }
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    _logger.LogInformation(
+                        "Webhook processed: order={OrderNumber}, success={Success}, refund={Refund}",
+                        orderNumber, isSuccess, isRefund);
                 }
-                else
+                catch (Exception ex)
                 {
-                   
-                    payment.Status = PaymentStatus2.Failed;
-                    order.PaymentStatus = PaymentStatus.Failed;
-                    order.Status = OrderStatus.Cancelled;
-                    order.CancelledAt = DateTime.UtcNow;
-                    order.CancellationReason = "Payment failed";
-
-                    if (order.OrderItems != null && order.OrderItems.Any())
-                        await RestoreStockAsync(order.OrderItems);
-
-                    await _notifications.CreateNotificationAsync(
-                        order.UserId,
-                        "Payment Failed ❌",
-                        $"Payment for order {orderNumber} failed. Your cart items are still available.",
-                        "Payment",
-                        order.Id);
+                    await transaction.RollbackAsync();
+                    _logger.LogError(ex, "Webhook transaction failed for order {OrderNumber}", orderNumber);
                 }
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                _logger.LogInformation(
-                    "Webhook processed: order={OrderNumber}, success={Success}, refund={Refund}",
-                    orderNumber, isSuccess, isRefund);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Webhook transaction failed for order {OrderNumber}", orderNumber);
-            }
+            });
         }
 
-        
         public async Task CancelStaleOrdersAsync(int timeoutMinutes = 30)
         {
             var cutoff = DateTime.UtcNow.AddMinutes(-timeoutMinutes);
@@ -280,7 +282,7 @@ namespace Graduation.BLL.Services.Implementations
             {
                 order.Status = OrderStatus.Cancelled;
                 order.CancelledAt = DateTime.UtcNow;
-                order.CancellationReason = "Payment timeout — auto-cancelled";
+                order.CancellationReason = "Payment timeout � auto-cancelled";
 
                 var payment = await _context.Payments
                     .FirstOrDefaultAsync(p => p.OrderId == order.Id);
@@ -355,7 +357,6 @@ namespace Graduation.BLL.Services.Implementations
                 TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             };
         }
-
 
         private async Task RestoreStockAsync(IEnumerable<OrderItem> items)
         {

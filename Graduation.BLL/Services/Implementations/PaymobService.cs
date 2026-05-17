@@ -1,4 +1,4 @@
-ï»¿using Graduation.BLL.Paymob;
+using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
@@ -40,14 +40,13 @@ namespace Graduation.BLL.Services.Implementations
                 authToken, amountCents, paymobOrderId,
                 firstName, lastName, email, phone, city);
 
-            // Embed client_type so Paymob passes it back on the GET redirect
             return $"{_settings.IframeBaseUrl}/{_settings.IframeId}" +
                    $"?payment_token={paymentKey}&client_type={clientType}";
         }
 
         public bool VerifyHmac(Dictionary<string, string> data, string receivedHmac)
         {
-            // Exact field order required by Paymob HMAC spec
+
             var fields = new[]
             {
                 "amount_cents", "created_at", "currency", "error_occured",
@@ -80,7 +79,7 @@ namespace Graduation.BLL.Services.Implementations
                 "/auth/tokens", request);
 
             if (string.IsNullOrEmpty(response?.Token))
-                throw new Exception("Paymob authentication failed â€” empty token returned");
+                throw new Exception("Paymob authentication failed — empty token returned");
 
             return response.Token;
         }
@@ -163,7 +162,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (!response.IsSuccessStatusCode)
                 throw new Exception(
-                    $"Paymob API error at {endpoint}: {response.StatusCode} â€” {raw}");
+                    $"Paymob API error at {endpoint}: {response.StatusCode} — {raw}");
 
             return JsonSerializer.Deserialize<TResponse>(raw);
         }

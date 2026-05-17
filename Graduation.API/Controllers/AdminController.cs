@@ -1,18 +1,15 @@
-﻿using Graduation.BLL.Services.Implementations;
+using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Admin;
 using Shared.DTOs.Category;
 using Shared.DTOs.Product;
-using Shared.Errors;
 using Graduation.API.Extensions;
-using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 using System.Text;
 
 namespace Graduation.API.Controllers
@@ -20,7 +17,7 @@ namespace Graduation.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize(Roles = "Admin")]
-    public class AdminController : ControllerBase
+    public class AdminController : BaseController
     {
         private readonly IAdminService _adminService;
         private readonly ICategoryService _categoryService;
@@ -33,7 +30,6 @@ namespace Graduation.API.Controllers
         private readonly IProductService _productService;
         private readonly IOrderService _orderService;
         private readonly IReviewReportService _reviewReportService;
-        private readonly ILanguageService _lang;
 
         public AdminController(
             IAdminService adminService,
@@ -48,6 +44,7 @@ namespace Graduation.API.Controllers
             IOrderService orderService,
             IReviewReportService reviewReportService,
             ILanguageService lang)
+            : base(lang)
         {
             _adminService = adminService;
             _categoryService = categoryService;
@@ -60,60 +57,75 @@ namespace Graduation.API.Controllers
             _productService = productService;
             _orderService = orderService;
             _reviewReportService = reviewReportService;
-            _lang = lang;
         }
-
+        /// <summary>Gets aggregate dashboard statistics for the admin panel.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/stats")]
         public async Task<IActionResult> GetDashboardStats()
         {
             var stats = await _adminService.GetDashboardStatsAsync();
-            return Ok(new ApiResult(data: stats));
+            return OkResult(data: stats);
         }
-
+        /// <summary>Gets the most recent admin activities.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/activities")]
         public async Task<IActionResult> GetRecentActivities([FromQuery] int count = 10)
         {
             var activities = await _adminService.GetRecentActivitiesAsync(count);
-            return Ok(new ApiResult(data: activities));
+            return OkResult(data: activities);
         }
-
+        /// <summary>Gets the top-selling products for the admin dashboard.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/top-products")]
         public async Task<IActionResult> GetTopProducts([FromQuery] int count = 10)
         {
             var products = await _adminService.GetTopProductsAsync(count);
-            return Ok(new ApiResult(data: products));
+            return OkResult(data: products);
         }
-
+        /// <summary>Gets the top-performing vendors for the admin dashboard.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/top-vendors")]
         public async Task<IActionResult> GetTopVendors([FromQuery] int count = 10)
         {
             var vendors = await _adminService.GetTopVendorsAsync(count);
-            return Ok(new ApiResult(data: vendors));
+            return OkResult(data: vendors);
         }
-
+        /// <summary>Gets sales chart data for the admin dashboard.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/sales-chart")]
         public async Task<IActionResult> GetSalesChart()
         {
             var chartData = await _adminService.GetSalesChartDataAsync();
-            return Ok(new ApiResult(data: chartData));
+            return OkResult(data: chartData);
         }
-
+        /// <summary>Gets user statistics for the admin dashboard.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("dashboard/user-stats")]
         public async Task<IActionResult> GetUserStats()
         {
             var stats = await _adminService.GetUserStatsAsync();
-            return Ok(new ApiResult(data: stats));
+            return OkResult(data: stats);
         }
-
+        /// <summary>Gets a single user's details by their user code.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("users/{userCode}")]
         public async Task<IActionResult> GetUser(string userCode)
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+
             var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl!);
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 id = user.Id,
                 userCode = user.Code,
@@ -122,12 +134,14 @@ namespace Graduation.API.Controllers
                 lastName = user.LastName,
                 emailConfirmed = user.EmailConfirmed,
                 phoneNumber = user.PhoneNumber,
-                ProfilePicture = fullProfilePictureUrl,
+                profilePicture = fullProfilePictureUrl,
                 createdAt = user.CreatedAt,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow,
-            }));
+            });
         }
-
+        /// <summary>Gets a paginated list of all users, optionally filtered by role.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers(
             [FromQuery] int pageNumber = 1,
@@ -190,30 +204,26 @@ namespace Graduation.API.Controllers
                 updatedAt = u.updatedAt == DateTime.MinValue ? (DateTime?)null : u.updatedAt,
             }).ToList();
 
-            return Ok(new ApiResult(data: new
-            {
-                users,
-                totalCount,
-                pageNumber,
-                pageSize,
-                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-            }));
+            return OkResult(
+                data: PaginatedResponse(users, totalCount, pageNumber, pageSize));
         }
-
+        /// <summary>Permanently deletes a user by user code. Admin cannot delete themselves.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpDelete("users/{userCode}")]
         public async Task<IActionResult> DeleteUser(string userCode)
         {
-            var requestingAdminId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                                 ?? User.FindFirstValue("userId");
+            var requestingAdminId = GetRequiredUserId();
 
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
 
             if (requestingAdminId == userId)
-                throw new BadRequestException(_lang.GetMessage("User_CannotDeleteSelf"));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.CannotDeleteSelf));
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             await _orderService.HandleUserAccountDeletionAsync(userId);
 
@@ -232,37 +242,44 @@ namespace Graduation.API.Controllers
 
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
-                throw new BadRequestException(
+                throw new Shared.Errors.BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            return Ok(new ApiResult(message: _lang.GetMessage("User_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.User.Deleted));
         }
-
+        /// <summary>Toggles a user's account lockout status between locked and unlocked.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPost("users/{userCode}/toggle-lock")]
         public async Task<IActionResult> ToggleUserLock(string userCode)
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
                 await _userManager.SetLockoutEndDateAsync(user, null);
-                return Ok(new ApiResult(data: new { locked = false }, message: _lang.GetMessage("User_Unlocked")));
+                return OkResult(data: new { locked = false }, message: Lang.GetMessage(LangKeys.User.Unlocked));
             }
             else
             {
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
-                return Ok(new ApiResult(data: new { locked = true }, message: _lang.GetMessage("User_Locked")));
+                return OkResult(data: new { locked = true }, message: Lang.GetMessage(LangKeys.User.Locked));
             }
         }
-
+        /// <summary>Creates a new user with a specified role and assigns a user code.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpPost("users")]
         public async Task<IActionResult> CreateUser([FromBody] AdminCreateUserDto dto)
         {
             var existingUser = await _userManager.FindByEmailAsync(dto.Email);
             if (existingUser != null)
-                throw new BadRequestException(_lang.GetMessage("Email_AlreadyExists"));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Auth.EmailAlreadyExists));
 
             var user = new AppUser
             {
@@ -279,16 +296,16 @@ namespace Graduation.API.Controllers
             var result = await _userManager.CreateAsync(user, dto.Password);
 
             if (!result.Succeeded)
-                throw new BadRequestException(
+                throw new Shared.Errors.BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
 
             if (!await _context.Roles.AnyAsync(r => r.Name == dto.Role))
-                throw new NotFoundException(_lang.GetMessage("Role_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Role.NotFound));
 
             await _userManager.AddToRoleAsync(user, dto.Role);
             await _codeAssignment.AssignUserCodeAsync(user);
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 userCode = user.Code,
                 email = user.Email,
@@ -299,15 +316,19 @@ namespace Graduation.API.Controllers
                 updatedAt = user.UpdatedAt,
                 role = dto.Role,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
-            }, message: _lang.GetMessage("User_Created")));
+            }, message: Lang.GetMessage(LangKeys.User.Created));
         }
-
+        /// <summary>Updates a user's profile fields by their user code.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPut("users/{userCode}")]
         public async Task<IActionResult> UpdateUser(string userCode, [FromBody] UpdateUserDto dto)
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             user.FirstName = dto.FirstName ?? user.FirstName;
             user.LastName = dto.LastName ?? user.LastName;
@@ -316,9 +337,9 @@ namespace Graduation.API.Controllers
 
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
-                throw new BadRequestException(result.Errors.First().Description);
+                throw new Shared.Errors.BadRequestException(result.Errors.First().Description);
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 userCode = user.Code,
                 email = user.Email,
@@ -327,29 +348,35 @@ namespace Graduation.API.Controllers
                 phoneNumber = user.PhoneNumber,
                 updatedAt = user.UpdatedAt,
                 isLocked = user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow
-            }, message: _lang.GetMessage("User_Updated")));
+            }, message: Lang.GetMessage(LangKeys.User.Updated));
         }
-
+        /// <summary>Resets a non-admin user's password and invalidates existing sessions.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPost("users/{userCode}/reset-password")]
         public async Task<IActionResult> ResetUserPassword(string userCode, [FromBody] AdminResetPasswordDto dto)
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var isTargetAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (isTargetAdmin)
-                throw new BadRequestException(_lang.GetMessage("User_AdminPasswordReset"));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.AdminPasswordReset));
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
             if (!result.Succeeded)
-                throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+                throw new Shared.Errors.BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.UpdateSecurityStampAsync(user);
-            return Ok(new ApiResult(message: _lang.GetMessage("User_PasswordReset")));
+            return OkResult(message: Lang.GetMessage(LangKeys.User.PasswordReset));
         }
-
+        /// <summary>Exports users to a CSV file, optionally filtered by role.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("users/export")]
         public async Task<IActionResult> ExportUsers([FromQuery] string? role = null)
         {
@@ -404,7 +431,9 @@ namespace Graduation.API.Controllers
             var bytes = Encoding.UTF8.GetBytes(csv.ToString());
             return File(bytes, "text/csv", $"users-export-{DateTime.UtcNow:yyyyMMdd}.csv");
         }
-
+        /// <summary>Gets a paginated list of all orders with optional status filter.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders(
             [FromQuery] int pageNumber = 1,
@@ -445,16 +474,12 @@ namespace Graduation.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new ApiResult(data: new
-            {
-                orders,
-                totalCount,
-                pageNumber,
-                pageSize,
-                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-            }));
+            return OkResult(
+                data: PaginatedResponse(orders, totalCount, pageNumber, pageSize));
         }
-
+        /// <summary>Gets a high-level system summary including users, vendors, products, orders, and revenue.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("stats/summary")]
         public async Task<IActionResult> GetSystemSummary()
         {
@@ -472,7 +497,7 @@ namespace Graduation.API.Controllers
                 .Where(o => o.OrderDate >= today && o.Status == OrderStatus.Delivered)
                 .SumAsync(o => o.TotalAmount);
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 totalUsers,
                 totalVendors,
@@ -482,29 +507,29 @@ namespace Graduation.API.Controllers
                 todayOrders,
                 todayRevenue,
                 averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0
-            }));
+            });
         }
-
-        [HttpPost("categories")]
+        /// <summary>Creates a new product category.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpPost("categories")]
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             var category = await _categoryService.CreateCategoryAsync(dto);
             return CreatedAtAction(
                 nameof(GetCategoryByCode),
                 new { categoryCode = category.Code },
-                new ApiResult(data: category));
+                new Errors.ApiResult(data: category));
         }
-
-        [HttpGet("categories")]
+        /// <summary>Gets a paginated list of all categories with optional query filters.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpGet("categories")]
         public async Task<IActionResult> GetAllCategories([FromQuery] CategoryQueryDto query)
         {
             var result = await _categoryService.GetAllCategoriesAsync(query);
-            return Ok(new ApiResult(
+            return OkResult(
                 data: new
                 {
                     categories = result.Categories,
@@ -515,126 +540,140 @@ namespace Graduation.API.Controllers
                     hasPreviousPage = result.HasPreviousPage,
                     hasNextPage = result.HasNextPage
                 },
-                count: result.TotalCount));
+                count: result.TotalCount);
         }
-
-        [HttpGet("categories/{categoryCode}")]
+        /// <summary>Gets a single category by its code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("categories/{categoryCode}")]
         public async Task<IActionResult> GetCategoryByCode(string categoryCode)
         {
             var category = await _categoryService.GetCategoryByCodeAsync(categoryCode);
-            return Ok(new ApiResult(data: category));
+            return OkResult(data: category);
         }
-
-        [HttpPut("categories/{categoryCode}")]
+        /// <summary>Updates an existing category by its code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [HttpPut("categories/{categoryCode}")]
         public async Task<IActionResult> UpdateCategory(
             string categoryCode, [FromBody] UpdateCategoryDto dto)
         {
             var category = await _categoryService.UpdateCategoryAsync(categoryCode, dto);
-            return Ok(new ApiResult(data: category, message: _lang.GetMessage("Category_Updated")));
+            return OkResult(data: category, message: Lang.GetMessage(LangKeys.Category.Updated));
         }
-
-        [HttpPost("categories/{categoryCode}/toggle-activation")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Toggles a category's active/inactive status.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("categories/{categoryCode}/toggle-activation")]
         public async Task<IActionResult> ToggleCategoryActivation(string categoryCode)
         {
             var category = await _categoryService.ToggleActivationAsync(categoryCode);
             var msg = category.Status == "Active"
-                ? _lang.GetMessage("Category_Activated")
-                : _lang.GetMessage("Category_Deactivated");
-            return Ok(new ApiResult(data: category, message: msg));
+                ? Lang.GetMessage(LangKeys.Category.Activated)
+                : Lang.GetMessage(LangKeys.Category.Deactivated);
+            return OkResult(data: category, message: msg);
         }
-
-        [HttpDelete("categories/{categoryCode}")]
+        /// <summary>Deletes a category by its code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpDelete("categories/{categoryCode}")]
         public async Task<IActionResult> DeleteCategory(string categoryCode)
         {
             await _categoryService.DeleteCategoryAsync(categoryCode);
-            return Ok(new ApiResult(message: _lang.GetMessage("Category_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Category.Deleted));
         }
-
-        [HttpGet("products")]
+        /// <summary>Gets a paginated list of all products with optional search filters (admin).</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpGet("products")]
         public async Task<IActionResult> GetAllProducts([FromQuery] ProductSearchDto searchDto)
         {
             var result = await _productService.SearchProductsAsync(searchDto);
-            return Ok(new ApiResult(data: result));
+            return OkResult(data: result);
         }
-
-        [HttpGet("products/{id:int}")]
+        /// <summary>Gets a single product by its numeric ID.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("products/{id:int}")]
         public async Task<IActionResult> GetProductById(int id)
         {
             var product = await _productService.GetProductByIdAsync(id);
-            return Ok(new ApiResult(data: product));
+            return OkResult(data: product);
         }
-
-        [HttpGet("products/{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
+        /// <summary>Gets a single product by its alphanumeric code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("products/{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
         public async Task<IActionResult> GetProductByCode(string code)
         {
             var product = await _productService.GetProductByCodeAsync(code);
-            return Ok(new ApiResult(data: product));
+            return OkResult(data: product);
         }
-
-        [HttpPost("products")]
+        /// <summary>Creates a new product as an admin bypassing vendor ownership.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpPost("products")]
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
             var product = await _productService.CreateProductAsync(dto);
-            return StatusCode(201, new ApiResult(data: product, message: _lang.GetMessage("Product_AdminCreated")));
+            return StatusCode(201, new Errors.ApiResult(data: product, message: Lang.GetMessage(LangKeys.Product.AdminCreated)));
         }
-
-        [HttpPut("products/{id:int}")]
+        /// <summary>Updates any product by ID as an admin.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPut("products/{id:int}")]
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
             var product = await _productService.AdminUpdateProductAsync(id, dto);
-            return Ok(new ApiResult(data: product, message: _lang.GetMessage("Product_AdminUpdated")));
+            return OkResult(data: product, message: Lang.GetMessage(LangKeys.Product.AdminUpdated));
         }
-
-        [HttpDelete("products/{id:int}")]
+        /// <summary>Deletes any product by ID as an admin.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpDelete("products/{id:int}")]
         public async Task<IActionResult> DeleteProduct(int id)
         {
             await _productService.AdminDeleteProductAsync(id);
-            return Ok(new ApiResult(message: _lang.GetMessage("Product_AdminDeleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Product.AdminDeleted));
         }
-
-        [HttpPatch("products/{id:int}/stock")]
+        /// <summary>Updates the stock quantity of a product.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPatch("products/{id:int}/stock")]
         public async Task<IActionResult> UpdateProductStock(int id, [FromBody] UpdateStockDto dto)
         {
             await _productService.AdminUpdateStockAsync(id, dto.Quantity);
-            return Ok(new ApiResult(message: _lang.GetMessage("Product_StockAdminUpdated")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Product.StockAdminUpdated));
         }
-
-        [HttpPost("products/{id:int}/toggle-status")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Toggles a product's active/inactive status.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("products/{id:int}/toggle-status")]
         public async Task<IActionResult> ToggleProductStatus(int id)
         {
             var product = await _productService.AdminToggleProductStatusAsync(id);
-            var msg = product.IsActive ? _lang.GetMessage("Product_Activated") : _lang.GetMessage("Product_Deactivated");
-            return Ok(new ApiResult(data: product, message: msg));
+            var msg = product.IsActive ? Lang.GetMessage(LangKeys.Product.Activated) : Lang.GetMessage(LangKeys.Product.Deactivated);
+            return OkResult(data: product, message: msg);
         }
-
-
+        /// <summary>Gets a sales report for a specified date range, optionally filtered by vendor.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/sales")]
         public async Task<IActionResult> GetSalesReport(
             [FromQuery] DateTime startDate,
@@ -642,50 +681,61 @@ namespace Graduation.API.Controllers
             [FromQuery] string? vendorCode = null)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Report_DateRangeRequired")));
+                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             int? vendorId = null;
             if (!string.IsNullOrEmpty(vendorCode))
                 vendorId = await _codeLookup.ResolveVendorIdAsync(vendorCode);
 
             var report = await _reportService.GetSalesReportAsync(startDate, endDate, vendorId);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets sales data grouped by category within a date range.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/sales-by-category")]
         public async Task<IActionResult> GetSalesByCategory(
             [FromQuery] DateTime startDate,
             [FromQuery] DateTime endDate)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Report_DateRangeRequired")));
+                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetSalesByCategoryAsync(startDate, endDate);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets a performance report for a specific vendor.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("reports/vendor-performance/{vendorCode}")]
         public async Task<IActionResult> GetVendorPerformance(string vendorCode)
         {
             var vendorId = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var report = await _reportService.GetVendorPerformanceAsync(vendorId);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets customer insights and analytics.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/customer-insights")]
         public async Task<IActionResult> GetCustomerInsights()
         {
             var report = await _reportService.GetCustomerInsightsAsync();
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets products with stock below a specified threshold.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/low-stock")]
         public async Task<IActionResult> GetLowStockProducts([FromQuery] int threshold = 10)
         {
             var report = await _reportService.GetLowStockProductsAsync(threshold);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets revenue data grouped by vendor within a date range.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/revenue-by-vendor")]
         public async Task<IActionResult> GetRevenueByVendor(
             [FromQuery] DateTime startDate,
@@ -693,12 +743,14 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Report_DateRangeRequired")));
+                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetRevenueByVendorAsync(startDate, endDate, take);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets the top-selling products within a date range.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/top-products")]
         public async Task<IActionResult> GetTopProductsReport(
             [FromQuery] DateTime startDate,
@@ -706,72 +758,92 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Report_DateRangeRequired")));
+                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetTopProductsAsync(startDate, endDate, take);
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets a summary of orders grouped by their current status.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/order-status-summary")]
         public async Task<IActionResult> GetOrderStatusSummary()
         {
             var report = await _reportService.GetOrderStatusSummaryAsync();
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets user registration and growth trends.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("reports/user-trends")]
         public async Task<IActionResult> GetUserTrends()
         {
             var report = await _reportService.GetUserTrendsAsync();
-            return Ok(new ApiResult(data: report));
+            return OkResult(data: report);
         }
-
+        /// <summary>Gets a paginated list of pending review reports.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [HttpGet("review-reports")]
         public async Task<IActionResult> GetPendingReviewReports(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20)
         {
             var result = await _reviewReportService.GetPendingReportsAsync(pageNumber, pageSize);
-            return Ok(new ApiResult(data: result, count: result.TotalCount));
+            return OkResult(data: result, count: result.TotalCount);
         }
-
+        /// <summary>Gets a single review report by its ID.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("review-reports/{reportId}")]
         public async Task<IActionResult> GetReviewReport(int reportId)
         {
             var report = await _reviewReportService.GetReportByIdAsync(reportId);
             if (report == null)
-                throw new NotFoundException(_lang.GetMessage("Review_NotFoundSimple"), reportId);
-            return Ok(new ApiResult(data: report));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
+            return OkResult(data: report);
         }
-
+        /// <summary>Approves a review report and takes action on the reported review.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPost("review-reports/{reportId}/approve")]
         public async Task<IActionResult> ApproveReviewReport(int reportId)
         {
-            var adminId = User.GetUserId();
+            var adminId = GetRequiredUserId();
             var result = await _reviewReportService.ApproveReportAsync(reportId, adminId);
             if (!result)
-                throw new BadRequestException(_lang.GetMessage("Report_NotFoundOrResolved"));
-            return Ok(new ApiResult(message: _lang.GetMessage("Report_Approved")));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+            return OkResult(message: Lang.GetMessage(LangKeys.Report.Approved));
         }
-
+        /// <summary>Dismisses a review report without taking further action.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpPost("review-reports/{reportId}/dismiss")]
         public async Task<IActionResult> DismissReviewReport(int reportId)
         {
-            var adminId = User.GetUserId();
+            var adminId = GetRequiredUserId();
             var result = await _reviewReportService.DismissReportAsync(reportId, adminId);
             if (!result)
-                throw new BadRequestException(_lang.GetMessage("Report_NotFoundOrResolved"));
-            return Ok(new ApiResult(message: _lang.GetMessage("Report_Dismissed")));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+            return OkResult(message: Lang.GetMessage(LangKeys.Report.Dismissed));
         }
-
+        /// <summary>Deletes the reviewed content associated with a review report.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpDelete("review-reports/{reportId}/review")]
         public async Task<IActionResult> DeleteReviewFromReport(int reportId)
         {
-            var adminId = User.GetUserId();
+            var adminId = GetRequiredUserId();
             var result = await _reviewReportService.DeleteReviewFromReportAsync(reportId, adminId);
             if (!result)
-                throw new NotFoundException(_lang.GetMessage("Review_NotFoundSimple"), reportId);
-            return Ok(new ApiResult(message: _lang.GetMessage("Report_ReviewDeleted")));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
+            return OkResult(message: Lang.GetMessage(LangKeys.Report.ReviewDeleted));
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Implementations;
+using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
@@ -7,21 +7,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Vendor;
-using Shared.Errors;
 
 namespace Graduation.API.Controllers
 {
     [Route("api/admin/vendors")]
     [ApiController]
     [Authorize(Roles = "Admin")]
-    public class AdminVendorsController : ControllerBase
+    public class AdminVendorsController : BaseController
     {
         private readonly IVendorService _vendorService;
         private readonly ICodeLookupService _codeLookup;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
-        private readonly ILanguageService _lang;
 
         public AdminVendorsController(
             IVendorService vendorService,
@@ -30,24 +28,24 @@ namespace Graduation.API.Controllers
             DatabaseContext context,
             UserManager<AppUser> userManager,
             ILanguageService lang)
+            : base(lang)
         {
             _vendorService = vendorService;
             _codeLookup = codeLookup;
             _codeAssignment = codeAssignment;
             _context = context;
             _userManager = userManager;
-            _lang = lang;
         }
-
-        [HttpGet]
+        /// <summary>Gets a paginated list of all vendors with optional filtering by approval status, activity, and search.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpGet]
         public async Task<IActionResult> GetAllVendors(
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 20,
             [FromQuery] bool? isApproved = null,
             [FromQuery] bool? isActive = null,
             [FromQuery] string? search = null,
-            // NEW: filter by explicit status string — "Pending" | "Approved" | "Rejected"
             [FromQuery] string? approvalStatus = null)
         {
             if (pageNumber < 1) pageNumber = 1;
@@ -58,8 +56,6 @@ namespace Graduation.API.Controllers
                 .Include(v => v.Products)
                 .AsQueryable();
 
-            // ── Approval filter (prefer the string approvalStatus param, fall back to
-            //    the legacy bool isApproved param for backwards compatibility) ──────────
             if (!string.IsNullOrWhiteSpace(approvalStatus))
             {
                 if (Enum.TryParse<VendorApprovalStatus>(approvalStatus, ignoreCase: true, out var parsedStatus))
@@ -92,19 +88,14 @@ namespace Graduation.API.Controllers
                 .Take(pageSize)
                 .ToListAsync();
 
-            return Ok(new ApiResult(data: new
-            {
-                vendors = vendors.Select(MapToDto),
-                totalCount,
-                pageNumber,
-                pageSize,
-                totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
-            }));
+            return OkResult(
+                data: PaginatedResponse(vendors.Select(MapToDto), totalCount, pageNumber, pageSize));
         }
-
-        [HttpGet("{vendorCode}")]
+        /// <summary>Gets a single vendor's full details by their vendor code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpGet("{vendorCode}")]
         public async Task<IActionResult> GetVendor(string vendorCode)
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
@@ -114,32 +105,31 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
-            return Ok(new ApiResult(data: MapToDto(vendor)));
+            return OkResult(data: MapToDto(vendor));
         }
-
-        [HttpPost]
+        /// <summary>Creates a new vendor account linked to an existing user, with optional immediate approval.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpPost]
         public async Task<IActionResult> CreateVendor([FromBody] AdminCreateVendorDto dto)
         {
             var userId = await _codeLookup.ResolveUserIdAsync(dto.UserCode);
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var exists = await _context.Vendors.AnyAsync(v => v.UserId == userId);
             if (exists)
-                throw new ConflictException(_lang.GetMessage("Vendor_AlreadyExists"));
+                throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.AlreadyExists));
 
             var nameExists = await _context.Vendors
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
             if (nameExists)
-                throw new ConflictException(_lang.GetMessage("Vendor_NameExists"));
+                throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
 
             var initialStatus = dto.IsApproved
                 ? VendorApprovalStatus.Approved
@@ -177,16 +167,16 @@ namespace Graduation.API.Controllers
                 .Include(v => v.Products)
                 .FirstAsync(v => v.Id == vendor.Id);
 
-            return StatusCode(201, new ApiResult(
+            return CreatedResult(
                 data: MapToDto(vendor),
-                message: _lang.GetMessage("Vendor_Created")));
+                message: Lang.GetMessage(LangKeys.Vendor.Created));
         }
-
-        [HttpPut("{vendorCode}")]
+        /// <summary>Updates a vendor's profile, approval status, and activity status by vendor code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [HttpPut("{vendorCode}")]
         public async Task<IActionResult> UpdateVendor(
             string vendorCode, [FromBody] AdminUpdateVendorDto dto)
         {
@@ -197,7 +187,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             if (!string.IsNullOrWhiteSpace(dto.StoreName) &&
                 !dto.StoreName.Equals(vendor.StoreName, StringComparison.OrdinalIgnoreCase))
@@ -206,7 +196,7 @@ namespace Graduation.API.Controllers
                     .AnyAsync(v => v.Id != id &&
                                    v.StoreName.ToLower() == dto.StoreName.ToLower());
                 if (nameExists)
-                    throw new ConflictException(_lang.GetMessage("Vendor_NameExists"));
+                    throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
 
                 vendor.StoreName = dto.StoreName;
             }
@@ -265,14 +255,15 @@ namespace Graduation.API.Controllers
                 .Include(v => v.Products)
                 .FirstAsync(v => v.Id == id);
 
-            return Ok(new ApiResult(
+            return OkResult(
                 data: MapToDto(vendor),
-                message: _lang.GetMessage("Vendor_Updated")));
+                message: Lang.GetMessage(LangKeys.Vendor.Updated));
         }
-
-        [HttpDelete("{vendorCode}")]
+        /// <summary>Permanently deletes a vendor and removes the vendor role from the associated user.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpDelete("{vendorCode}")]
         public async Task<IActionResult> DeleteVendor(string vendorCode)
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
@@ -282,7 +273,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new NotFoundException(_lang.GetMessage("Vendor_NotFound"));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var appUser = await _userManager.FindByIdAsync(vendor.UserId);
             if (appUser != null && await _userManager.IsInRoleAsync(appUser, "Vendor"))
@@ -291,46 +282,51 @@ namespace Graduation.API.Controllers
             _context.Vendors.Remove(vendor);
             await _context.SaveChangesAsync();
 
-            return Ok(new ApiResult(message: _lang.GetMessage("Vendor_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Vendor.Deleted));
         }
-
-        [HttpPost("{vendorCode}/approve")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Approves a pending vendor application and grants the vendor role.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("{vendorCode}/approve")]
         public async Task<IActionResult> ApproveVendor(string vendorCode)
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(id, isApproved: true);
-            return Ok(new ApiResult(data: result, message: _lang.GetMessage("Vendor_Approved")));
+            return OkResult(data: result, message: Lang.GetMessage(LangKeys.Vendor.Approved));
         }
-
-        [HttpPost("{vendorCode}/reject")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Rejects a pending vendor application with a required rejection reason.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("{vendorCode}/reject")]
         public async Task<IActionResult> RejectVendor(
             string vendorCode, [FromBody] VendorApprovalDto dto)
         {
             if (!dto.IsApproved && string.IsNullOrWhiteSpace(dto.RejectionReason))
-                throw new BadRequestException(_lang.GetMessage("Vendor_RejectionRequired"));
+                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Vendor.RejectionRequired));
 
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(
                 id, isApproved: false, rejectionReason: dto.RejectionReason);
 
-            return Ok(new ApiResult(data: result, message: _lang.GetMessage("Vendor_Rejected")));
+            return OkResult(data: result, message: Lang.GetMessage(LangKeys.Vendor.Rejected));
         }
-
-        [HttpPost("{vendorCode}/toggle-status")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Toggles a vendor's active/inactive status.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("{vendorCode}/toggle-status")]
         public async Task<IActionResult> ToggleVendorStatus(string vendorCode)
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ToggleVendorStatusAsync(id);
-            var msg = result.IsActive ? _lang.GetMessage("Vendor_Activated") : _lang.GetMessage("Vendor_Deactivated");
-            return Ok(new ApiResult(data: result, message: msg));
+            var msg = result.IsActive ? Lang.GetMessage(LangKeys.Vendor.Activated) : Lang.GetMessage(LangKeys.Vendor.Deactivated);
+            return OkResult(data: result, message: msg);
         }
-
 
         private static object MapToDto(Vendor v) => new
         {
@@ -351,11 +347,10 @@ namespace Graduation.API.Controllers
             city = v.City,
             latitude = v.Latitude,
             longitude = v.Longitude,
-            approvalStatus = v.ApprovalStatus.ToString(),   
-            approvalStatusId = (int)v.ApprovalStatus,         
+            approvalStatus = v.ApprovalStatus.ToString(),
+            approvalStatusId = (int)v.ApprovalStatus,
             rejectionReason = v.RejectionReason,
-            isApproved = v.IsApproved,                  
-
+            isApproved = v.IsApproved,
             isActive = v.IsActive,
             totalProducts = v.Products?.Count ?? 0,
             createdAt = v.CreatedAt,

@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +26,6 @@ namespace Graduation.BLL.Services.Implementations
             _httpContextAccessor = httpContextAccessor;
         }
 
-
         private async Task<HashSet<int>> GetUserWishlistIdsAsync()
         {
             var userId = _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -41,7 +40,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return new HashSet<int>(ids);
         }
-
 
         public async Task<ProductDto> CreateProductAsync(ProductCreateDto dto)
         {
@@ -272,7 +270,6 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-
         public async Task<ProductDto> UpdateProductAsync(int id, string vendorCode, ProductUpdateDto dto)
         {
             var product = await _context.Products
@@ -333,7 +330,6 @@ namespace Graduation.BLL.Services.Implementations
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
-
         public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
         {
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
@@ -374,7 +370,6 @@ namespace Graduation.BLL.Services.Implementations
             await _context.SaveChangesAsync();
             return await GetProductByIdAsync(id);
         }
-
 
         private async Task ApplyProductUpdate(Product product, ProductUpdateDto dto)
         {
@@ -432,7 +427,7 @@ namespace Graduation.BLL.Services.Implementations
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
                 InStock = product.StockQuantity > 0,
-                IsInWishlist = wishlistIds.Contains(product.Id), 
+                IsInWishlist = wishlistIds.Contains(product.Id),
                 ViewCount = product.ViewCount,
                 AverageRating = Math.Round(avgRating, 1),
                 TotalReviews = product.Reviews.Count,
@@ -496,7 +491,7 @@ namespace Graduation.BLL.Services.Implementations
                 FinalPrice = finalPrice,
                 DiscountPercentage = discountPercentage,
                 InStock = product.StockQuantity > 0,
-                IsInWishlist = wishlistIds.Contains(product.Id), 
+                IsInWishlist = wishlistIds.Contains(product.Id),
                 IsFeatured = product.IsFeatured,
                 IsActive = product.IsActive,
                 PrimaryImageUrl = primaryImage,

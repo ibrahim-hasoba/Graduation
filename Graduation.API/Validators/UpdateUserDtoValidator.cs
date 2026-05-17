@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Shared.DTOs.Admin;
 using Shared.DTOs.Auth;
 
@@ -25,7 +25,6 @@ namespace Graduation.API.Validators
            .WithMessage("If provided, the phone number must be a valid Egyptian number.")
            .When(x => !string.IsNullOrWhiteSpace(x.PhoneNumber));
 
-            
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace Graduation.DAL.Entities
+namespace Graduation.DAL.Entities
 {
     public enum VendorApprovalStatus
     {
@@ -6,7 +6,6 @@
         Approved = 1,
         Rejected = 2
     }
-
 
     public class Vendor
     {

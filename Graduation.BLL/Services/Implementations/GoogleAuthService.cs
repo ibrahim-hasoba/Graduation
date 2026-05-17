@@ -1,4 +1,4 @@
-﻿using Google.Apis.Auth;
+using Google.Apis.Auth;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 
@@ -26,7 +26,7 @@ namespace Graduation.BLL.Services.Implementations
             }
             catch
             {
-                return null; // Invalid token
+                return null;
             }
         }
     }

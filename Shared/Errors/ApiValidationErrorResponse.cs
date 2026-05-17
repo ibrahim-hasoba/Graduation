@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
-namespace Shared.Errors 
+namespace Shared.Errors
 {
     public class ApiValidationErrorResponse : ApiResponse
     {

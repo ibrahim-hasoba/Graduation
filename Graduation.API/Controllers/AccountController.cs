@@ -1,4 +1,4 @@
-﻿using Auth.DTOs;
+using Auth.DTOs;
 using Graduation.API.Extensions;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Services.Implementations;
@@ -10,19 +10,16 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
 using Shared.BackgroundTasks;
 using Shared.Errors;
-using System.Security.Claims;
 
 namespace Graduation.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class AccountController : ControllerBase
+    public class AccountController : BaseController
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly JwtHandler _jwtHandler;
@@ -35,10 +32,9 @@ namespace Graduation.API.Controllers
         private readonly IImageService _imageService;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IOrderService _orderService;
-        private readonly ILanguageService _lang;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IBackgroundTaskQueue? _taskQueue;
-        private readonly ILogger<AccountController> _logger; 
+        private readonly ILogger<AccountController> _logger;
 
         public AccountController(
             UserManager<AppUser> userManager,
@@ -55,7 +51,8 @@ namespace Graduation.API.Controllers
             ILanguageService lang,
             IServiceScopeFactory scopeFactory,
             ILogger<AccountController> logger,
-            IBackgroundTaskQueue? taskQueue = null) 
+            IBackgroundTaskQueue? taskQueue = null)
+            : base(lang)
         {
             _userManager = userManager;
             _jwtHandler = jwtHandler;
@@ -68,49 +65,43 @@ namespace Graduation.API.Controllers
             _imageService = imageService;
             _codeAssignment = codeAssignment;
             _orderService = orderService;
-            _lang = lang;
             _scopeFactory = scopeFactory;
             _taskQueue = taskQueue;
             _logger = logger;
         }
-
-        [HttpPost("register")]
-        [EnableRateLimiting("otp")]
+        /// <summary>Registers a new user account and sends an OTP verification email.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [HttpPost("register")]
+        [EnableRateLimiting("otp")]
         public async Task<IActionResult> Register([FromBody] UserForRegisterDto userDto)
         {
-            // Check real users
             var existingByEmail = await _userManager.FindByEmailAsync(userDto.Email!);
             if (existingByEmail != null)
-                throw new ConflictException(_lang.GetMessage("Email_AlreadyExists"));
+                throw new ConflictException(Lang.GetMessage(LangKeys.Auth.EmailAlreadyExists));
 
             if (!string.IsNullOrWhiteSpace(userDto.PhoneNumber))
             {
                 var existingByPhone = await _userManager.Users
                     .AnyAsync(u => u.PhoneNumber == userDto.PhoneNumber);
                 if (existingByPhone)
-                    throw new ConflictException(_lang.GetMessage("Phone_AlreadyRegistered"));
+                    throw new ConflictException(Lang.GetMessage(LangKeys.Auth.PhoneAlreadyRegistered));
             }
 
-            // Rate limiting (now against EmailOtps as before — no change here)
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == userDto.Email && e.CreatedAt >= oneMinuteAgo);
             if (recent)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_RecentlySent")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.RecentlySent)));
 
             var lastHourCount = await _context.EmailOtps
                 .CountAsync(e => e.Email == userDto.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
             if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_TooMany")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.TooMany)));
 
-            // Hash password before persisting
             var hasher = new PasswordHasher<AppUser>();
             var passwordHash = hasher.HashPassword(null!, userDto.Password!);
 
-            // Replace any previous pending registration for this email
             var existing = await _context.PendingRegistrations
                 .Where(p => p.Email == userDto.Email!)
                 .ToListAsync();
@@ -128,7 +119,6 @@ namespace Graduation.API.Controllers
 
             await _context.SaveChangesAsync();
 
-            // Send OTP (reuses your existing _otpService + _emailService)
             try
             {
                 var code = await _otpService.GenerateOtpAsync(userDto.Email!);
@@ -136,45 +126,42 @@ namespace Graduation.API.Controllers
             }
             catch (Exception)
             {
-                // Rollback pending record if email fails
                 var pending = await _context.PendingRegistrations
                     .FirstOrDefaultAsync(p => p.Email == userDto.Email!);
                 if (pending != null) _context.PendingRegistrations.Remove(pending);
                 await _context.SaveChangesAsync();
-                throw new BadRequestException(_lang.GetMessage("Registration_EmailFailed"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Auth.RegistrationEmailFailed));
             }
 
-            return StatusCode(201, new ApiResult(message: _lang.GetMessage("Registration_Success")));
+            return CreatedResult(message: Lang.GetMessage(LangKeys.Auth.RegistrationSuccess));
         }
-        [HttpPost("login")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Authenticates a user with email and password, returning JWT and refresh tokens.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
             if (user == null)
-                throw new NotFoundException(_lang.GetMessage("Account_NotFound"));
+                throw new NotFoundException(Lang.GetMessage(LangKeys.Auth.AccountNotFound));
 
             if (await _userManager.IsLockedOutAsync(user))
-                throw new BadRequestException(_lang.GetMessage("Account_Locked"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Auth.AccountLocked));
 
             if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
             {
                 await _userManager.AccessFailedAsync(user);
-                throw new UnauthorizedException(_lang.GetMessage("Invalid_Credentials"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.InvalidCredentials));
             }
 
             if (!user.EmailConfirmed)
-                throw new UnauthorizedException(_lang.GetMessage("Email_NotVerified"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.EmailNotVerified));
 
             if (string.IsNullOrEmpty(user.Code))
                 await _codeAssignment.AssignUserCodeAsync(user);
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
-            
             _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
             {
                 var notificationService = sp.GetRequiredService<INotificationService>();
@@ -193,18 +180,17 @@ namespace Graduation.API.Controllers
         {
             public string IdToken { get; set; } = string.Empty;
         }
-
-        [HttpPost("google-login")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Authenticates or registers a user via Google OAuth ID token.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpPost("google-login")]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
             try
             {
                 var payload = await _googleAuthService.VerifyGoogleTokenAsync(dto.IdToken);
                 if (payload == null)
-                    return Unauthorized(new { message = _lang.GetMessage("Login_GoogleInvalidToken") });
+                    return Unauthorized(new { message = Lang.GetMessage(LangKeys.Auth.LoginGoogleInvalidToken) });
 
                 var user = await _userManager.FindByEmailAsync(payload.Email);
 
@@ -224,7 +210,7 @@ namespace Graduation.API.Controllers
                     if (!result.Succeeded)
                     {
                         var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                        return BadRequest(new { message = _lang.GetMessage("Login_GoogleFailed"), details = errors });
+                        return BadRequest(new { message = Lang.GetMessage(LangKeys.Auth.LoginGoogleFailed), details = errors });
                     }
 
                     await _userManager.AddToRoleAsync(user, "Customer");
@@ -232,7 +218,6 @@ namespace Graduation.API.Controllers
                 }
                 else
                 {
-                    
                     if (!user.EmailConfirmed)
                     {
                         user.EmailConfirmed = true;
@@ -248,24 +233,24 @@ namespace Graduation.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Google login failed");
-                return StatusCode(500, new ApiResult(message: "Server error"));
+                return StatusCode(500, new Errors.ApiResult(message: "Server error"));
             }
         }
-
+        /// <summary>Updates the Firebase Cloud Messaging push notification token for the authenticated user.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("update-fcm-token")]
         [Authorize]
         public async Task<IActionResult> UpdateFcmToken([FromBody] UpdateFcmTokenRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.FcmToken))
-                return BadRequest(new ApiResult(message: _lang.GetMessage("FCM_Empty")));
+                return BadRequest(new Errors.ApiResult(message: Lang.GetMessage(LangKeys.Auth.FcmEmpty)));
 
-            var userId = User.GetUserId();
-            if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized(new ApiResult(message: _lang.GetMessage("NotAuthenticated")));
+            var userId = GetRequiredUserId();
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                return NotFound(new ApiResult(message: _lang.GetMessage("User_NotFound")));
+                return NotFound(new Errors.ApiResult(message: Lang.GetMessage(LangKeys.User.NotFound)));
 
             var isNewToken = user.FcmToken != request.FcmToken;
 
@@ -286,22 +271,22 @@ namespace Graduation.API.Controllers
                 });
             }
 
-            return Ok(new ApiResult(message: _lang.GetMessage("FCM_Updated")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Auth.FcmUpdated));
         }
-
+        /// <summary>Issues a new access token using a valid refresh token.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("refresh-token")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
             var ipAddress = GetIpAddress();
             var oldToken = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
             if (oldToken == null || !oldToken.IsActive)
-                throw new UnauthorizedException(_lang.GetMessage("Session_Invalid"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.SessionInvalid));
 
             var user = await _userManager.FindByIdAsync(oldToken.UserId);
             if (user == null)
-                throw new UnauthorizedException(_lang.GetMessage("User_NoLongerExists"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.UserNoLongerExists));
 
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -311,126 +296,127 @@ namespace Graduation.API.Controllers
                 var newToken = await _refreshTokenService.GenerateRefreshTokenAsync(user.Id, ipAddress);
                 await _refreshTokenService.RevokeTokenAsync(oldToken.Token, ipAddress, newToken.Token);
                 await transaction.CommitAsync();
-                return Ok(new ApiResult(data: CreateTokenResponse(accessToken, newToken.Token)));
+                return OkResult(data: CreateTokenResponse(accessToken, newToken.Token));
             }
             catch
             {
                 await transaction.RollbackAsync();
-                throw new BadRequestException(_lang.GetMessage("Token_RefreshFailed"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Auth.TokenRefreshFailed));
             }
         }
-
+        /// <summary>Sends a password reset OTP code to the user's email address.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("forgot-password")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null)
-                return Ok(new ApiResult(message: _lang.GetMessage("ForgotPassword_Sent")));
+                return OkResult(message: Lang.GetMessage(LangKeys.Password.ForgotPasswordSent));
 
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == dto.Email && e.Purpose == "password_reset" && e.CreatedAt >= oneMinuteAgo);
             if (recent)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("Code_RecentlySent")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.CodeRecentlySent)));
 
             var lastHourCount = await _context.EmailOtps
                 .CountAsync(e => e.Email == dto.Email && e.Purpose == "password_reset"
                               && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
             if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("Code_TooMany")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.CodeTooMany)));
 
             var code = await _otpService.GenerateOtpAsync(dto.Email!, purpose: "password_reset");
             await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
-            return Ok(new ApiResult(message: _lang.GetMessage("ForgotPassword_CodeSent")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Password.ForgotPasswordCodeSent));
         }
-
-        [HttpPost("reset-password")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Resets the user's password using an email and OTP verification code.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordWithOtpDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email);
             if (user == null)
-                throw new BadRequestException(_lang.GetMessage("Password_Invalid"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Password.Invalid));
 
             var valid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code, purpose: "password_reset");
             if (!valid)
-                throw new BadRequestException(_lang.GetMessage("Password_CodeInvalid"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Password.CodeInvalid));
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            return Ok(new ApiResult(message: _lang.GetMessage("Password_ResetSuccess")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Password.ResetSuccess));
         }
-
+        /// <summary>Resends the email verification OTP to an unconfirmed user.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("resend-verification-email")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         [EnableRateLimiting("otp")]
         public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationDto dto)
         {
             var user = await _userManager.FindByEmailAsync(dto.Email!);
             if (user == null || user.EmailConfirmed)
-                return Ok(new ApiResult(message: _lang.GetMessage("Verification_Sent")));
+                return OkResult(message: Lang.GetMessage(LangKeys.Verification.Sent));
 
             var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
             var recent = await _context.EmailOtps
                 .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
             if (recent)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_RecentlySent")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.RecentlySent)));
 
             var lastHourCount = await _context.EmailOtps
                 .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
             if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, _lang.GetMessage("OTP_TooMany")));
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.TooMany)));
 
             await SendVerificationEmail(user);
-            return Ok(new ApiResult(message: _lang.GetMessage("Verification_NewSent")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Verification.NewSent));
         }
-
+        /// <summary>Revokes a refresh token, logging the user out of that session.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("revoke-token")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenDto dto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
+            var userId = GetRequiredUserId();
             var token = await _refreshTokenService.GetRefreshTokenAsync(dto.RefreshToken);
 
             if (token == null || token.UserId != userId)
-                throw new UnauthorizedException(_lang.GetMessage("Invalid_Credentials"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.InvalidCredentials));
 
             await _refreshTokenService.RevokeTokenAsync(dto.RefreshToken, GetIpAddress());
-            return Ok(new ApiResult(message: _lang.GetMessage("Logout_Success")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Auth.LogoutSuccess));
         }
-
-        [HttpPost("admin/login")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        /// <summary>Authenticates an admin user with email and password. Only admin accounts are allowed.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [HttpPost("admin/login")]
         public async Task<IActionResult> AdminLogin([FromBody] UserForLoginDto loginDto)
         {
             var user = await _userManager.FindByEmailAsync(loginDto.Email!);
             if (user == null)
-                throw new NotFoundException(_lang.GetMessage("Account_NotFound"));
+                throw new NotFoundException(Lang.GetMessage(LangKeys.Auth.AccountNotFound));
 
             if (await _userManager.IsLockedOutAsync(user))
-                throw new BadRequestException(_lang.GetMessage("Account_Locked"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Auth.AccountLocked));
 
             if (!await _userManager.CheckPasswordAsync(user, loginDto.Password!))
             {
                 await _userManager.AccessFailedAsync(user);
-                throw new UnauthorizedException(_lang.GetMessage("Invalid_Credentials"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.InvalidCredentials));
             }
 
             if (!user.EmailConfirmed)
-                throw new UnauthorizedException(_lang.GetMessage("Email_NotVerified"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.EmailNotVerified));
 
             var isAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (!isAdmin)
-                throw new UnauthorizedException(_lang.GetMessage("NotAdmin"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.NotAdmin));
 
             if (string.IsNullOrEmpty(user.Code))
                 await _codeAssignment.AssignUserCodeAsync(user);
@@ -450,18 +436,17 @@ namespace Graduation.API.Controllers
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
-
+        /// <summary>Gets the authenticated user's profile details.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpGet("profile")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GetProfile()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 userCode = user.Code,
                 firstName = user.FirstName,
@@ -470,18 +455,18 @@ namespace Graduation.API.Controllers
                 phoneNumber = user.PhoneNumber,
                 profilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl!),
                 profilePictureRelativePath = user.ProfilePictureUrl
-            }));
+            });
         }
-
+        /// <summary>Updates the authenticated user's profile fields.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPut("update-profile")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             user.FirstName = dto.FirstName;
             user.LastName = dto.LastName;
@@ -491,20 +476,20 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new BadRequestException($"Failed to update profile: {string.Join(", ", result.Errors.Select(e => e.Description))}");
 
-            return Ok(new ApiResult(
+            return OkResult(
                 data: new { user.FirstName, user.LastName, user.PhoneNumber, user.Email },
-                message: _lang.GetMessage("Profile_UpdateSuccess")));
+                message: Lang.GetMessage(LangKeys.Profile.UpdateSuccess));
         }
-
+        /// <summary>Uploads a profile picture for the authenticated user.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("upload-profile-picture")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UploadProfilePicture(IFormFile file)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
                 await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
@@ -513,22 +498,21 @@ namespace Graduation.API.Controllers
             user.ProfilePictureUrl = imageUrl;
             await _userManager.UpdateAsync(user);
 
-            return Ok(new ApiResult(data: new
+            return OkResult(data: new
             {
                 relativePath = imageUrl,
                 fullUrl = _imageService.GetFullImageUrl(imageUrl)
-            }, message: _lang.GetMessage("ProfilePicture_UpdateSuccess")));
+            }, message: Lang.GetMessage(LangKeys.Profile.PictureUpdateSuccess));
         }
-
+        /// <summary>Deletes the authenticated user's profile picture.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpDelete("delete-profile-picture")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteProfilePicture()
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
             {
@@ -537,43 +521,39 @@ namespace Graduation.API.Controllers
                 await _userManager.UpdateAsync(user);
             }
 
-            return Ok(new ApiResult(message: _lang.GetMessage("ProfilePicture_DeleteSuccess")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Profile.PictureDeleteSuccess));
         }
-
+        /// <summary>Changes the authenticated user's password and revokes all existing sessions.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [HttpPost("change-password")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var result = await _userManager.ChangePasswordAsync(user, dto.CurrentPassword, dto.NewPassword);
             if (!result.Succeeded)
-                throw new BadRequestException(_lang.GetMessage("Password_Invalid"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Password.Invalid));
 
-            await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
-            return Ok(new ApiResult(message: _lang.GetMessage("Password_ChangeSuccess")));
+            await _refreshTokenService.RevokeUserTokensAsync(userId, GetIpAddress());
+            return OkResult(message: Lang.GetMessage(LangKeys.Password.ChangeSuccess));
         }
-
-        [HttpPost("verify-email-otp")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Verifies an email OTP code to confirm email address or complete registration.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("verify-email-otp")]
         public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Code))
                 throw new BadRequestException("Email and code are required");
 
-            // Validate OTP first
             var isValid = await _otpService.ValidateOtpAsync(dto.Email, dto.Code);
             if (!isValid)
-                throw new BadRequestException(_lang.GetMessage("Password_CodeInvalid"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Password.CodeInvalid));
 
-            // Check if already a verified user (re-verify case)
             var existingUser = await _userManager.FindByEmailAsync(dto.Email);
             if (existingUser != null)
             {
@@ -585,21 +565,19 @@ namespace Graduation.API.Controllers
                 return await GenerateAuthResponse(existingUser);
             }
 
-            // Find the pending registration
             var pending = await _context.PendingRegistrations
                 .FirstOrDefaultAsync(p => p.Email == dto.Email);
 
             if (pending == null)
-                throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+                throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (pending.ExpiresAt < DateTime.UtcNow)
             {
                 _context.PendingRegistrations.Remove(pending);
                 await _context.SaveChangesAsync();
-                throw new BadRequestException(_lang.GetMessage("OTP_Expired"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Otp.Expired));
             }
 
-            // Create the real user now
             var user = new AppUser
             {
                 FirstName = pending.FirstName,
@@ -607,12 +585,11 @@ namespace Graduation.API.Controllers
                 Email = pending.Email,
                 UserName = pending.Email,
                 PhoneNumber = pending.PhoneNumber,
-                EmailConfirmed = true,           // verified by OTP
+                EmailConfirmed = true,
                 CreatedAt = DateTime.UtcNow,
-                PasswordHash = pending.PasswordHash  // assign directly, skip re-hashing
+                PasswordHash = pending.PasswordHash
             };
 
-            // CreateAsync() without password arg — hash already set above
             var result = await _userManager.CreateAsync(user);
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
@@ -620,53 +597,51 @@ namespace Graduation.API.Controllers
             await _userManager.AddToRoleAsync(user, "Customer");
             await _codeAssignment.AssignUserCodeAsync(user);
 
-            // Clean up
             _context.PendingRegistrations.Remove(pending);
             await _context.SaveChangesAsync();
 
             return await GenerateAuthResponse(user);
         }
-        [HttpPost("verify-reset-code")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        /// <summary>Verifies a password reset OTP code without consuming it.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [HttpPost("verify-reset-code")]
         public async Task<IActionResult> VerifyResetCode([FromBody] VerifyResetCodeDto dto)
         {
             var isValid = await _otpService.PeekOtpAsync(dto.Email, dto.Code, purpose: "password_reset");
             if (!isValid)
-                throw new BadRequestException(_lang.GetMessage("Password_CodeInvalid"));
+                throw new BadRequestException(Lang.GetMessage(LangKeys.Password.CodeInvalid));
 
-            return Ok(new ApiResult(message: _lang.GetMessage("ResetCode_Valid")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Password.ResetCodeValid));
         }
-
-        [HttpDelete("delete-account")]
-        [Authorize]
+        /// <summary>Permanently deletes the authenticated user's account and all associated data.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpDelete("delete-account")]
+        [Authorize]
         public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("userId");
-            var user = await _userManager.FindByIdAsync(userId!);
-            if (user == null) throw new NotFoundException(_lang.GetMessage("User_NotFound"));
+            var userId = GetRequiredUserId();
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) throw new NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (!await _userManager.CheckPasswordAsync(user, dto.Password))
-                throw new UnauthorizedException(_lang.GetMessage("Invalid_Credentials"));
+                throw new UnauthorizedException(Lang.GetMessage(LangKeys.Auth.InvalidCredentials));
 
-            await _refreshTokenService.RevokeUserTokensAsync(userId!, GetIpAddress());
+            await _refreshTokenService.RevokeUserTokensAsync(userId, GetIpAddress());
 
             if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
                 await _imageService.DeleteImageAsync(user.ProfilePictureUrl);
 
             var userEmail = user.Email!;
-            await CleanupUserDataAsync(userId!, userEmail);
+            await CleanupUserDataAsync(userId, userEmail);
 
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            return Ok(new ApiResult(message: _lang.GetMessage("Account_Deleted")));
+            return OkResult(message: Lang.GetMessage(LangKeys.Auth.AccountDeleted));
         }
-
 
         private async Task CleanupUserDataAsync(string userId, string userEmail)
         {
@@ -723,7 +698,7 @@ namespace Graduation.API.Controllers
                 }
             };
 
-            return Ok(new ApiResult(data: response));
+            return OkResult(data: response);
         }
 
         private TokenResponseDto CreateTokenResponse(string access, string refresh) => new()

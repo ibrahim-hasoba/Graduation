@@ -20,11 +20,9 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<string> GenerateOtpAsync(string email, string purpose = "email_verification", int ttlMinutes = 10)
         {
-            // FIXED BUG: System.Random is not cryptographically secure and is predictable.
-            // Replaced with RandomNumberGenerator.GetInt32 which uses a CSPRNG.
+
             var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
-            // Expire existing OTPs for this email+purpose
             var existing = await _context.EmailOtps
                 .Where(e => e.Email == email && e.Purpose == purpose && !e.Consumed)
                 .ToListAsync();
@@ -74,8 +72,6 @@ namespace Graduation.BLL.Services.Implementations
             if (otp == null) return false;
             if (otp.ExpiresAt < DateTime.UtcNow) return false;
 
-            // FIXED BUG: Use constant-time comparison to prevent timing attacks when
-            // comparing the submitted OTP code against the stored value.
             if (!CryptographicOperations.FixedTimeEquals(
                     System.Text.Encoding.UTF8.GetBytes(otp.Code),
                     System.Text.Encoding.UTF8.GetBytes(code)))

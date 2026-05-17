@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -11,7 +11,7 @@ namespace Graduation.DAL.Entities
         public string UserId { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddDays(7);
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public string? CreatedByIp { get; set; } // NEW: Track where token was created
+        public string? CreatedByIp { get; set; }
         public bool IsRevoked { get; set; }
         public string? RevokedByIp { get; set; }
         public DateTime? RevokedAt { get; set; }

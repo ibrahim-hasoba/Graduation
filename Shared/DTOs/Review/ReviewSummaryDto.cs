@@ -1,6 +1,6 @@
-﻿namespace Shared.DTOs.Review
+namespace Shared.DTOs.Review
 {
-    
+
         public class ReviewSummaryDto
         {
             public int ProductId { get; set; }

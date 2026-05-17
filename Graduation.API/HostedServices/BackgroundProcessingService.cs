@@ -1,4 +1,4 @@
-﻿using Shared.BackgroundTasks;
+using Shared.BackgroundTasks;
 using Microsoft.Extensions.Hosting;
 
 namespace Graduation.API.HostedServices
@@ -29,7 +29,6 @@ namespace Graduation.API.HostedServices
                 {
                     var workItem = await _taskQueue.DequeueAsync(stoppingToken);
 
-                    // Retry logic with exponential backoff
                     const int maxAttempts = 3;
                     var attempt = 0;
                     var succeeded = false;
@@ -55,7 +54,7 @@ namespace Graduation.API.HostedServices
 
                             if (attempt >= maxAttempts)
                             {
-                                // Dead-letter: write details to a simple dead-letter log file
+
                                 try
                                 {
                                     var deadLetterDir = Path.Combine(AppContext.BaseDirectory, "logs", "deadletter");
@@ -72,7 +71,7 @@ namespace Graduation.API.HostedServices
                             }
                             else
                             {
-                                // exponential backoff
+
                                 var delayMs = (int)(Math.Pow(2, attempt) * 1000);
                                 await Task.Delay(delayMs, stoppingToken);
                             }
@@ -81,7 +80,7 @@ namespace Graduation.API.HostedServices
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    // shutting down
+
                 }
                 catch (Exception ex)
                 {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -18,7 +18,6 @@ namespace Shared.DTOs.Order
         public DateTime OrderDate { get; set; }
         public DateTime? DeliveredAt { get; set; }
 
-        // Shipping Info
         public string ShippingFirstName { get; set; } = string.Empty;
         public string ShippingLastName { get; set; } = string.Empty;
         public string ShippingPhone { get; set; } = string.Empty;
@@ -30,13 +29,12 @@ namespace Shared.DTOs.Order
         public double? CurrentLatitude { get; set; }
         public double? CurrentLongitude { get; set; }
 
-        // Vendor Info
         public int VendorId { get; set; }
         public string VendorName { get; set; } = string.Empty;
 
         public double? VendorLatitude { get; set; }
         public double? VendorLongitude { get; set; }
-        // Items
+
         public List<OrderItemDto> Items { get; set; } = new();
     }
 }

@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Shared.DTOs;
 using Shared.DTOs.Vendor;
@@ -17,6 +17,7 @@ namespace Graduation.API.Controllers
             _vendorService = vendorService;
         }
 
+        /// <summary>Get all brands (public vendors) with pagination.</summary>
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllBrands(
@@ -27,7 +28,7 @@ namespace Graduation.API.Controllers
             return Ok(new ApiResult(data: brands));
         }
 
-
+        /// <summary>Get brand/vendor details by ID (public).</summary>
         [HttpGet("{id:int}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]

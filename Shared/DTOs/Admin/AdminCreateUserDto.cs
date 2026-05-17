@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +13,6 @@ namespace Shared.DTOs.Admin
         public string FirstName { get; set; } = default!;
         public string LastName { get; set; } = default!;
         public string? PhoneNumber { get; set; }
-        public string Role { get; set; } = "Customer"; 
+        public string Role { get; set; } = "Customer";
     }
 }

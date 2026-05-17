@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Entities;
+using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -49,7 +49,7 @@ namespace Graduation.BLL.JwtFeatures
 
             foreach (var role in roles)
                 claims.Add(new Claim(ClaimTypes.Role, role));
- 
+
             return claims;
         }
 

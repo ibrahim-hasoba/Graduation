@@ -1,34 +1,32 @@
-﻿using Graduation.BLL.Services.Implementations;
+using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Category;
 using Shared.DTOs.Product;
-using Shared.Errors;
 
 namespace Graduation.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class CategoriesController : ControllerBase
+    public class CategoriesController : BaseController
     {
         private readonly DatabaseContext _context;
         private readonly ICodeLookupService _codeLookup;
-        private readonly ILanguageService _lang;
 
         public CategoriesController(
             DatabaseContext context,
             ICodeLookupService codeLookup,
             ILanguageService lang)
+            : base(lang)
         {
             _context = context;
             _codeLookup = codeLookup;
-            _lang = lang;
         }
-
+        /// <summary>Gets a paginated list of all categories with optional query filters.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpGet]
         public async Task<IActionResult> GetAllCategories(
             [FromQuery] int pageNumber = 1,
@@ -84,18 +82,13 @@ namespace Graduation.API.Controllers
                 UpdatedAt = c.UpdatedAt
             }).ToList();
 
-            return Ok(new ApiResult(data: new
-            {
-                categories,
-                totalCount,
-                pageNumber,
-                pageSize,
-                totalPages,
-                hasPreviousPage = pageNumber > 1,
-                hasNextPage = pageNumber < totalPages
-            }, count: totalCount));
+            return OkResult(
+                data: PaginatedResponse(dtos, totalCount, pageNumber, pageSize),
+                count: totalCount);
         }
-
+        /// <summary>Gets a single active category by its code, including subcategories and product count.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("{categoryCode}")]
         public async Task<IActionResult> GetCategoryById(string categoryCode)
         {
@@ -106,7 +99,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id && c.Status == CategoryStatus.Active);
 
             if (category == null)
-                return NotFound(new ApiResponse(404, _lang.GetMessage("Category_NotFound")));
+                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Category.NotFound));
 
             var productCount = await _context.Products
                 .CountAsync(p => p.CategoryId == id && p.IsActive);
@@ -136,9 +129,11 @@ namespace Graduation.API.Controllers
                 }).ToList()
             };
 
-            return Ok(new ApiResult(data: dto));
+            return OkResult(data: dto);
         }
-
+        /// <summary>Gets a paginated list of active products in a specific category.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [HttpGet("{categoryCode}/products")]
         public async Task<IActionResult> GetCategoryProducts(
             string categoryCode,
@@ -188,18 +183,11 @@ namespace Graduation.API.Controllers
                 CategoryNameAr = p.Category.NameAr
             }).ToList();
 
-            return Ok(new ApiResult(data: new
-            {
-                products = productDtos,
-                totalCount,
-                pageNumber,
-                pageSize,
-                totalPages,
-                hasPreviousPage = pageNumber > 1,
-                hasNextPage = pageNumber < totalPages
-            }));
+            return OkResult(
+                data: PaginatedResponse(productDtos, totalCount, pageNumber, pageSize));
         }
-
+        /// <summary>Gets all leaf categories with no subcategories, including their hierarchy paths.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
         [HttpGet("leaf-categories")]
         public async Task<IActionResult> GetLeafCategories()
         {
@@ -230,10 +218,10 @@ namespace Graduation.API.Controllers
                 };
             }).OrderBy(x => x.pathEn).ToList();
 
-            return Ok(new ApiResult(
+            return OkResult(
                 data: leafDtos,
-                message: _lang.GetMessage("Category_LeafCategories"),
-                count: leafDtos.Count));
+                message: Lang.GetMessage(LangKeys.Category.LeafCategories),
+                count: leafDtos.Count);
         }
 
         private static string BuildPath(Category c, Dictionary<int, Category> map)

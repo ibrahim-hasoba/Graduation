@@ -1,4 +1,4 @@
-﻿using Graduation.DAL.Entities;
+using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection.Emit;
@@ -43,12 +43,11 @@ namespace Graduation.DAL.Data
 
             builder.Entity<CartItemVariant>().HasQueryFilter(civ => civ.CartItem.Product.IsActive);
 
-            // Payment Configuration
             builder.Entity<Payment>(entity =>
             {
                 entity.Property(p => p.Amount).HasPrecision(18, 2);
             });
-            // Vendor Configuration
+
             builder.Entity<Vendor>(entity =>
             {
                 entity.Property(v => v.Latitude).HasColumnType("float");
@@ -80,10 +79,8 @@ namespace Graduation.DAL.Data
                     .IsRequired()
                     .HasMaxLength(20);
 
-                // One-to-One
                 entity.HasIndex(v => v.UserId).IsUnique();
 
-                // Performance Indexes
                 entity.HasIndex(v => v.ApprovalStatus);
                 entity.HasIndex(v => new { v.ApprovalStatus, v.IsActive });
                 entity.HasIndex(v => v.CreatedAt);
@@ -108,7 +105,6 @@ namespace Graduation.DAL.Data
                  .HasFilter("[Code] IS NOT NULL");
             });
 
-            // Category Configuration
             builder.Entity<Category>(entity =>
             {
                 entity.HasKey(c => c.Id);
@@ -121,12 +117,10 @@ namespace Graduation.DAL.Data
                 entity.Property(c => c.NameAr).IsRequired().HasMaxLength(200);
                 entity.Property(c => c.NameEn).IsRequired().HasMaxLength(200);
 
-                // Performance Indexes
                 entity.HasIndex(c => c.Status);
                 entity.HasIndex(c => new { c.Status, c.ParentCategoryId });
             });
 
-            // Product Configuration
             builder.Entity<Product>(entity =>
             {
                 entity.Property(p => p.Code)
@@ -157,7 +151,6 @@ namespace Graduation.DAL.Data
 
                 entity.HasIndex(p => p.SKU).IsUnique();
 
-                // Performance Indexes for Search and Filtering
                 entity.HasIndex(p => p.IsActive);
                 entity.HasIndex(p => p.CategoryId);
                 entity.HasIndex(p => p.VendorId);
@@ -167,7 +160,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(p => p.CreatedAt);
                 entity.HasIndex(p => p.ViewCount);
 
-                // Composite Indexes for Common Queries
                 entity.HasIndex(p => new { p.IsActive, p.CategoryId });
                 entity.HasIndex(p => new { p.IsActive, p.VendorId });
                 entity.HasIndex(p => new { p.IsActive, p.IsFeatured });
@@ -176,7 +168,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(p => new { p.VendorId, p.IsActive, p.CreatedAt });
             });
 
-            // Product Image Configuration
             builder.Entity<ProductImage>(entity =>
             {
                 entity.HasKey(pi => pi.Id);
@@ -188,13 +179,11 @@ namespace Graduation.DAL.Data
 
                 entity.Property(pi => pi.ImageUrl).IsRequired();
 
-                // Performance Indexes
                 entity.HasIndex(pi => pi.ProductId);
                 entity.HasIndex(pi => new { pi.ProductId, pi.IsPrimary });
                 entity.HasIndex(pi => new { pi.ProductId, pi.DisplayOrder });
             });
 
-            // UserAddress Configuration
             builder.Entity<UserAddress>(entity =>
             {
                 entity.Property(e => e.PhoneNumber)
@@ -217,7 +206,6 @@ namespace Graduation.DAL.Data
                 entity.Property(e => e.Longitude)
                       .HasColumnType("float");
 
-                // Unique filtered index: only one IsDefault=true per user
                 entity.HasIndex(e => new { e.UserId, e.IsDefault })
                       .HasFilter("[IsDefault] = 1")
                       .IsUnique();
@@ -228,7 +216,6 @@ namespace Graduation.DAL.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
-            // Product Review Configuration
             builder.Entity<ProductReview>(entity =>
             {
                 entity.HasKey(pr => pr.Id);
@@ -245,7 +232,6 @@ namespace Graduation.DAL.Data
 
                 entity.Property(pr => pr.Rating).IsRequired();
 
-                // Performance Indexes
                 entity.HasIndex(pr => pr.ProductId);
                 entity.HasIndex(pr => pr.UserId);
                 entity.HasIndex(pr => pr.IsApproved);
@@ -254,7 +240,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(pr => new { pr.UserId, pr.ProductId }).IsUnique();
             });
 
-            // Review Report Configuration
             builder.Entity<ReviewReport>(entity =>
             {
                 entity.HasKey(r => r.Id);
@@ -283,7 +268,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(r => new { r.ReviewId, r.ReportedByUserId, r.Status });
             });
 
-            // Cart Item Configuration
             builder.Entity<CartItem>(entity =>
             {
                 entity.HasKey(ci => ci.Id);
@@ -298,34 +282,15 @@ namespace Graduation.DAL.Data
                     .HasForeignKey(ci => ci.ProductId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-
-                // Performance Indexes
                 entity.HasIndex(ci => ci.UserId);
                 entity.HasIndex(ci => ci.ProductId);
                 entity.HasIndex(ci => ci.AddedAt);
             });
 
-            // Global query filters — only applied to entities where hiding inactive data
-            // in the current session makes sense for ALL callers.
-            //
-            // FIX #12 side-effect: Products are now soft-deleted (IsActive = false).
-            // ProductImages, ProductReviews, and CartItems filter by Product.IsActive —
-            // this is safe because:
-            //   - Images/reviews of a deleted product should not surface in the storefront.
-            //   - Cart items for a deleted product should not be purchasable.
-            //
-            // IMPORTANT: OrderItems must NOT have a global filter on Product.IsActive.
-            // A soft-deleted product must not erase order history. Any code that reads
-            // OrderItems for historical purposes (reports, order detail pages, review
-            // eligibility checks) must use .IgnoreQueryFilters() explicitly if it also
-            // needs to traverse the Product navigation — or simply avoid filtering
-            // OrderItems by product activity at the global level.
             builder.Entity<ProductImage>().HasQueryFilter(pi => pi.Product.IsActive);
             builder.Entity<ProductReview>().HasQueryFilter(pr => pr.Product.IsActive);
             builder.Entity<CartItem>().HasQueryFilter(ci => ci.Product.IsActive);
-            // NOTE: No global filter on OrderItem — order history must be preserved.
 
-            // RefreshToken Configuration
             builder.Entity<RefreshToken>(entity =>
             {
                 entity.HasKey(rt => rt.Id);
@@ -337,7 +302,6 @@ namespace Graduation.DAL.Data
 
                 entity.Property(rt => rt.Token).IsRequired().HasMaxLength(200);
 
-                // Performance Indexes
                 entity.HasIndex(rt => rt.Token).IsUnique();
                 entity.HasIndex(rt => rt.UserId);
                 entity.HasIndex(rt => rt.ExpiresAt);
@@ -346,7 +310,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(rt => new { rt.UserId, rt.IsRevoked, rt.ExpiresAt });
             });
 
-            // Order Configuration
             builder.Entity<Order>(entity =>
             {
                 entity.HasKey(o => o.Id);
@@ -364,19 +327,16 @@ namespace Graduation.DAL.Data
 
                 entity.HasIndex(o => o.OrderNumber).IsUnique();
 
-                // Performance Indexes
                 entity.HasIndex(o => o.UserId);
                 entity.HasIndex(o => o.Status);
                 entity.HasIndex(o => o.PaymentStatus);
                 entity.HasIndex(o => o.OrderDate);
 
-                // Composite Indexes for Common Queries
                 entity.HasIndex(o => new { o.UserId, o.OrderDate });
                 entity.HasIndex(o => new { o.Status, o.OrderDate });
                 entity.HasIndex(o => new { o.UserId, o.Status, o.OrderDate });
             });
 
-            // Order Item Configuration
             builder.Entity<OrderItem>(entity =>
             {
                 entity.HasKey(oi => oi.Id);
@@ -394,12 +354,10 @@ namespace Graduation.DAL.Data
                     .HasForeignKey(oi => oi.ProductId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Performance Indexes
                 entity.HasIndex(oi => oi.OrderId);
                 entity.HasIndex(oi => oi.ProductId);
             });
 
-            // Wishlist Configuration
             builder.Entity<Wishlist>(entity =>
             {
                 entity.HasKey(w => w.Id);
@@ -414,16 +372,13 @@ namespace Graduation.DAL.Data
                     .HasForeignKey(w => w.ProductId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // Unique constraint: one product per user in wishlist
                 entity.HasIndex(w => new { w.UserId, w.ProductId }).IsUnique();
 
-                // Performance Indexes
                 entity.HasIndex(w => w.UserId);
                 entity.HasIndex(w => w.ProductId);
                 entity.HasIndex(w => w.CreatedAt);
             });
 
-            // Notification Configuration
             builder.Entity<Notification>(entity =>
             {
                 entity.HasKey(n => n.Id);
@@ -437,7 +392,6 @@ namespace Graduation.DAL.Data
                 entity.Property(n => n.Message).IsRequired().HasMaxLength(1000);
                 entity.Property(n => n.Type).IsRequired().HasMaxLength(50);
 
-                // Performance Indexes
                 entity.HasIndex(n => n.UserId);
                 entity.HasIndex(n => n.IsRead);
                 entity.HasIndex(n => n.CreatedAt);
@@ -445,7 +399,6 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(n => new { n.UserId, n.CreatedAt });
             });
 
-            // Email OTP Configuration
             builder.Entity<EmailOtp>(entity =>
             {
                 entity.HasKey(e => e.Id);

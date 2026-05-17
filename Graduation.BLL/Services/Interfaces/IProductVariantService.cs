@@ -1,4 +1,4 @@
-﻿using Shared.DTOs.Product;
+using Shared.DTOs.Product;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +9,7 @@ namespace Graduation.BLL.Services.Interfaces
 {
     public interface IProductVariantService
     {
-        
+
             Task<List<ProductVariantGroupDto>> GetProductVariantsAsync(int productId);
 
             Task<ProductVariantDto> GetVariantByIdAsync(int variantId);
@@ -42,6 +42,6 @@ namespace Graduation.BLL.Services.Interfaces
                 int? vendorId,
                 bool isAdmin,
                 string typeName);
-        
+
     }
 }

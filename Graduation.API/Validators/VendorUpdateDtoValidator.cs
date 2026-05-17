@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Shared.DTOs.Vendor;
 
 namespace Graduation.API.Validators
@@ -42,7 +42,6 @@ namespace Graduation.API.Validators
                 .NotEmpty().WithMessage("City is required.")
                 .MinimumLength(2).WithMessage("City name must be at least 2 characters.")
                 .MaximumLength(100).WithMessage("City name cannot exceed 100 characters.");
-
 
             RuleFor(x => x.LogoUrl)
                 .MaximumLength(2048).WithMessage("Logo URL cannot exceed 2048 characters.")

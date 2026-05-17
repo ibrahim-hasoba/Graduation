@@ -20,7 +20,6 @@ namespace Graduation.BLL.Services.Implementations
             _logger = logger;
         }
 
-        
         public async Task<PagedNotificationResultDto> GetUserNotificationsAsync(
             string userId,
             bool unreadOnly = false,
@@ -148,14 +147,22 @@ namespace Graduation.BLL.Services.Implementations
                 if (user != null && !string.IsNullOrEmpty(user.FcmToken))
                 {
                     var customData = new Dictionary<string, string>
-                {
-                    { "type", type },
-                    { "orderId", orderId?.ToString() ?? "" },
-                    { "productId", productId?.ToString() ?? "" }
-                };
+                    {
+                        { "type", type },
+                        { "orderId", orderId?.ToString() ?? "" },
+                        { "productId", productId?.ToString() ?? "" }
+                    };
 
-                    await _firebaseService.SendPushNotificationAsync(
+                    var result = await _firebaseService.SendPushNotificationAsync(
                         user.FcmToken, title, message, customData);
+
+                    if (result == FcmSendResult.InvalidToken)
+                    {
+                        await _context.Users
+                            .Where(u => u.Id == userId)
+                            .ExecuteUpdateAsync(s => s.SetProperty(u => u.FcmToken, (string?)null));
+                        _logger.LogInformation("Cleared invalid FCM token for user {UserId}", userId);
+                    }
                 }
                 else
                 {

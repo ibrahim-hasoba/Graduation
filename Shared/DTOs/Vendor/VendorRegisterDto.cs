@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Graduation.DAL.Entities;
 
 namespace Shared.DTOs.Vendor
@@ -29,8 +29,6 @@ namespace Shared.DTOs.Vendor
         [Required(ErrorMessage = "City is required")]
         public string City { get; set; } = string.Empty;
 
-        //[Required(ErrorMessage = "Governorate is required")]
-        //public EgyptianGovernorate Governorate { get; set; }
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public string? LogoUrl { get; set; }

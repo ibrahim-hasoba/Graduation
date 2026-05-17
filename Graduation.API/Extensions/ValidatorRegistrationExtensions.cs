@@ -1,12 +1,12 @@
-﻿using FluentValidation;
+using FluentValidation;
 using System.Reflection;
 
 namespace Graduation.API.Extensions
 {
-    
+
     public static class ValidatorRegistrationExtensions
     {
-       
+
         public static IServiceCollection AddValidatorsFromAssemblies(
             this IServiceCollection services,
             params Assembly[] assemblies)

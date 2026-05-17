@@ -9,7 +9,7 @@ namespace Graduation.API.Errors
   /// Example JSON:
   /// {
   ///   "success": true,
-  ///   "data": { /* resource or list */ },
+  ///   "data": {  },
   ///   "message": "Optional human readable message",
   ///   "count": 12
   /// }

@@ -1,4 +1,4 @@
-﻿namespace Graduation.DAL.Entities
+namespace Graduation.DAL.Entities
 {
     public class Order
     {
@@ -21,8 +21,8 @@
         public string? ShippingAddress { get; set; }
         public double? ShippingLatitude { get; set; }
         public double? ShippingLongitude { get; set; }
-        public double? CurrentLatitude { get; set; }  
-        public double? CurrentLongitude { get; set; } 
+        public double? CurrentLatitude { get; set; }
+        public double? CurrentLongitude { get; set; }
         public string? Notes { get; set; }
         public string? CancellationReason { get; set; }
         public string UserId { get; set; } = string.Empty;

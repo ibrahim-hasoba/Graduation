@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Microsoft.EntityFrameworkCore;
 using Shared.Errors;
@@ -19,7 +19,6 @@ namespace Graduation.BLL.Services.Implementations
             _context = context;
         }
 
-
         public async Task<string> ResolveUserIdAsync(string code)
         {
             var id = await _context.Users
@@ -32,7 +31,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return id;
         }
-
 
         public async Task<int> ResolveProductIdAsync(string code)
         {
@@ -47,7 +45,6 @@ namespace Graduation.BLL.Services.Implementations
             return id.Value;
         }
 
-
         public async Task<int> ResolveVendorIdAsync(string code)
         {
             var id = await _context.Vendors
@@ -61,7 +58,6 @@ namespace Graduation.BLL.Services.Implementations
             return id.Value;
         }
 
-
         public async Task<int> ResolveCategoryIdAsync(string code)
         {
             var id = await _context.Categories
@@ -74,7 +70,6 @@ namespace Graduation.BLL.Services.Implementations
 
             return id.Value;
         }
-
 
         public async Task<int> ResolveOrderIdAsync(string orderNumber)
         {

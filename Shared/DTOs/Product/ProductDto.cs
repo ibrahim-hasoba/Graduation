@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -24,7 +24,7 @@ namespace Shared.DTOs.Product
         public string? MadeInGovernorate { get; set; }
         public bool IsFeatured { get; set; }
         public bool IsActive { get; set; }
-        // public string Status { get; set; } = string.Empty;
+
         public bool InStock { get; set; }
         public int ViewCount { get; set; }
         public double AverageRating { get; set; }
@@ -34,17 +34,14 @@ namespace Shared.DTOs.Product
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
-        
         public int VendorId { get; set; }
         public string VendorName { get; set; } = string.Empty;
         public string VendorNameAr { get; set; } = string.Empty;
 
-        
         public int CategoryId { get; set; }
         public string CategoryNameAr { get; set; } = string.Empty;
         public string CategoryNameEn { get; set; } = string.Empty;
 
-        
         public List<ProductImageDto> Images { get; set; } = new();
         public List<ProductVariantGroupDto> Variants { get; set; } = new();
 

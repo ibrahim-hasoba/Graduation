@@ -1,4 +1,4 @@
-﻿using Shared.Errors;
+using Shared.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
@@ -25,7 +25,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(ci => ci.Product.Vendor)
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
-                .AsSplitQuery() 
+                .AsSplitQuery()
                 .Where(ci => ci.UserId == userId)
                 .OrderByDescending(ci => ci.AddedAt)
                 .ToListAsync();
@@ -60,7 +60,6 @@ namespace Graduation.BLL.Services.Implementations
             if (!product.IsActive)
                 throw new BadRequestException("This product is no longer available");
 
-            // 1. Fetch the requested variants
             List<ProductVariant> selectedVariants = new();
             var requestedVariantIds = dto.VariantIds ?? new List<int>();
 
@@ -70,7 +69,6 @@ namespace Graduation.BLL.Services.Implementations
                     .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
                     .ToListAsync();
 
-                // Ensure all requested variants exist and belong to this product
                 if (selectedVariants.Count != requestedVariantIds.Count ||
                     selectedVariants.Any(v => v.ProductId != dto.ProductId))
                 {
@@ -79,7 +77,7 @@ namespace Graduation.BLL.Services.Implementations
             }
             else
             {
-                // Verify if the product HAS variants and the user forgot to send them
+
                 var hasVariants = await _context.ProductVariants
                     .AnyAsync(v => v.ProductId == dto.ProductId && v.IsActive);
 
@@ -87,7 +85,6 @@ namespace Graduation.BLL.Services.Implementations
                     throw new BadRequestException("Please select product variants (e.g. size or color) before adding to cart.");
             }
 
-            // 2. Determine available stock using the lowest stock among selected variants
             var availableStock = selectedVariants.Any()
                 ? selectedVariants.Min(v => v.StockQuantity)
                 : product.StockQuantity;
@@ -95,7 +92,6 @@ namespace Graduation.BLL.Services.Implementations
             if (availableStock < dto.Quantity)
                 throw new BadRequestException($"Only {availableStock} items available in stock");
 
-            // 3. Check if this exact item with these EXACT variants already exists in the cart
             var existingItems = await _context.CartItems
                 .Include(ci => ci.SelectedVariants)
                 .Where(ci => ci.UserId == userId && ci.ProductId == dto.ProductId)
@@ -118,7 +114,6 @@ namespace Graduation.BLL.Services.Implementations
                 return await GetCartItemDtoAsync(existingItem.Id);
             }
 
-            // 4. Create new CartItem with multiple variants
             var cartItem = new CartItem
             {
                 UserId = userId,
@@ -151,7 +146,6 @@ namespace Graduation.BLL.Services.Implementations
             if (cartItem == null)
                 throw new NotFoundException("Cart item not found");
 
-            // 1. Handle Variants Update if provided
             var variantsToCheck = cartItem.SelectedVariants.Select(sv => sv.ProductVariant).ToList();
 
             if (dto.VariantIds != null)
@@ -164,14 +158,12 @@ namespace Graduation.BLL.Services.Implementations
                         .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
                         .ToListAsync();
 
-                    // Validate new variants
                     if (newVariants.Count != requestedVariantIds.Count ||
                         newVariants.Any(v => v.ProductId != cartItem.ProductId))
                     {
                         throw new BadRequestException("One or more selected variants are invalid or not available.");
                     }
 
-                    // Check if another cart item already has these exact variants
                     var existingDuplicate = await _context.CartItems
                         .Include(ci => ci.SelectedVariants)
                         .Where(ci => ci.UserId == userId && ci.ProductId == cartItem.ProductId && ci.Id != cartItemId)
@@ -184,10 +176,8 @@ namespace Graduation.BLL.Services.Implementations
                         throw new BadRequestException("An item with these exact variants already exists in your cart. Please update its quantity instead.");
                     }
 
-                    // Remove old variants from database
                     _context.RemoveRange(cartItem.SelectedVariants);
 
-                    // Add new variants
                     cartItem.SelectedVariants = newVariants.Select(v => new CartItemVariant
                     {
                         ProductVariantId = v.Id
@@ -197,7 +187,7 @@ namespace Graduation.BLL.Services.Implementations
                 }
                 else
                 {
-                    // If they passed an empty array [], ensure the product doesn't actually require variants
+
                     var hasVariants = await _context.ProductVariants
                         .AnyAsync(v => v.ProductId == cartItem.ProductId && v.IsActive);
 
@@ -210,7 +200,6 @@ namespace Graduation.BLL.Services.Implementations
                 }
             }
 
-            // 2. Check Available Stock (using the new variants if updated, or old ones if not)
             var availableStock = variantsToCheck.Any()
                 ? variantsToCheck.Min(v => v.StockQuantity)
                 : cartItem.Product.StockQuantity;
@@ -218,11 +207,9 @@ namespace Graduation.BLL.Services.Implementations
             if (availableStock < dto.Quantity)
                 throw new BadRequestException($"Only {availableStock} items available in stock");
 
-            // 3. Update Quantity & Save
             cartItem.Quantity = dto.Quantity;
             await _context.SaveChangesAsync();
 
-            // Re-fetch the cart item to ensure the newly added variants are fully loaded with their navigation properties
             return await GetCartItemDtoAsync(cartItem.Id);
         }
 
@@ -253,13 +240,13 @@ namespace Graduation.BLL.Services.Implementations
         private async Task<CartItemDto> GetCartItemDtoAsync(int cartItemId)
         {
             var cartItem = await _context.CartItems
-                .AsNoTracking() 
+                .AsNoTracking()
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
                 .Include(ci => ci.SelectedVariants)
                     .ThenInclude(sv => sv.ProductVariant)
-                .AsSplitQuery() 
+                .AsSplitQuery()
                 .FirstAsync(ci => ci.Id == cartItemId);
 
             return MapToDto(cartItem);
@@ -269,14 +256,12 @@ namespace Graduation.BLL.Services.Implementations
         {
             var basePrice = cartItem.Product.DiscountPrice ?? cartItem.Product.Price;
 
-            // CHANGED: Sum up the price adjustments for all selected variants
             var priceAdjustment = cartItem.SelectedVariants.Sum(sv => sv.ProductVariant.PriceAdjustment);
             var unitPrice = basePrice + priceAdjustment;
 
             var primaryImage = cartItem.Product.Images?.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
                    ?? cartItem.Product.Images?.FirstOrDefault()?.ImageUrl;
 
-            // CHANGED: Use the lowest stock among selected variants
             int stockAvailable;
 
             if (cartItem.SelectedVariants.Any())

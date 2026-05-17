@@ -13,7 +13,6 @@ namespace Graduation.API.Swagger.Filters
         {
             var method = context.MethodInfo;
 
-            // Request examples
             var reqAttrs = method.GetCustomAttributes(typeof(SwaggerRequestExampleAttribute), true)
                 .Cast<SwaggerRequestExampleAttribute>();
 
@@ -34,7 +33,6 @@ namespace Graduation.API.Swagger.Filters
                 }
             }
 
-            // Response examples
             var respAttrs = method.GetCustomAttributes(typeof(SwaggerResponseExampleAttribute), true)
                 .Cast<SwaggerResponseExampleAttribute>();
 

@@ -15,12 +15,12 @@ namespace Graduation.BLL.Services.Implementations
             _logger = logger;
         }
 
-        public async Task SendPushNotificationAsync(string fcmToken, string title, string body, Dictionary<string, string>? data = null)
+        public async Task<FcmSendResult> SendPushNotificationAsync(string fcmToken, string title, string body, Dictionary<string, string>? data = null)
         {
             if (string.IsNullOrEmpty(fcmToken))
             {
                 _logger.LogWarning("Attempted to send a notification to a null or empty FCM token.");
-                return;
+                return FcmSendResult.Error;
             }
 
             var message = new Message()
@@ -39,14 +39,22 @@ namespace Graduation.BLL.Services.Implementations
                 _logger.LogInformation("Sending FCM notification to token: {Token}", fcmToken);
                 string response = await _messaging.SendAsync(message);
                 _logger.LogInformation("Successfully sent message: {Response}", response);
+                return FcmSendResult.Success;
+            }
+            catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode == MessagingErrorCode.Unregistered)
+            {
+                _logger.LogWarning("FCM token is unregistered (device deleted or app uninstalled): {Token}", fcmToken);
+                return FcmSendResult.InvalidToken;
             }
             catch (FirebaseMessagingException ex)
             {
                 _logger.LogError(ex, "Firebase Messaging Error for token {Token}. Error Code: {ErrorCode}", fcmToken, ex.MessagingErrorCode);
+                return FcmSendResult.Error;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An unexpected error occurred while sending FCM notification to {Token}", fcmToken);
+                return FcmSendResult.Error;
             }
         }
     }

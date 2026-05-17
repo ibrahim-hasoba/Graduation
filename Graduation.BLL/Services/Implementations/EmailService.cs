@@ -1,4 +1,4 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Net;
@@ -20,19 +20,18 @@ namespace Graduation.BLL.Services.Implementations
         {
             _configuration = configuration;
             _logger = logger;
-            _smtpServer = _configuration["EmailSettings:SmtpServer"] 
+            _smtpServer = _configuration["EmailSettings:SmtpServer"]
                 ?? throw new InvalidOperationException("EmailSettings:SmtpServer is not configured");
-            _smtpPort = int.Parse(_configuration["EmailSettings:SmtpPort"] 
+            _smtpPort = int.Parse(_configuration["EmailSettings:SmtpPort"]
                 ?? throw new InvalidOperationException("EmailSettings:SmtpPort is not configured"));
-            _senderEmail = _configuration["EmailSettings:SenderEmail"] 
+            _senderEmail = _configuration["EmailSettings:SenderEmail"]
                 ?? throw new InvalidOperationException("EmailSettings:SenderEmail is not configured");
-            _senderPassword = _configuration["EmailSettings:SenderPassword"] 
+            _senderPassword = _configuration["EmailSettings:SenderPassword"]
                 ?? throw new InvalidOperationException("EmailSettings:SenderPassword is not configured");
-            _senderName = _configuration["EmailSettings:SenderName"] 
+            _senderName = _configuration["EmailSettings:SenderName"]
                 ?? throw new InvalidOperationException("EmailSettings:SenderName is not configured");
         }
 
-       
         public async Task SendEmailOtpAsync(string email, string firstName, string code)
         {
             var subject = "Your verification code - Heka";
@@ -58,7 +57,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task SendVendorApprovalEmailAsync(string email, string storeName, bool isApproved, string? reason = null)
         {
             var subject = isApproved
-                ? "🎉 Your Vendor Account Has Been Approved!"
+                ? "?? Your Vendor Account Has Been Approved!"
                 : "Vendor Application Update";
 
             var body = isApproved
@@ -66,7 +65,7 @@ namespace Graduation.BLL.Services.Implementations
                     <html>
                     <body style='font-family: Arial, sans-serif;'>
                         <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                            <h2 style='color: #10b981;'>Congratulations! 🎉</h2>
+                            <h2 style='color: #10b981;'>Congratulations! ??</h2>
                             <p>Your vendor account for <strong>{storeName}</strong> has been approved!</p>
                             <p>You can now start adding products and selling on our platform.</p>
                             <p>Login to your account and start your journey as an Egyptian products vendor!</p>
@@ -120,7 +119,7 @@ namespace Graduation.BLL.Services.Implementations
                 <html>
                 <body style='font-family: Arial, sans-serif;'>
                     <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                        <h2>Order Confirmed! 🎉</h2>
+                        <h2>Order Confirmed! ??</h2>
                         <p>Thank you for your order!</p>
                         <p><strong>Order Number:</strong> {orderNumber}</p>
                         <p><strong>Total Amount:</strong> {total:N2} EGP</p>
@@ -157,8 +156,7 @@ namespace Graduation.BLL.Services.Implementations
             }
             catch (Exception ex)
             {
-                // Log the error but don't throw - email failures shouldn't break the app
-                // TODO: Add proper logging
+
                 _logger.LogError(ex, "Email sending failed");
             }
         }

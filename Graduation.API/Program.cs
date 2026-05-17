@@ -80,13 +80,13 @@ namespace Graduation.API
                 builder.Services.AddControllers(options =>
                 {
                     options.Filters.Add<FluentValidationFilter>();
-                    
+
                 })
                 .AddJsonOptions(options =>
                 {
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-                    // options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+
                 });
 
                 builder.Services.Configure<ApiBehaviorOptions>(options =>
@@ -111,9 +111,14 @@ namespace Graduation.API
                 {
                     options.SwaggerDoc("v1", new OpenApiInfo
                     {
-                        Title = "Heka",
+                        Title = "Heka ",
                         Version = "v1",
-                        Description = "Heka API"
+                        Description = "Heka API",
+                        Contact = new OpenApiContact
+                        {
+                            Name = "Heka Support",
+                            Email = "eghekaa@gmail.com"
+                        }
                     });
 
                     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -158,6 +163,27 @@ namespace Graduation.API
                     }
                     catch { }
 
+                    options.TagActionsBy(api =>
+                    {
+                        var controllerName = api.ActionDescriptor.RouteValues["controller"];
+                        return new List<string> { controllerName ?? "Other" };
+                    });
+
+                    options.OrderActionsBy(api =>
+                    {
+                        var method = api.HttpMethod ?? "get";
+                        var order = method.ToUpperInvariant() switch
+                        {
+                            "GET" => 1,
+                            "POST" => 2,
+                            "PUT" => 3,
+                            "PATCH" => 4,
+                            "DELETE" => 5,
+                            _ => 6
+                        };
+                        return order.ToString("D2") + "-" + (api.RelativePath ?? "");
+                    });
+
                     try
                     {
                         options.OperationFilter<ApiResponseOperationFilter>();
@@ -170,11 +196,11 @@ namespace Graduation.API
                                  options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
         sqlOptions =>
         {
-            // This is the critical fix for the Error 64/Transient Failure
             sqlOptions.EnableRetryOnFailure(
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
+            sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
         }));
 
                 builder.Services.AddIdentity<AppUser, IdentityRole>(options =>
@@ -313,7 +339,6 @@ namespace Graduation.API
                     });
                 });
 
-
                 var wwwrootPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
                 if (!Directory.Exists(wwwrootPath))
                 {
@@ -348,7 +373,6 @@ namespace Graduation.API
 
                 app.UseMiddleware<ExceptionMiddleware>();
 
-                
                 app.UseStaticFiles();
 
                 app.UseStaticFiles(new StaticFileOptions
@@ -363,6 +387,11 @@ namespace Graduation.API
                     app.UseSwaggerUI(c =>
                     {
                         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Heka.API v1");
+                        c.DefaultModelExpandDepth(2);
+                        c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Model);
+                        c.DisplayRequestDuration();
+                        c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.List);
+                        c.EnableDeepLinking();
                     });
                 }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,16 +10,16 @@ namespace Graduation.DAL.Entities
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public enum PaymentStatus2
     {
-        Pending = 1,  
-        Paid = 2,   
-        Failed = 3,   
-        Refunded = 4 
+        Pending = 1,
+        Paid = 2,
+        Failed = 3,
+        Refunded = 4
     }
 
     public class Payment
     {
         public int Id { get; set; }
-        public string? Code { get; set; }  
+        public string? Code { get; set; }
         public int OrderId { get; set; }
         public Order Order { get; set; } = null!;
         public PaymentMethod Method { get; set; } = PaymentMethod.CreditCard;
