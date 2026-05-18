@@ -384,3 +384,6 @@ appsettings.Production.json
 Heka_API_Local_Environment.json
 Heka_API_Production_Environment.json
 Heka_API_Postman_Collection.json
+
+# Content moderation word list (customizable per environment)
+badwords.json

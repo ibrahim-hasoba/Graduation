@@ -32,6 +32,7 @@ namespace Graduation.API.Controllers
         private readonly IImageService _imageService;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IOrderService _orderService;
+        private readonly IVendorService _vendorService;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ILogger<AccountController> _logger;
@@ -48,6 +49,7 @@ namespace Graduation.API.Controllers
             IImageService imageService,
             ICodeAssignmentService codeAssignment,
             IOrderService orderService,
+            IVendorService vendorService,
             ILanguageService lang,
             IServiceScopeFactory scopeFactory,
             ILogger<AccountController> logger,
@@ -65,6 +67,7 @@ namespace Graduation.API.Controllers
             _imageService = imageService;
             _codeAssignment = codeAssignment;
             _orderService = orderService;
+            _vendorService = vendorService;
             _scopeFactory = scopeFactory;
             _taskQueue = taskQueue;
             _logger = logger;
@@ -641,6 +644,19 @@ namespace Graduation.API.Controllers
                 throw new BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             return OkResult(message: Lang.GetMessage(LangKeys.Auth.AccountDeleted));
+        }
+
+        /// <summary>Registers the authenticated user as a vendor. Auto-approved if content is clean, otherwise pending admin review.</summary>
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [Authorize]
+        [HttpPost("register-vendor")]
+        public async Task<IActionResult> RegisterVendor([FromBody] Shared.DTOs.Vendor.VendorRegisterDto dto)
+        {
+            var userId = GetRequiredUserId();
+            var result = await _vendorService.RegisterVendorAsync(userId, dto);
+            return CreatedResult(data: result);
         }
 
         private async Task CleanupUserDataAsync(string userId, string userEmail)

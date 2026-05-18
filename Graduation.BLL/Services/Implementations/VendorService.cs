@@ -20,6 +20,7 @@ namespace Graduation.BLL.Services.Implementations
         private readonly IBackgroundTaskQueue? _taskQueue;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
+        private readonly IContentModerationService _contentModeration;
 
         public VendorService(
             DatabaseContext context,
@@ -27,6 +28,7 @@ namespace Graduation.BLL.Services.Implementations
             IServiceScopeFactory scopeFactory,
             ILogger<VendorService> logger,
             ICodeAssignmentService codeAssignment,
+            IContentModerationService contentModeration,
             IBackgroundTaskQueue? taskQueue = null)
         {
             _context = context;
@@ -35,6 +37,7 @@ namespace Graduation.BLL.Services.Implementations
             _taskQueue = taskQueue;
             _codeAssignment = codeAssignment;
             _logger = logger;
+            _contentModeration = contentModeration;
         }
 
         public async Task<VendorDto> RegisterVendorAsync(string userId, VendorRegisterDto dto)
@@ -58,6 +61,17 @@ namespace Graduation.BLL.Services.Implementations
             if (storeNameExists)
                 throw new ConflictException("Store name already exists. Please choose a different name");
 
+            // Run content moderation on vendor information
+            var moderationFlags = new List<string>();
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreName).Flags);
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreNameAr).Flags);
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreDescription).Flags);
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreDescriptionAr).Flags);
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.Address).Flags);
+            moderationFlags.AddRange(_contentModeration.Moderate(dto.City).Flags);
+
+            var isClean = moderationFlags.Count == 0;
+
             var vendor = new Vendor
             {
                 UserId = userId,
@@ -70,7 +84,7 @@ namespace Graduation.BLL.Services.Implementations
                 City = dto.City,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                ApprovalStatus = VendorApprovalStatus.Pending,
+                ApprovalStatus = isClean ? VendorApprovalStatus.Approved : VendorApprovalStatus.Pending,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 Latitude = dto.Latitude,
@@ -80,9 +94,22 @@ namespace Graduation.BLL.Services.Implementations
             _context.Vendors.Add(vendor);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation(
-                "Vendor registration submitted: {StoreName} by user {UserId}",
-                dto.StoreName, userId);
+            if (isClean)
+            {
+                // Auto-approved: add Vendor role
+                if (!await _userManager.IsInRoleAsync(user, "Vendor"))
+                    await _userManager.AddToRoleAsync(user, "Vendor");
+
+                _logger.LogInformation(
+                    "Vendor auto-approved: {StoreName} by user {UserId} (clean content)",
+                    dto.StoreName, userId);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Vendor flagged for review: {StoreName} by user {UserId}. Flags: {Flags}",
+                    dto.StoreName, userId, string.Join("; ", moderationFlags));
+            }
 
             await _codeAssignment.AssignVendorCodeAsync(vendor);
 

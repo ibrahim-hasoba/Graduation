@@ -271,6 +271,11 @@ namespace Graduation.API
                 builder.Services.AddScoped<IFirebaseService, FirebaseService>();
                 builder.Services.AddScoped<ICouponService, CouponService>();
                 builder.Services.AddScoped<IReturnRequestService, ReturnRequestService>();
+                var badWordsPath = builder.Configuration.GetValue<string>("ContentModeration:BadWordsFilePath") ?? "badwords.json";
+                if (!Path.IsPathRooted(badWordsPath))
+                    badWordsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, badWordsPath);
+                builder.Services.AddSingleton<IContentModerationService>(
+                    _ => new ContentModerationService(badWordsPath));
 
                 var firebaseKeyPath = Path.Combine(Directory.GetCurrentDirectory(), "firebase-admin.json");
                 if (File.Exists(firebaseKeyPath))
