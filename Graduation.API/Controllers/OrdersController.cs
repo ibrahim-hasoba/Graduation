@@ -1,9 +1,13 @@
 using Graduation.API.Extensions;
 using Graduation.BLL.Services.Implementations;
 using Graduation.BLL.Services.Interfaces;
+using Graduation.DAL.Data;
+using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Order;
+using Shared.DTOs.ReturnRequest;
 
 namespace Graduation.API.Controllers
 {
@@ -15,17 +19,20 @@ namespace Graduation.API.Controllers
         private readonly IOrderService _orderService;
         private readonly IVendorService _vendorService;
         private readonly IPaymentService _paymentService;
+        private readonly DatabaseContext _context;
 
         public OrdersController(
             IOrderService orderService,
             IVendorService vendorService,
             IPaymentService paymentService,
+            DatabaseContext context,
             ILanguageService lang)
             : base(lang)
         {
             _orderService = orderService;
             _vendorService = vendorService;
             _paymentService = paymentService;
+            _context = context;
         }
         /// <summary>Creates a new order from the authenticated user's cart.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
@@ -145,6 +152,42 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var trackingData = await _orderService.GetOrderMapTrackingAsync(orderNumber, userId);
             return OkResult(data: trackingData);
+        }
+
+        /// <summary>Requests a return for a delivered order.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("{id}/return-request")]
+        public async Task<IActionResult> CreateReturnRequest(int id, [FromBody] CreateReturnRequestDto dto)
+        {
+            var userId = GetRequiredUserId();
+
+            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId)
+                ?? throw new Shared.Errors.NotFoundException("Order", id);
+
+            if (order.Status != DAL.Entities.OrderStatus.Delivered)
+                throw new Shared.Errors.BadRequestException("Order has not been delivered yet");
+
+            var existingPending = await _context.ReturnRequests
+                .AnyAsync(r => r.OrderId == id && r.Status == DAL.Entities.ReturnRequestStatus.Pending);
+            if (existingPending)
+                throw new Shared.Errors.BadRequestException("A pending return request already exists for this order");
+
+            var returnRequest = new DAL.Entities.ReturnRequest
+            {
+                OrderId = id,
+                UserId = userId,
+                Reason = dto.Reason,
+                Status = DAL.Entities.ReturnRequestStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            _context.ReturnRequests.Add(returnRequest);
+            await _context.SaveChangesAsync();
+
+            return OkResult(message: "Return request submitted");
         }
 
         private static bool IsTerminalStatus(string status) =>

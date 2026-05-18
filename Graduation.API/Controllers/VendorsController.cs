@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs.Order;
+using Shared.DTOs.ReturnRequest;
 using Shared.DTOs.Vendor;
 using Graduation.API.Extensions;
 
@@ -162,6 +163,9 @@ namespace Graduation.API.Controllers
                     reason = order.CancellationReason
                 });
 
+            if (order.ReturnedAt.HasValue)
+                timeline.Add(new { status = "Returned", date = order.ReturnedAt, label = "Order Returned" });
+
             return OkResult(data: new
             {
                 orderId = order.Id,
@@ -245,6 +249,87 @@ namespace Graduation.API.Controllers
             await _vendorService.UpdateOrderLocationAsync(orderId, dto.Latitude, dto.Longitude);
 
             return OkResult(message: Lang.GetMessage(LangKeys.Order.LocationUpdated));
+        }
+
+        /// <summary>Gets return requests for the vendor's orders.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [HttpGet("return-requests")]
+        public async Task<IActionResult> GetReturnRequests()
+        {
+            var userId = GetRequiredUserId();
+            var vendor = await _vendorService.GetVendorByUserIdAsync(userId)
+                ?? throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+
+            var requests = await _context.ReturnRequests
+                .Include(r => r.User)
+                .Include(r => r.Order)
+                    .ThenInclude(o => o.OrderItems)
+                        .ThenInclude(oi => oi.Product)
+                .Where(r => r.Order.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id))
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new ReturnRequestDto
+                {
+                    Id = r.Id,
+                    OrderId = r.OrderId,
+                    OrderNumber = r.Order.OrderNumber,
+                    UserId = r.UserId,
+                    UserName = r.User.FirstName + " " + r.User.LastName,
+                    Reason = r.Reason,
+                    Status = r.Status.ToString(),
+                    CreatedAt = r.CreatedAt,
+                    ReviewedAt = r.ReviewedAt,
+                    ReviewedByName = null,
+                    RejectionReason = r.RejectionReason,
+                })
+                .ToListAsync();
+
+            return OkResult(data: requests);
+        }
+
+        /// <summary>Approves or rejects a return request for the vendor's order.</summary>
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [HttpPost("return-requests/{returnId}/review")]
+        public async Task<IActionResult> ReviewReturnRequest(int returnId, [FromBody] UpdateReturnStatusDto dto)
+        {
+            var userId = GetRequiredUserId();
+            var vendor = await _vendorService.GetVendorByUserIdAsync(userId)
+                ?? throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+
+            var returnRequest = await _context.ReturnRequests
+                .Include(r => r.Order)
+                    .ThenInclude(o => o.OrderItems)
+                        .ThenInclude(oi => oi.Product)
+                .FirstOrDefaultAsync(r => r.Id == returnId
+                    && r.Order.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id))
+                ?? throw new Shared.Errors.NotFoundException("Return request", returnId);
+
+            if (returnRequest.Status != ReturnRequestStatus.Pending)
+                throw new Shared.Errors.BadRequestException("Return request has already been reviewed");
+
+            returnRequest.Status = dto.Status;
+            returnRequest.ReviewedAt = DateTime.UtcNow;
+
+            if (dto.Status == ReturnRequestStatus.Rejected)
+            {
+                if (string.IsNullOrWhiteSpace(dto.RejectionReason))
+                    throw new Shared.Errors.BadRequestException("Rejection reason is required");
+                returnRequest.RejectionReason = dto.RejectionReason;
+            }
+
+            if (dto.Status == ReturnRequestStatus.Approved)
+            {
+                returnRequest.Order.Status = OrderStatus.Returned;
+                returnRequest.Order.ReturnedAt = DateTime.UtcNow;
+                if (returnRequest.Order.PaymentStatus == PaymentStatus.Paid)
+                    returnRequest.Order.PaymentStatus = PaymentStatus.Refunded;
+            }
+
+            await _context.SaveChangesAsync();
+            return OkResult(message: $"Return request {dto.Status}");
         }
     }
 

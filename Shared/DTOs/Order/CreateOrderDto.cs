@@ -26,5 +26,6 @@ namespace Shared.DTOs.Order
         public PaymentMethod PaymentMethod { get; set; }
         public string ClientType { get; set; } = "web";
         public string? Notes { get; set; }
+        public string? CouponCode { get; set; }
     }
 }

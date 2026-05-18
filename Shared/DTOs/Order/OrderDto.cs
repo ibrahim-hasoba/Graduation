@@ -10,6 +10,8 @@ namespace Shared.DTOs.Order
         public string OrderNumber { get; set; } = string.Empty;
         public decimal SubTotal { get; set; }
         public decimal ShippingCost { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public string? CouponCode { get; set; }
         public decimal TotalAmount { get; set; }
         public string Status { get; set; } = string.Empty;
         public int StatusId { get; set; }

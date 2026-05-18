@@ -4,6 +4,7 @@ using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs;
+using Shared.DTOs.Coupon;
 using Shared.DTOs.Order;
 using Shared.DTOs.Payment;
 using Shared.Errors;
@@ -16,17 +17,20 @@ namespace Graduation.BLL.Services.Implementations
         private readonly IEmailService _emailService;
         private readonly ILogger<OrderService> _logger;
         private readonly IPaymentService _paymentService;
+        private readonly ICouponService _couponService;
 
         public OrderService(
             DatabaseContext context,
             IEmailService emailService,
             ILogger<OrderService> logger,
-            IPaymentService paymentService)
+            IPaymentService paymentService,
+            ICouponService couponService)
         {
             _context = context;
             _emailService = emailService;
             _logger = logger;
             _paymentService = paymentService;
+            _couponService = couponService;
         }
 
         public async Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto)
@@ -99,9 +103,30 @@ namespace Graduation.BLL.Services.Implementations
                             $"The following vendors are currently unavailable: {string.Join(", ", invalidItems)}. " +
                             "Please remove their products from your cart before placing an order.");
 
+                    ApplyCouponResultDto? couponResult = null;
+                    if (!string.IsNullOrWhiteSpace(dto.CouponCode))
+                    {
+                        var totalSub = cartItems.Sum(i =>
+                        {
+                            var basePrice = i.Product.DiscountPrice ?? i.Product.Price;
+                            var adj = i.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
+                            return (basePrice + adj) * i.Quantity;
+                        });
+                        couponResult = await _couponService.ValidateAndCalculateAsync(dto.CouponCode, totalSub);
+                    }
+
                     var vendorGroups = cartItems.GroupBy(ci => ci.Product.VendorId).ToList();
                     createdOrders = new List<Order>();
                     var allOrderItems = new List<OrderItem>();
+
+                    var groupSubtotals = vendorGroups.ToDictionary(
+                        g => g.Key,
+                        g => g.Sum(i =>
+                        {
+                            var bp = i.Product.DiscountPrice ?? i.Product.Price;
+                            var ad = i.SelectedVariants?.Sum(sv => sv.ProductVariant.PriceAdjustment) ?? 0m;
+                            return (bp + ad) * i.Quantity;
+                        }));
 
                     foreach (var vendorGroup in vendorGroups)
                     {
@@ -159,7 +184,13 @@ namespace Graduation.BLL.Services.Implementations
                         });
 
                         const decimal shippingCost = 50m;
-                        var totalAmount = subTotal + shippingCost;
+                        var totalCombinedSubtotal = groupSubtotals.Values.Sum();
+                        var discountAmount = 0m;
+                        if (couponResult != null && totalCombinedSubtotal > 0)
+                        {
+                            discountAmount = Math.Round(couponResult.DiscountAmount * (subTotal / totalCombinedSubtotal), 2);
+                        }
+                        var totalAmount = subTotal + shippingCost - discountAmount;
 
                         var order = new Order
                         {
@@ -167,8 +198,10 @@ namespace Graduation.BLL.Services.Implementations
                             UserId = userId,
                             SubTotal = subTotal,
                             ShippingCost = shippingCost,
+                            DiscountAmount = discountAmount,
                             TotalAmount = totalAmount,
                             Status = OrderStatus.Pending,
+                            CouponId = couponResult != null && !createdOrders.Any() ? (await _context.Coupons.Where(c => c.Code == couponResult.Code).Select(c => (int?)c.Id).FirstOrDefaultAsync()) : null,
                             PaymentMethod = dto.PaymentMethod,
                             PaymentStatus = PaymentStatus.Pending,
                             OrderDate = DateTime.UtcNow,
@@ -212,6 +245,17 @@ namespace Graduation.BLL.Services.Implementations
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
+
+                    if (couponResult != null)
+                    {
+                        var coupon = await _context.Coupons.FirstAsync(c => c.Code == couponResult.Code);
+                        coupon.CurrentUsageCount++;
+                        await _context.SaveChangesAsync();
+                    }
+
+                    _logger.LogInformation(
+                        "Order(s) created: {OrderNumbers} for user {UserId}",
+                        string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
                 }
                 catch
                 {
@@ -219,10 +263,6 @@ namespace Graduation.BLL.Services.Implementations
                     throw;
                 }
             });
-
-            _logger.LogInformation(
-                "Order(s) created: {OrderNumbers} for user {UserId}",
-                string.Join(", ", createdOrders.Select(o => o.OrderNumber)), userId);
 
             if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
             {
@@ -527,6 +567,8 @@ namespace Graduation.BLL.Services.Implementations
             OrderNumber = order.OrderNumber,
             SubTotal = order.SubTotal,
             ShippingCost = order.ShippingCost,
+            DiscountAmount = order.DiscountAmount,
+            CouponCode = order.Coupon?.Code,
             TotalAmount = order.TotalAmount,
             Status = order.Status.ToString(),
             PaymentMethod = order.PaymentMethod.ToString(),
@@ -596,6 +638,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.SelectedVariants)
                         .ThenInclude(sv => sv.ProductVariant)
+                .Include(o => o.Coupon)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null)

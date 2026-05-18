@@ -6,6 +6,7 @@ namespace Graduation.DAL.Entities
         public string OrderNumber { get; set; } = string.Empty;
         public decimal SubTotal { get; set; }
         public decimal ShippingCost { get; set; }
+        public decimal DiscountAmount { get; set; }
         public decimal TotalAmount { get; set; }
         public OrderStatus Status { get; set; } = OrderStatus.Pending;
         public PaymentMethod PaymentMethod { get; set; }
@@ -15,6 +16,7 @@ namespace Graduation.DAL.Entities
         public DateTime? ShippedAt { get; set; }
         public DateTime? DeliveredAt { get; set; }
         public DateTime? CancelledAt { get; set; }
+        public DateTime? ReturnedAt { get; set; }
         public string ShippingFirstName { get; set; } = string.Empty;
         public string ShippingLastName { get; set; } = string.Empty;
         public string ShippingPhone { get; set; } = string.Empty;
@@ -27,7 +29,10 @@ namespace Graduation.DAL.Entities
         public string? CancellationReason { get; set; }
         public string UserId { get; set; } = string.Empty;
         public AppUser User { get; set; } = null!;
+        public int? CouponId { get; set; }
+        public Coupon? Coupon { get; set; }
         public ICollection<OrderItem> OrderItems { get; set; } = new List<OrderItem>();
+        public ICollection<ReturnRequest> ReturnRequests { get; set; } = new List<ReturnRequest>();
         public string ClientType { get; set; } = "web";
     }
 }

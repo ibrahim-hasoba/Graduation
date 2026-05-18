@@ -269,6 +269,8 @@ namespace Graduation.API
                 builder.Services.AddHttpClient<IPaymobService, PaymobService>();
                 builder.Services.AddScoped<IPaymentService, PaymentService>();
                 builder.Services.AddScoped<IFirebaseService, FirebaseService>();
+                builder.Services.AddScoped<ICouponService, CouponService>();
+                builder.Services.AddScoped<IReturnRequestService, ReturnRequestService>();
 
                 var firebaseKeyPath = Path.Combine(Directory.GetCurrentDirectory(), "firebase-admin.json");
                 if (File.Exists(firebaseKeyPath))

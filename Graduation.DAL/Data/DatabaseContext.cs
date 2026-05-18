@@ -32,6 +32,8 @@ namespace Graduation.DAL.Data
         public DbSet<PendingRegistration> PendingRegistrations { get; set; }
         public DbSet<ReviewReport> ReviewReports { get; set; }
         public DbSet<ActivityLog> ActivityLogs { get; set; }
+        public DbSet<Coupon> Coupons { get; set; }
+        public DbSet<ReturnRequest> ReturnRequests { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -317,6 +319,7 @@ namespace Graduation.DAL.Data
 
                 entity.Property(o => o.SubTotal).HasPrecision(18, 2);
                 entity.Property(o => o.ShippingCost).HasPrecision(18, 2);
+                entity.Property(o => o.DiscountAmount).HasPrecision(18, 2);
                 entity.Property(o => o.TotalAmount).HasPrecision(18, 2);
                 entity.Property(o => o.OrderNumber).IsRequired().HasMaxLength(50);
                 entity.Property(o => o.ShippingPhone).IsRequired().HasMaxLength(20);
@@ -325,6 +328,11 @@ namespace Graduation.DAL.Data
                     .WithMany()
                     .HasForeignKey(o => o.UserId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(o => o.Coupon)
+                    .WithMany()
+                    .HasForeignKey(o => o.CouponId)
+                    .OnDelete(DeleteBehavior.SetNull);
 
                 entity.HasIndex(o => o.OrderNumber).IsUnique();
 
@@ -422,6 +430,41 @@ namespace Graduation.DAL.Data
                 entity.Property(e => e.Code).IsRequired().HasMaxLength(20);
                 entity.HasIndex(e => new { e.Email, e.Purpose });
                 entity.HasIndex(e => e.ExpiresAt);
+            });
+
+            builder.Entity<Coupon>(entity =>
+            {
+                entity.HasKey(c => c.Id);
+                entity.HasIndex(c => c.Code).IsUnique();
+                entity.Property(c => c.Code).IsRequired().HasMaxLength(50);
+                entity.Property(c => c.DiscountValue).HasPrecision(18, 2);
+                entity.Property(c => c.MinOrderAmount).HasPrecision(18, 2);
+                entity.HasOne(c => c.Vendor)
+                    .WithMany()
+                    .HasForeignKey(c => c.VendorId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(c => c.IsActive);
+            });
+
+            builder.Entity<ReturnRequest>(entity =>
+            {
+                entity.HasKey(r => r.Id);
+                entity.Property(r => r.Reason).IsRequired().HasMaxLength(1000);
+                entity.Property(r => r.RejectionReason).HasMaxLength(500);
+                entity.HasOne(r => r.Order)
+                    .WithMany(o => o.ReturnRequests)
+                    .HasForeignKey(r => r.OrderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(r => r.User)
+                    .WithMany()
+                    .HasForeignKey(r => r.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(r => r.ReviewedBy)
+                    .WithMany()
+                    .HasForeignKey(r => r.ReviewedById)
+                    .OnDelete(DeleteBehavior.SetNull);
+                entity.HasIndex(r => r.Status);
+                entity.HasIndex(r => new { r.OrderId, r.Status });
             });
 
             builder.Entity<Category>(b =>
