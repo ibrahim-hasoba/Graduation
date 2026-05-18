@@ -31,6 +31,7 @@ namespace Graduation.DAL.Data
 
         public DbSet<PendingRegistration> PendingRegistrations { get; set; }
         public DbSet<ReviewReport> ReviewReports { get; set; }
+        public DbSet<ActivityLog> ActivityLogs { get; set; }
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -397,6 +398,21 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(n => n.CreatedAt);
                 entity.HasIndex(n => new { n.UserId, n.IsRead });
                 entity.HasIndex(n => new { n.UserId, n.CreatedAt });
+            });
+
+            builder.Entity<ActivityLog>(entity =>
+            {
+                entity.HasKey(a => a.Id);
+                entity.Property(a => a.Action).IsRequired().HasMaxLength(50);
+                entity.Property(a => a.EntityType).IsRequired().HasMaxLength(50);
+                entity.Property(a => a.Description).IsRequired().HasMaxLength(500);
+                entity.Property(a => a.EntityIdentifier).HasMaxLength(50);
+                entity.HasOne(a => a.Admin)
+                    .WithMany()
+                    .HasForeignKey(a => a.AdminId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(a => a.CreatedAt);
+                entity.HasIndex(a => a.EntityType);
             });
 
             builder.Entity<EmailOtp>(entity =>

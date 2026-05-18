@@ -10,8 +10,9 @@
 	<ItemGroup>
 		<!-- Observability -->
 		<PackageReference Include="Microsoft.Extensions.Localization" Version="8.0.25" />
-		<PackageReference Include="prometheus-net.AspNetCore" Version="7.0.0" />
+		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="8.0.0" />
 		<!-- Authentication -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.Facebook" Version="8.0.11" />
 

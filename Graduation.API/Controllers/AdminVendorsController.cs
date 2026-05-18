@@ -20,6 +20,7 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
+        private readonly IActivityLogService _activityLog;
 
         public AdminVendorsController(
             IVendorService vendorService,
@@ -27,6 +28,7 @@ namespace Graduation.API.Controllers
             ICodeAssignmentService codeAssignment,
             DatabaseContext context,
             UserManager<AppUser> userManager,
+            IActivityLogService activityLog,
             ILanguageService lang)
             : base(lang)
         {
@@ -35,6 +37,7 @@ namespace Graduation.API.Controllers
             _codeAssignment = codeAssignment;
             _context = context;
             _userManager = userManager;
+            _activityLog = activityLog;
         }
         /// <summary>Gets a paginated list of all vendors with optional filtering by approval status, activity, and search.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -162,6 +165,8 @@ namespace Graduation.API.Controllers
             if (dto.IsApproved && !await _userManager.IsInRoleAsync(user, "Vendor"))
                 await _userManager.AddToRoleAsync(user, "Vendor");
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Create", "Vendor", vendor.Code, $"Created vendor {vendor.StoreName}");
+
             vendor = await _context.Vendors
                 .Include(v => v.User)
                 .Include(v => v.Products)
@@ -250,6 +255,8 @@ namespace Graduation.API.Controllers
             vendor.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Update", "Vendor", vendorCode, $"Updated vendor {vendor.StoreName}");
+
             vendor = await _context.Vendors
                 .Include(v => v.User)
                 .Include(v => v.Products)
@@ -279,6 +286,8 @@ namespace Graduation.API.Controllers
             if (appUser != null && await _userManager.IsInRoleAsync(appUser, "Vendor"))
                 await _userManager.RemoveFromRoleAsync(appUser, "Vendor");
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Delete", "Vendor", vendorCode, $"Deleted vendor {vendor.StoreName}");
+
             _context.Vendors.Remove(vendor);
             await _context.SaveChangesAsync();
 
@@ -294,6 +303,7 @@ namespace Graduation.API.Controllers
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(id, isApproved: true);
+            await _activityLog.LogAsync(GetRequiredUserId(), "Approve", "Vendor", vendorCode, $"Approved vendor {result.StoreName}");
             return OkResult(data: result, message: Lang.GetMessage(LangKeys.Vendor.Approved));
         }
         /// <summary>Rejects a pending vendor application with a required rejection reason.</summary>
@@ -312,6 +322,7 @@ namespace Graduation.API.Controllers
             var result = await _vendorService.ApproveVendorAsync(
                 id, isApproved: false, rejectionReason: dto.RejectionReason);
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Reject", "Vendor", vendorCode, $"Rejected vendor {result.StoreName}. Reason: {dto.RejectionReason}");
             return OkResult(data: result, message: Lang.GetMessage(LangKeys.Vendor.Rejected));
         }
         /// <summary>Toggles a vendor's active/inactive status.</summary>
@@ -324,6 +335,8 @@ namespace Graduation.API.Controllers
         {
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ToggleVendorStatusAsync(id);
+            var action = result.IsActive ? "Activate" : "Deactivate";
+            await _activityLog.LogAsync(GetRequiredUserId(), action, "Vendor", vendorCode, $"{action}d vendor {result.StoreName}");
             var msg = result.IsActive ? Lang.GetMessage(LangKeys.Vendor.Activated) : Lang.GetMessage(LangKeys.Vendor.Deactivated);
             return OkResult(data: result, message: msg);
         }

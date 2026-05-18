@@ -1,3 +1,4 @@
+
 using FirebaseAdmin;
 using FirebaseAdmin.Messaging;
 using FluentValidation;
@@ -10,6 +11,7 @@ using Graduation.API.Middlewares;
 using Graduation.API.Swagger;
 using Graduation.API.Swagger.Filters;
 using Graduation.BLL.BackgroundJobs;
+using Prometheus;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Implementations;
@@ -243,6 +245,7 @@ namespace Graduation.API
                 });
 
                 builder.Services.AddScoped<JwtHandler>();
+                builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
                 builder.Services.AddScoped<IVendorService, VendorService>();
                 builder.Services.AddScoped<IEmailService, EmailService>();
                 builder.Services.AddScoped<IProductService, ProductService>();
@@ -312,6 +315,9 @@ namespace Graduation.API
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
                 builder.Services.AddHostedService<StaleOrderCleanupJob>();
 
+                builder.Services.AddHealthChecks()
+                    .AddDbContextCheck<DatabaseContext>(name: "Database", failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy, tags: new[] { "db" });
+
                 builder.Services.AddLocalization();
 
                 builder.Services.AddHttpContextAccessor();
@@ -366,6 +372,9 @@ namespace Graduation.API
 
                 using (var scope = app.Services.CreateScope())
                 {
+                    var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+                    await db.Database.MigrateAsync();
+
                     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
                     UserManager<AppUser>? userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
                     await SeedRolesAndAdmin(roleManager, userManager);
@@ -381,7 +390,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
@@ -394,6 +403,9 @@ namespace Graduation.API
                         c.EnableDeepLinking();
                     });
                 }
+
+                app.MapHealthChecks("/api/health");
+                app.MapMetrics();
 
                 app.Use(async (context, next) =>
                 {
@@ -409,6 +421,7 @@ namespace Graduation.API
                 app.UseCors("AllowFrontend");
                 app.UseRateLimiter();
                 app.UseRequestLocalization();
+                app.UseHttpMetrics();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.MapControllers();

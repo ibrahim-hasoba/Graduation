@@ -30,6 +30,7 @@ namespace Graduation.API.Controllers
         private readonly IProductService _productService;
         private readonly IOrderService _orderService;
         private readonly IReviewReportService _reviewReportService;
+        private readonly IActivityLogService _activityLog;
 
         public AdminController(
             IAdminService adminService,
@@ -43,6 +44,7 @@ namespace Graduation.API.Controllers
             IProductService productService,
             IOrderService orderService,
             IReviewReportService reviewReportService,
+            IActivityLogService activityLog,
             ILanguageService lang)
             : base(lang)
         {
@@ -57,6 +59,7 @@ namespace Graduation.API.Controllers
             _productService = productService;
             _orderService = orderService;
             _reviewReportService = reviewReportService;
+            _activityLog = activityLog;
         }
         /// <summary>Gets aggregate dashboard statistics for the admin panel.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -73,7 +76,7 @@ namespace Graduation.API.Controllers
         [HttpGet("dashboard/activities")]
         public async Task<IActionResult> GetRecentActivities([FromQuery] int count = 10)
         {
-            var activities = await _adminService.GetRecentActivitiesAsync(count);
+            var activities = await _activityLog.GetRecentActivitiesAsync(count);
             return OkResult(data: activities);
         }
         /// <summary>Gets the top-selling products for the admin dashboard.</summary>
@@ -245,6 +248,7 @@ namespace Graduation.API.Controllers
                 throw new Shared.Errors.BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Delete", "User", user.Code, $"Deleted user {user.Email}");
             return OkResult(message: Lang.GetMessage(LangKeys.User.Deleted));
         }
         /// <summary>Toggles a user's account lockout status between locked and unlocked.</summary>
@@ -262,11 +266,13 @@ namespace Graduation.API.Controllers
             if (user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
                 await _userManager.SetLockoutEndDateAsync(user, null);
+                await _activityLog.LogAsync(GetRequiredUserId(), "Unlock", "User", user.Code, $"Unlocked user {user.Email}");
                 return OkResult(data: new { locked = false }, message: Lang.GetMessage(LangKeys.User.Unlocked));
             }
             else
             {
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+                await _activityLog.LogAsync(GetRequiredUserId(), "Lock", "User", user.Code, $"Locked user {user.Email}");
                 return OkResult(data: new { locked = true }, message: Lang.GetMessage(LangKeys.User.Locked));
             }
         }
@@ -305,6 +311,8 @@ namespace Graduation.API.Controllers
             await _userManager.AddToRoleAsync(user, dto.Role);
             await _codeAssignment.AssignUserCodeAsync(user);
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Create", "User", user.Code, $"Created user {user.Email} with role {dto.Role}");
+
             return OkResult(data: new
             {
                 userCode = user.Code,
@@ -339,6 +347,8 @@ namespace Graduation.API.Controllers
             if (!result.Succeeded)
                 throw new Shared.Errors.BadRequestException(result.Errors.First().Description);
 
+            await _activityLog.LogAsync(GetRequiredUserId(), "Update", "User", user.Code, $"Updated user {user.Email}");
+
             return OkResult(data: new
             {
                 userCode = user.Code,
@@ -372,6 +382,7 @@ namespace Graduation.API.Controllers
                 throw new Shared.Errors.BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.UpdateSecurityStampAsync(user);
+            await _activityLog.LogAsync(GetRequiredUserId(), "ResetPassword", "User", user.Code, $"Reset password for user {user.Email}");
             return OkResult(message: Lang.GetMessage(LangKeys.User.PasswordReset));
         }
         /// <summary>Exports users to a CSV file, optionally filtered by role.</summary>
@@ -517,6 +528,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             var category = await _categoryService.CreateCategoryAsync(dto);
+            await _activityLog.LogAsync(GetRequiredUserId(), "Create", "Category", category.Code, $"Created category {category.NameEn}");
             return CreatedAtAction(
                 nameof(GetCategoryByCode),
                 new { categoryCode = category.Code },
@@ -562,6 +574,7 @@ namespace Graduation.API.Controllers
             string categoryCode, [FromBody] UpdateCategoryDto dto)
         {
             var category = await _categoryService.UpdateCategoryAsync(categoryCode, dto);
+            await _activityLog.LogAsync(GetRequiredUserId(), "Update", "Category", categoryCode, $"Updated category {category.NameEn}");
             return OkResult(data: category, message: Lang.GetMessage(LangKeys.Category.Updated));
         }
         /// <summary>Toggles a category's active/inactive status.</summary>
@@ -573,6 +586,8 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> ToggleCategoryActivation(string categoryCode)
         {
             var category = await _categoryService.ToggleActivationAsync(categoryCode);
+            var action = category.Status == "Active" ? "Activate" : "Deactivate";
+            await _activityLog.LogAsync(GetRequiredUserId(), action, "Category", categoryCode, $"{action}d category {category.NameEn}");
             var msg = category.Status == "Active"
                 ? Lang.GetMessage(LangKeys.Category.Activated)
                 : Lang.GetMessage(LangKeys.Category.Deactivated);
@@ -585,6 +600,7 @@ namespace Graduation.API.Controllers
         [HttpDelete("categories/{categoryCode}")]
         public async Task<IActionResult> DeleteCategory(string categoryCode)
         {
+            await _activityLog.LogAsync(GetRequiredUserId(), "Delete", "Category", categoryCode, $"Deleted category {categoryCode}");
             await _categoryService.DeleteCategoryAsync(categoryCode);
             return OkResult(message: Lang.GetMessage(LangKeys.Category.Deleted));
         }
@@ -625,6 +641,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> CreateProduct([FromBody] ProductCreateDto dto)
         {
             var product = await _productService.CreateProductAsync(dto);
+            await _activityLog.LogAsync(GetRequiredUserId(), "Create", "Product", product.Code, $"Created product {product.NameEn}");
             return StatusCode(201, new Errors.ApiResult(data: product, message: Lang.GetMessage(LangKeys.Product.AdminCreated)));
         }
         /// <summary>Updates any product by ID as an admin.</summary>
@@ -636,6 +653,7 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UpdateProduct(int id, [FromBody] ProductUpdateDto dto)
         {
             var product = await _productService.AdminUpdateProductAsync(id, dto);
+            await _activityLog.LogAsync(GetRequiredUserId(), "Update", "Product", product.Code, $"Updated product {product.NameEn}");
             return OkResult(data: product, message: Lang.GetMessage(LangKeys.Product.AdminUpdated));
         }
         /// <summary>Deletes any product by ID as an admin.</summary>
@@ -645,6 +663,7 @@ namespace Graduation.API.Controllers
         [HttpDelete("products/{id:int}")]
         public async Task<IActionResult> DeleteProduct(int id)
         {
+            await _activityLog.LogAsync(GetRequiredUserId(), "Delete", "Product", id.ToString(), $"Deleted product #{id}");
             await _productService.AdminDeleteProductAsync(id);
             return OkResult(message: Lang.GetMessage(LangKeys.Product.AdminDeleted));
         }
@@ -656,6 +675,7 @@ namespace Graduation.API.Controllers
         [HttpPatch("products/{id:int}/stock")]
         public async Task<IActionResult> UpdateProductStock(int id, [FromBody] UpdateStockDto dto)
         {
+            await _activityLog.LogAsync(GetRequiredUserId(), "UpdateStock", "Product", id.ToString(), $"Updated stock for product #{id} to {dto.Quantity}");
             await _productService.AdminUpdateStockAsync(id, dto.Quantity);
             return OkResult(message: Lang.GetMessage(LangKeys.Product.StockAdminUpdated));
         }
@@ -668,6 +688,8 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> ToggleProductStatus(int id)
         {
             var product = await _productService.AdminToggleProductStatusAsync(id);
+            var action = product.IsActive ? "Activate" : "Deactivate";
+            await _activityLog.LogAsync(GetRequiredUserId(), action, "Product", product.Code, $"{action}d product {product.NameEn}");
             var msg = product.IsActive ? Lang.GetMessage(LangKeys.Product.Activated) : Lang.GetMessage(LangKeys.Product.Deactivated);
             return OkResult(data: product, message: msg);
         }
@@ -816,6 +838,7 @@ namespace Graduation.API.Controllers
             var result = await _reviewReportService.ApproveReportAsync(reportId, adminId);
             if (!result)
                 throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+            await _activityLog.LogAsync(adminId, "Approve", "Review", reportId.ToString(), $"Approved review report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.Approved));
         }
         /// <summary>Dismisses a review report without taking further action.</summary>
@@ -830,6 +853,7 @@ namespace Graduation.API.Controllers
             var result = await _reviewReportService.DismissReportAsync(reportId, adminId);
             if (!result)
                 throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+            await _activityLog.LogAsync(adminId, "Dismiss", "Review", reportId.ToString(), $"Dismissed review report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.Dismissed));
         }
         /// <summary>Deletes the reviewed content associated with a review report.</summary>
@@ -843,6 +867,7 @@ namespace Graduation.API.Controllers
             var result = await _reviewReportService.DeleteReviewFromReportAsync(reportId, adminId);
             if (!result)
                 throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
+            await _activityLog.LogAsync(adminId, "Delete", "Review", reportId.ToString(), $"Deleted review from report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.ReviewDeleted));
         }
     }

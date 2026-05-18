@@ -49,42 +49,6 @@ namespace Graduation.BLL.Services.Implementations
             return stats;
         }
 
-        public async Task<List<RecentActivityDto>> GetRecentActivitiesAsync(int count = 10)
-        {
-            var activities = new List<RecentActivityDto>();
-
-            var recentOrders = await _context.Orders
-                .Include(o => o.User)
-                .OrderByDescending(o => o.OrderDate)
-                .Take(count / 2)
-                .Select(o => new RecentActivityDto
-                {
-                    Type = "Order",
-                    Description = $"New order #{o.OrderNumber} by {o.User.FirstName} {o.User.LastName}",
-                    Timestamp = o.OrderDate,
-                    Link = $"/admin/orders/{o.Id}"
-                })
-                .ToListAsync();
-
-            activities.AddRange(recentOrders);
-
-            var recentVendors = await _context.Vendors
-                .OrderByDescending(v => v.CreatedAt)
-                .Take(count / 2)
-                .Select(v => new RecentActivityDto
-                {
-                    Type = "Vendor",
-                    Description = $"New vendor registration: {v.StoreName}",
-                    Timestamp = v.CreatedAt,
-                    Link = $"/admin/vendors/{v.Id}"
-                })
-                .ToListAsync();
-
-            activities.AddRange(recentVendors);
-
-            return activities.OrderByDescending(a => a.Timestamp).Take(count).ToList();
-        }
-
         public async Task<List<TopVendorDto>> GetTopVendorsAsync(int count = 10)
         {
             var approvedVendors = await _context.Vendors
