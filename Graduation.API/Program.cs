@@ -392,6 +392,13 @@ namespace Graduation.API
                     Log.Information("Created profiles folder at: {Path}", profilesPath);
                 }
 
+                var thumbnailsPath = Path.Combine(uploadsPath, "products", "thumbnails");
+                if (!Directory.Exists(thumbnailsPath))
+                {
+                    Directory.CreateDirectory(thumbnailsPath);
+                    Log.Information("Created thumbnails folder at: {Path}", thumbnailsPath);
+                }
+
                 builder.Environment.WebRootPath = wwwrootPath;
 
                 var app = builder.Build();
@@ -410,13 +417,16 @@ namespace Graduation.API
 
                 app.UseStaticFiles();
 
+                var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+                contentTypeProvider.Mappings[".webp"] = "image/webp";
                 app.UseStaticFiles(new StaticFileOptions
                 {
                     FileProvider = new PhysicalFileProvider(uploadsPath),
-                    RequestPath = "/uploads"
+                    RequestPath = "/uploads",
+                    ContentTypeProvider = contentTypeProvider
                 });
 
-                if (app.Environment.IsProduction())
+                if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>

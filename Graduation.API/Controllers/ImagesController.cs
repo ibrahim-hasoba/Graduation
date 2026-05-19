@@ -62,7 +62,7 @@ namespace Graduation.API.Controllers
             });
         }
 
-        /// <summary>Uploads up to 5 images for a product. Returns an array of image URLs.</summary>
+        /// <summary>Uploads up to 5 images for a product. Returns image URLs and thumbnail URLs.</summary>
         [HttpPost("upload-product")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -76,13 +76,17 @@ namespace Graduation.API.Controllers
             if (request.Files.Count > 5)
                 return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_MaxExceeded")));
 
-            var imageUrls = await _imageService.UploadImagesAsync(request.Files, "products");
+            var results = await _imageService.UploadProductImagesAsync(request.Files);
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_ProductUploaded", imageUrls.Count),
-                data = new { imageUrls }
+                message = _lang.GetMessage("Image_ProductUploaded", results.Count),
+                data = new
+                {
+                    imageUrls = results.Select(r => r.imageUrl).ToList(),
+                    thumbnailUrls = results.Select(r => r.thumbnailUrl).ToList()
+                }
             });
         }
 

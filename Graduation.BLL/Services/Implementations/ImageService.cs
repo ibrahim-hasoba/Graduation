@@ -2,10 +2,11 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Shared.Errors;
-using System.IO;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.Processing;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -17,6 +18,11 @@ namespace Graduation.BLL.Services.Implementations
 
         private readonly string[] _allowedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
         private readonly long _maxFileSize = 5 * 1024 * 1024;
+        private readonly int _maxWidth;
+        private readonly int _maxHeight;
+        private readonly int _quality;
+        private readonly int _thumbWidth;
+        private readonly int _thumbHeight;
 
         public ImageService(
             IWebHostEnvironment environment,
@@ -26,6 +32,18 @@ namespace Graduation.BLL.Services.Implementations
             _environment = environment;
             _logger = logger;
             _configuration = configuration;
+
+            var imgConfig = configuration.GetSection("ImageProcessing");
+            _maxWidth = imgConfig.GetValue<int>("MaxWidth");
+            if (_maxWidth <= 0) _maxWidth = 1920;
+            _maxHeight = imgConfig.GetValue<int>("MaxHeight");
+            if (_maxHeight <= 0) _maxHeight = 1080;
+            _quality = imgConfig.GetValue<int>("Quality");
+            if (_quality <= 0 || _quality > 100) _quality = 85;
+            _thumbWidth = imgConfig.GetValue<int>("ThumbnailWidth");
+            if (_thumbWidth <= 0) _thumbWidth = 300;
+            _thumbHeight = imgConfig.GetValue<int>("ThumbnailHeight");
+            if (_thumbHeight <= 0) _thumbHeight = 300;
         }
 
         public async Task<string> UploadImageAsync(IFormFile file, string folder)
@@ -33,53 +51,89 @@ namespace Graduation.BLL.Services.Implementations
             if (!await ValidateImageAsync(file))
                 throw new BadRequestException("Invalid image file");
 
-            string webRootPath = _environment.WebRootPath;
+            var uploadsFolder = EnsureFolder(folder);
+            var fileName = $"{Guid.NewGuid()}.webp";
+            var filePath = Path.Combine(uploadsFolder, fileName);
 
-            if (string.IsNullOrEmpty(webRootPath))
+            using var image = await Image.LoadAsync(file.OpenReadStream());
+            image.Mutate(x =>
             {
-                webRootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
-                if (!Directory.Exists(webRootPath))
-                {
-                    Directory.CreateDirectory(webRootPath);
-                    _logger.LogInformation("Created wwwroot folder at: {WebRootPath}", webRootPath);
-                }
-            }
+                x.AutoOrient();
+                if (image.Width > _maxWidth || image.Height > _maxHeight)
+                    x.Resize(new ResizeOptions
+                    {
+                        Size = new Size(_maxWidth, _maxHeight),
+                        Mode = ResizeMode.Max
+                    });
+            });
 
-            var uploadsFolder = Path.Combine(webRootPath, "uploads", folder);
+            await image.SaveAsWebpAsync(filePath, new WebpEncoder { Quality = _quality });
 
-            if (!Directory.Exists(uploadsFolder))
-            {
-                Directory.CreateDirectory(uploadsFolder);
-                _logger.LogInformation("Created folder at: {UploadsFolder}", uploadsFolder);
-            }
+            _logger.LogInformation("Image saved: {FilePath} ({Width}x{Height}, {Size} bytes)",
+                filePath, image.Width, image.Height, new FileInfo(filePath).Length);
 
-            var fileExtension = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
-            var filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(stream);
-            }
-
-            _logger.LogInformation("File saved at: {FilePath}", filePath);
-
-            var imageUrl = $"/uploads/{folder}/{uniqueFileName}";
-
-            return imageUrl;
+            return $"/uploads/{folder}/{fileName}";
         }
 
         public async Task<List<string>> UploadImagesAsync(List<IFormFile> files, string folder)
         {
-            var imageUrls = new List<string>();
-
+            var urls = new List<string>();
             foreach (var file in files)
-            {
-                var imageUrl = await UploadImageAsync(file, folder);
-                imageUrls.Add(imageUrl);
-            }
+                urls.Add(await UploadImageAsync(file, folder));
+            return urls;
+        }
 
-            return imageUrls;
+        public async Task<(string imageUrl, string thumbnailUrl)> UploadProductImageAsync(IFormFile file)
+        {
+            if (!await ValidateImageAsync(file))
+                throw new BadRequestException("Invalid image file");
+
+            var uploadsFolder = EnsureFolder("products");
+            var thumbsFolder = EnsureFolder("products/thumbnails");
+
+            var baseName = Guid.NewGuid().ToString();
+            var imagePath = Path.Combine(uploadsFolder, $"{baseName}.webp");
+            var thumbPath = Path.Combine(thumbsFolder, $"{baseName}.webp");
+
+            using var image = await Image.LoadAsync(file.OpenReadStream());
+            image.Mutate(x => x.AutoOrient());
+
+            var fullWidth = image.Width;
+            var fullHeight = image.Height;
+
+            image.Mutate(x =>
+            {
+                if (fullWidth > _maxWidth || fullHeight > _maxHeight)
+                    x.Resize(new ResizeOptions
+                    {
+                        Size = new Size(_maxWidth, _maxHeight),
+                        Mode = ResizeMode.Max
+                    });
+            });
+
+            await image.SaveAsWebpAsync(imagePath, new WebpEncoder { Quality = _quality });
+
+            image.Mutate(x =>
+                x.Resize(new ResizeOptions
+                {
+                    Size = new Size(_thumbWidth, _thumbHeight),
+                    Mode = ResizeMode.Max
+                }));
+
+            await image.SaveAsWebpAsync(thumbPath, new WebpEncoder { Quality = _quality });
+
+            _logger.LogInformation("Product image saved: {Path}, thumb: {ThumbPath}",
+                imagePath, thumbPath);
+
+            return ($"/uploads/products/{baseName}.webp", $"/uploads/products/thumbnails/{baseName}.webp");
+        }
+
+        public async Task<List<(string imageUrl, string thumbnailUrl)>> UploadProductImagesAsync(List<IFormFile> files)
+        {
+            var results = new List<(string, string)>();
+            foreach (var file in files)
+                results.Add(await UploadProductImageAsync(file));
+            return results;
         }
 
         public Task<bool> DeleteImageAsync(string imageUrl)
@@ -89,19 +143,16 @@ namespace Graduation.BLL.Services.Implementations
                 if (string.IsNullOrEmpty(imageUrl))
                     return Task.FromResult(false);
 
-                _logger.LogInformation("Attempting to delete image: {ImageUrl}", imageUrl);
+                _logger.LogInformation("Deleting image: {ImageUrl}", imageUrl);
 
                 string fileName;
-
                 if (imageUrl.StartsWith("http://") || imageUrl.StartsWith("https://"))
                 {
-
                     var uri = new Uri(imageUrl);
                     fileName = Path.GetFileName(uri.LocalPath);
                 }
                 else
                 {
-
                     fileName = Path.GetFileName(imageUrl);
                 }
 
@@ -111,40 +162,27 @@ namespace Graduation.BLL.Services.Implementations
                     return Task.FromResult(false);
                 }
 
-                _logger.LogInformation("Looking for file with name: {FileName}", fileName);
-
-                string wwwrootPath = _environment.WebRootPath;
-                if (string.IsNullOrEmpty(wwwrootPath))
-                {
-                    wwwrootPath = Path.Combine(_environment.ContentRootPath, "wwwroot");
-                }
-
+                var wwwrootPath = ResolveWwwRoot();
                 var uploadsPath = Path.Combine(wwwrootPath, "uploads");
 
                 if (!Directory.Exists(uploadsPath))
-                {
-                    _logger.LogWarning("Uploads directory not found: {UploadsPath}", uploadsPath);
                     return Task.FromResult(false);
-                }
 
                 var foundFiles = Directory.GetFiles(uploadsPath, fileName, SearchOption.AllDirectories);
-
                 foreach (var foundFile in foundFiles)
                 {
                     try
                     {
                         File.Delete(foundFile);
-                        _logger.LogInformation("Image deleted successfully: {FilePath}", foundFile);
-                        return Task.FromResult(true);
+                        _logger.LogInformation("Deleted: {FilePath}", foundFile);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to delete file: {FilePath}", foundFile);
+                        _logger.LogError(ex, "Failed to delete: {FilePath}", foundFile);
                     }
                 }
 
-                _logger.LogWarning("Image file not found: {FileName} in {UploadsPath}", fileName, uploadsPath);
-                return Task.FromResult(false);
+                return Task.FromResult(foundFiles.Length > 0);
             }
             catch (Exception ex)
             {
@@ -161,12 +199,8 @@ namespace Graduation.BLL.Services.Implementations
             if (relativePath.StartsWith("http://") || relativePath.StartsWith("https://"))
                 return relativePath;
 
-            var baseUrl = _configuration["AppSettings:BaseUrl"]?.TrimEnd('/');
-
-            if (string.IsNullOrEmpty(baseUrl))
-            {
-                baseUrl = "https://heka.runasp.net";
-            }
+            var baseUrl = _configuration["AppSettings:BaseUrl"]?.TrimEnd('/')
+                          ?? "https://heka.runasp.net";
 
             if (!relativePath.StartsWith("/"))
                 relativePath = "/" + relativePath;
@@ -181,21 +215,14 @@ namespace Graduation.BLL.Services.Implementations
 
             if (file.Length > _maxFileSize)
             {
-                _logger.LogWarning("Image file too large: {FileSize} bytes", file.Length);
+                _logger.LogWarning("Image too large: {FileSize} bytes", file.Length);
                 return Task.FromResult(false);
             }
 
             var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!_allowedExtensions.Contains(extension))
             {
-                _logger.LogWarning("Invalid image extension: {Extension}", extension);
-                return Task.FromResult(false);
-            }
-
-            var allowedMimeTypes = new[] { "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp" };
-            if (!allowedMimeTypes.Contains(file.ContentType.ToLower()))
-            {
-                _logger.LogWarning("Invalid image MIME type: {MimeType}", file.ContentType);
+                _logger.LogWarning("Invalid extension: {Extension}", extension);
                 return Task.FromResult(false);
             }
 
@@ -207,25 +234,43 @@ namespace Graduation.BLL.Services.Implementations
 
                 if (read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF)
                     return Task.FromResult(true);
-
                 if (read >= 8 && header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47)
                     return Task.FromResult(true);
-
                 if (read >= 6 && header[0] == 0x47 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x38)
                     return Task.FromResult(true);
-
                 if (read >= 12 && header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46
                     && header[8] == 0x57 && header[9] == 0x45 && header[10] == 0x46 && header[11] == 0x50)
                     return Task.FromResult(true);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to read image header for validation");
+                _logger.LogWarning(ex, "Failed to read header for validation");
                 return Task.FromResult(false);
             }
 
-            _logger.LogWarning("Image failed magic-bytes validation: {FileName}", file.FileName);
+            _logger.LogWarning("Magic-bytes validation failed: {FileName}", file.FileName);
             return Task.FromResult(false);
+        }
+
+        private string EnsureFolder(string subfolder)
+        {
+            var wwwroot = ResolveWwwRoot();
+            var path = Path.Combine(wwwroot, "uploads", subfolder);
+            if (!Directory.Exists(path))
+                Directory.CreateDirectory(path);
+            return path;
+        }
+
+        private string ResolveWwwRoot()
+        {
+            var root = _environment.WebRootPath;
+            if (string.IsNullOrEmpty(root))
+            {
+                root = Path.Combine(_environment.ContentRootPath, "wwwroot");
+                if (!Directory.Exists(root))
+                    Directory.CreateDirectory(root);
+            }
+            return root;
         }
     }
 }
