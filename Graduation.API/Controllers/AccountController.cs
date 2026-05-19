@@ -141,6 +141,7 @@ namespace Graduation.API.Controllers
         /// <summary>Authenticates a user with email and password, returning JWT and refresh tokens.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("login")]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] UserForLoginDto loginDto)
         {
@@ -186,6 +187,7 @@ namespace Graduation.API.Controllers
         /// <summary>Authenticates or registers a user via Google OAuth ID token.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("login")]
         [HttpPost("google-login")]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
@@ -279,6 +281,7 @@ namespace Graduation.API.Controllers
         /// <summary>Issues a new access token using a valid refresh token.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("refresh")]
         [HttpPost("refresh-token")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
         {
@@ -310,6 +313,7 @@ namespace Graduation.API.Controllers
         /// <summary>Sends a password reset OTP code to the user's email address.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("otp")]
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
@@ -336,6 +340,7 @@ namespace Graduation.API.Controllers
         /// <summary>Resets the user's password using an email and OTP verification code.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("sensitive")]
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordWithOtpDto dto)
         {
@@ -398,6 +403,7 @@ namespace Graduation.API.Controllers
         /// <summary>Authenticates an admin user with email and password. Only admin accounts are allowed.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("login")]
         [HttpPost("admin/login")]
         public async Task<IActionResult> AdminLogin([FromBody] UserForLoginDto loginDto)
         {
@@ -547,6 +553,7 @@ namespace Graduation.API.Controllers
         /// <summary>Verifies an email OTP code to confirm email address or complete registration.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("sensitive")]
         [HttpPost("verify-email-otp")]
         public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpDto dto)
         {
@@ -608,6 +615,7 @@ namespace Graduation.API.Controllers
         /// <summary>Verifies a password reset OTP code without consuming it.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [EnableRateLimiting("sensitive")]
         [HttpPost("verify-reset-code")]
         public async Task<IActionResult> VerifyResetCode([FromBody] VerifyResetCodeDto dto)
         {

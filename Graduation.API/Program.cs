@@ -301,6 +301,7 @@ namespace Graduation.API
                 builder.Services.AddAuthorization();
                 builder.Services.AddRateLimiter(options =>
                 {
+                    options.RejectionStatusCode = 429;
                     options.AddFixedWindowLimiter("fixed", opt =>
                     {
                         opt.Window = TimeSpan.FromSeconds(10);
@@ -311,6 +312,24 @@ namespace Graduation.API
                     {
                         opt.Window = TimeSpan.FromMinutes(60);
                         opt.PermitLimit = 30;
+                        opt.QueueLimit = 0;
+                    });
+                    options.AddFixedWindowLimiter("login", opt =>
+                    {
+                        opt.Window = TimeSpan.FromMinutes(1);
+                        opt.PermitLimit = 10;
+                        opt.QueueLimit = 0;
+                    });
+                    options.AddFixedWindowLimiter("sensitive", opt =>
+                    {
+                        opt.Window = TimeSpan.FromMinutes(1);
+                        opt.PermitLimit = 5;
+                        opt.QueueLimit = 0;
+                    });
+                    options.AddFixedWindowLimiter("refresh", opt =>
+                    {
+                        opt.Window = TimeSpan.FromMinutes(1);
+                        opt.PermitLimit = 20;
                         opt.QueueLimit = 0;
                     });
                 });
@@ -397,7 +416,7 @@ namespace Graduation.API
                     RequestPath = "/uploads"
                 });
 
-                if (app.Environment.IsDevelopment())
+                if (app.Environment.IsProduction())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI(c =>
