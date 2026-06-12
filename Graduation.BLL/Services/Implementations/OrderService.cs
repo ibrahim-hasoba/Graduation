@@ -441,6 +441,60 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
+        public async Task<OrderDto> AdminUpdateOrderStatusAsync(int id, UpdateOrderStatusDto dto)
+        {
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                throw new NotFoundException("Order", id);
+
+            if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
+                throw new BadRequestException("Cannot update status of cancelled or delivered orders");
+
+            var validTransitions = new Dictionary<OrderStatus, HashSet<OrderStatus>>
+            {
+                { OrderStatus.Pending, new() { OrderStatus.Confirmed, OrderStatus.Cancelled } },
+                { OrderStatus.Confirmed, new() { OrderStatus.Processing, OrderStatus.Cancelled } },
+                { OrderStatus.Processing, new() { OrderStatus.Shipped, OrderStatus.Cancelled } },
+                { OrderStatus.Shipped, new() { OrderStatus.Delivered } }
+            };
+
+            if (!validTransitions.TryGetValue(order.Status, out var allowed) || !allowed.Contains(dto.Status))
+                throw new BadRequestException($"Cannot transition from {order.Status} to {dto.Status}");
+
+            order.Status = dto.Status;
+
+            switch (dto.Status)
+            {
+                case OrderStatus.Confirmed:
+                    order.ConfirmedAt = DateTime.UtcNow;
+                    break;
+                case OrderStatus.Shipped:
+                    order.ShippedAt = DateTime.UtcNow;
+                    break;
+                case OrderStatus.Delivered:
+                    order.DeliveredAt = DateTime.UtcNow;
+                    order.PaymentStatus = PaymentStatus.Paid;
+                    break;
+                case OrderStatus.Cancelled:
+                    order.CancelledAt = DateTime.UtcNow;
+                    order.CancellationReason = dto.CancellationReason;
+                    await RestoreStockAsync(order.OrderItems);
+                    break;
+            }
+
+            await _context.SaveChangesAsync();
+            return MapToDto(order);
+        }
+
         public async Task<OrderDto> CancelOrderAsync(int id, string userId, string reason)
         {
             var order = await _context.Orders

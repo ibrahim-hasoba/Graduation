@@ -344,7 +344,8 @@ namespace Graduation.BLL.Services.Implementations
             var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
-            _context.Products.Remove(product);
+            product.IsActive = false;
+            product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
 

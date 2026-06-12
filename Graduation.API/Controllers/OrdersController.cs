@@ -112,7 +112,7 @@ namespace Graduation.API.Controllers
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
             return OkResult(data: orders);
         }
-        /// <summary>Updates the status of an order for the vendor's products.</summary>
+        /// <summary>Updates the status of an order.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -121,12 +121,19 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusDto dto)
         {
             var userId = GetRequiredUserId();
+
+            if (User.IsInRole("Admin"))
+            {
+                var orderResult = await _orderService.AdminUpdateOrderStatusAsync(id, dto);
+                return OkResult(data: orderResult, message: Lang.GetMessage(LangKeys.Order.StatusUpdated));
+            }
+
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
                 throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Order.UpdateNotVendor));
 
-            var order = await _orderService.UpdateOrderStatusAsync(id, vendor.Id, dto);
-            return OkResult(data: order, message: Lang.GetMessage(LangKeys.Order.StatusUpdated));
+            var vendorResult = await _orderService.UpdateOrderStatusAsync(id, vendor.Id, dto);
+            return OkResult(data: vendorResult, message: Lang.GetMessage(LangKeys.Order.StatusUpdated));
         }
         /// <summary>Cancels an order with an optional reason.</summary>
         [ProducesResponseType(StatusCodes.Status201Created)]

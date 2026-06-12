@@ -67,15 +67,33 @@ namespace Graduation.BLL.Services.Implementations
                 if (existing.Status == PaymentStatus2.Pending)
                     return MapToDto(existing, order.OrderNumber);
 
-                existing.PaymentUrl = await _paymob.CreatePaymentUrlAsync(
-                    order.OrderNumber,
-                    order.TotalAmount,
-                    order.ShippingFirstName,
-                    order.ShippingLastName,
-                    order.User?.Email ?? "guest@heka.com",
-                    order.ShippingPhone,
-                    cityForPaymob,
-                    resolvedClientType);
+                if (existing.PaymobOrderId.HasValue)
+                {
+                    existing.PaymentUrl = await _paymob.CreatePaymentUrlForExistingOrderAsync(
+                        existing.PaymobOrderId.Value,
+                        order.TotalAmount,
+                        order.ShippingFirstName,
+                        order.ShippingLastName,
+                        order.User?.Email ?? "guest@heka.com",
+                        order.ShippingPhone,
+                        cityForPaymob,
+                        resolvedClientType);
+                }
+                else
+                {
+                    var retryOrderNumber = $"{order.OrderNumber}-R{existing.Id}";
+                    var (url, paymobId) = await _paymob.CreatePaymentUrlWithOrderIdAsync(
+                        retryOrderNumber,
+                        order.TotalAmount,
+                        order.ShippingFirstName,
+                        order.ShippingLastName,
+                        order.User?.Email ?? "guest@heka.com",
+                        order.ShippingPhone,
+                        cityForPaymob,
+                        resolvedClientType);
+                    existing.PaymentUrl = url;
+                    existing.PaymobOrderId = paymobId;
+                }
 
                 existing.Status = PaymentStatus2.Pending;
                 existing.UpdatedAt = DateTime.UtcNow;
@@ -84,7 +102,7 @@ namespace Graduation.BLL.Services.Implementations
                 return MapToDto(existing, order.OrderNumber);
             }
 
-            var paymentUrl = await _paymob.CreatePaymentUrlAsync(
+            var (paymentUrl, paymobOrderId) = await _paymob.CreatePaymentUrlWithOrderIdAsync(
                 order.OrderNumber,
                 order.TotalAmount,
                 order.ShippingFirstName,
@@ -101,6 +119,7 @@ namespace Graduation.BLL.Services.Implementations
                 Status = PaymentStatus2.Pending,
                 Amount = order.TotalAmount,
                 PaymentUrl = paymentUrl,
+                PaymobOrderId = paymobOrderId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -126,13 +145,11 @@ namespace Graduation.BLL.Services.Implementations
             callbackData.TryGetValue("success", out var successStr);
             callbackData.TryGetValue("id", out var transactionId);
             callbackData.TryGetValue("merchant_order_id", out var orderNumber);
+            callbackData.TryGetValue("order.id", out var paymobOrderIdStr);
             callbackData.TryGetValue("is_refund", out var isRefundStr);
 
             var isSuccess = string.Equals(successStr, "true", StringComparison.OrdinalIgnoreCase);
             var isRefund = string.Equals(isRefundStr, "true", StringComparison.OrdinalIgnoreCase);
-
-            if (string.IsNullOrEmpty(orderNumber))
-                return;
 
             var strategy = _context.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
@@ -142,19 +159,43 @@ namespace Graduation.BLL.Services.Implementations
 
                 try
                 {
-                    var order = await _context.Orders
-                        .Include(o => o.OrderItems)
-                            .ThenInclude(oi => oi.SelectedVariants)
-                        .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+                    Payment? payment = null;
+                    Order? order = null;
 
-                    if (order == null)
+                    // First try to find payment by PaymobOrderId (works for retries with unique merchantOrderId)
+                    if (!string.IsNullOrEmpty(paymobOrderIdStr) && int.TryParse(paymobOrderIdStr, out var paymobOrderId))
                     {
-                        _logger.LogWarning("Webhook: order not found {OrderNumber}", orderNumber);
-                        return;
+                        payment = await _context.Payments
+                            .FirstOrDefaultAsync(p => p.PaymobOrderId == paymobOrderId);
                     }
 
-                    var payment = await _context.Payments
-                        .FirstOrDefaultAsync(p => p.OrderId == order.Id);
+                    if (payment != null)
+                    {
+                        order = await _context.Orders
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.SelectedVariants)
+                            .FirstOrDefaultAsync(o => o.Id == payment.OrderId);
+                    }
+                    // Fallback: find by merchant_order_id -> OrderNumber
+                    else if (!string.IsNullOrEmpty(orderNumber))
+                    {
+                        order = await _context.Orders
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.SelectedVariants)
+                            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+
+                        if (order != null)
+                        {
+                            payment = await _context.Payments
+                                .FirstOrDefaultAsync(p => p.OrderId == order.Id);
+                        }
+                    }
+
+                    if (order == null || payment == null)
+                    {
+                        _logger.LogWarning("Webhook: order or payment not found for order {OrderNumber}", orderNumber);
+                        return;
+                    }
 
                     if (payment == null)
                     {

@@ -26,6 +26,7 @@ namespace Graduation.DAL.Entities
         public PaymentStatus2 Status { get; set; } = PaymentStatus2.Pending;
         public decimal Amount { get; set; }
         public string? PaymentUrl { get; set; }
+        public int? PaymobOrderId { get; set; }
         public string? PaymobTransactionId { get; set; }
         public bool? IsSuccess { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

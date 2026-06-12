@@ -14,6 +14,16 @@ namespace Graduation.BLL.Services.Interfaces
             string firstName, string lastName,
             string email, string phone, string city,
             string clientType = "web");
+        Task<(string PaymentUrl, int PaymobOrderId)> CreatePaymentUrlWithOrderIdAsync(
+            string orderNumber, decimal amount,
+            string firstName, string lastName,
+            string email, string phone, string city,
+            string clientType = "web");
+        Task<string> CreatePaymentUrlForExistingOrderAsync(
+            int paymobOrderId, decimal amount,
+            string firstName, string lastName,
+            string email, string phone, string city,
+            string clientType = "web");
         bool VerifyHmac(Dictionary<string, string> callbackData, string receivedHmac);
 
     }

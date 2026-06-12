@@ -44,6 +44,41 @@ namespace Graduation.BLL.Services.Implementations
                    $"?payment_token={paymentKey}&client_type={clientType}";
         }
 
+        public async Task<(string PaymentUrl, int PaymobOrderId)> CreatePaymentUrlWithOrderIdAsync(
+            string orderNumber, decimal amount,
+            string firstName, string lastName,
+            string email, string phone, string city,
+            string clientType = "web")
+        {
+            var authToken = await AuthenticateAsync();
+            var amountCents = (int)(amount * 100);
+            var paymobOrderId = await RegisterOrderAsync(authToken, amountCents, orderNumber);
+            var paymentKey = await GetPaymentKeyAsync(
+                authToken, amountCents, paymobOrderId,
+                firstName, lastName, email, phone, city);
+
+            var url = $"{_settings.IframeBaseUrl}/{_settings.IframeId}" +
+                      $"?payment_token={paymentKey}&client_type={clientType}";
+
+            return (url, paymobOrderId);
+        }
+
+        public async Task<string> CreatePaymentUrlForExistingOrderAsync(
+            int paymobOrderId, decimal amount,
+            string firstName, string lastName,
+            string email, string phone, string city,
+            string clientType = "web")
+        {
+            var authToken = await AuthenticateAsync();
+            var amountCents = (int)(amount * 100);
+            var paymentKey = await GetPaymentKeyAsync(
+                authToken, amountCents, paymobOrderId,
+                firstName, lastName, email, phone, city);
+
+            return $"{_settings.IframeBaseUrl}/{_settings.IframeId}" +
+                   $"?payment_token={paymentKey}&client_type={clientType}";
+        }
+
         public bool VerifyHmac(Dictionary<string, string> data, string receivedHmac)
         {
 
@@ -79,7 +114,7 @@ namespace Graduation.BLL.Services.Implementations
                 "/auth/tokens", request);
 
             if (string.IsNullOrEmpty(response?.Token))
-                throw new Exception("Paymob authentication failed — empty token returned");
+                throw new Exception("Paymob authentication failed ï¿½ empty token returned");
 
             return response.Token;
         }
@@ -162,7 +197,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (!response.IsSuccessStatusCode)
                 throw new Exception(
-                    $"Paymob API error at {endpoint}: {response.StatusCode} — {raw}");
+                    $"Paymob API error at {endpoint}: {response.StatusCode} ï¿½ {raw}");
 
             return JsonSerializer.Deserialize<TResponse>(raw);
         }

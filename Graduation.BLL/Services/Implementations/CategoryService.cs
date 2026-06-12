@@ -283,10 +283,14 @@ namespace Graduation.BLL.Services.Implementations
             if (category == null)
                 throw new NotFoundException("Category not found");
 
-            var productCount = await _context.Products
-                .CountAsync(p => p.CategoryId == id && p.IsActive);
+            var allIds = GetAllIdsFromTree(category).ToList();
+            var productCounts = await _context.Products
+                .Where(p => allIds.Contains(p.CategoryId) && p.IsActive)
+                .GroupBy(p => p.CategoryId)
+                .Select(g => new { CategoryId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.CategoryId, x => x.Count);
 
-            return MapToDto(category, productCount);
+            return MapToDto(category, productCounts.GetValueOrDefault(id, 0), productCounts);
         }
 
         public async Task<bool> CategoryExistsAsync(int id)
@@ -300,7 +304,7 @@ namespace Graduation.BLL.Services.Implementations
                 .AnyAsync(c => c.Id == parentCategoryId && c.Status == CategoryStatus.Active);
         }
 
-        private CategoryDto MapToDto(Category c, int productCount) => new()
+        private CategoryDto MapToDto(Category c, int productCount, Dictionary<int, int>? productCounts = null) => new()
         {
             Code = c.Code,
             Id = c.Id,
@@ -312,7 +316,13 @@ namespace Graduation.BLL.Services.Implementations
             ProductCount = productCount,
             Status = c.Status.ToString(),
             CreatedAt = c.CreatedAt,
-            UpdatedAt = c.UpdatedAt
+            UpdatedAt = c.UpdatedAt,
+            SubCategories = c.SubCategories?
+                .Select(s => MapToDto(
+                    s,
+                    productCounts?.GetValueOrDefault(s.Id, 0) ?? 0,
+                    productCounts))
+                .ToList() ?? new()
         };
 
         private CategoryHierarchyDto MapToHierarchyDto(
