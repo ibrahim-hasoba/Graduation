@@ -1,6 +1,7 @@
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Shared.DTOs;
@@ -15,6 +16,7 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly IEmailService _emailService;
+        private readonly IBackgroundJobClient _backgroundJobs;
         private readonly ILogger<OrderService> _logger;
         private readonly IPaymentService _paymentService;
         private readonly ICouponService _couponService;
@@ -22,12 +24,14 @@ namespace Graduation.BLL.Services.Implementations
         public OrderService(
             DatabaseContext context,
             IEmailService emailService,
+            IBackgroundJobClient backgroundJobs,
             ILogger<OrderService> logger,
             IPaymentService paymentService,
             ICouponService couponService)
         {
             _context = context;
             _emailService = emailService;
+            _backgroundJobs = backgroundJobs;
             _logger = logger;
             _paymentService = paymentService;
             _couponService = couponService;
@@ -270,18 +274,8 @@ namespace Graduation.BLL.Services.Implementations
                 if (user?.Email != null)
                 {
                     var first = createdOrders.First();
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await _emailService.SendOrderConfirmationEmailAsync(
-                                user.Email, first.OrderNumber, first.TotalAmount);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to send order confirmation email");
-                        }
-                    });
+                    _backgroundJobs.Enqueue<IEmailService>(s =>
+                        s.SendOrderConfirmationEmailAsync(user.Email, first.OrderNumber, first.TotalAmount));
                 }
             }
 

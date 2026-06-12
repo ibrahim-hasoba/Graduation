@@ -11,6 +11,7 @@ using Graduation.API.Middlewares;
 using Graduation.API.Swagger;
 using Graduation.API.Swagger.Filters;
 using Graduation.BLL.BackgroundJobs;
+using Hangfire;
 using Prometheus;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Paymob;
@@ -333,9 +334,9 @@ namespace Graduation.API
                         opt.QueueLimit = 0;
                     });
                 });
-                builder.Services.AddSingleton<Shared.BackgroundTasks.IBackgroundTaskQueue,
-                    Graduation.API.BackgroundTasks.BackgroundTaskQueue>();
-                builder.Services.AddHostedService<BackgroundProcessingService>();
+                builder.Services.AddHangfire(config =>
+                    config.UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+                builder.Services.AddHangfireServer();
                 builder.Services.AddHostedService<TokenCleanupService>();
                 builder.Services.AddHostedService<UnverifiedUserCleanupService>();
                 builder.Services.AddHostedService<BusinessCodeBackfillService>();
@@ -414,6 +415,7 @@ namespace Graduation.API
                 }
 
                 app.UseMiddleware<ExceptionMiddleware>();
+                app.UseMiddleware<Middlewares.SecurityHeadersMiddleware>();
 
                 app.UseStaticFiles();
 
@@ -452,7 +454,15 @@ namespace Graduation.API
                 });
 
                 if (app.Environment.IsProduction())
+                {
+                    app.UseHsts();
                     app.UseHttpsRedirection();
+                }
+
+                app.UseHangfireDashboard("/hangfire", new DashboardOptions
+                {
+                    Authorization = new[] { new HangfireAuthorizationFilter() }
+                });
 
                 app.UseCors("AllowFrontend");
                 app.UseRateLimiter();

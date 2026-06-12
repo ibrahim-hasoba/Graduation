@@ -1,11 +1,10 @@
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Shared.BackgroundTasks;
 using Shared.DTOs;
 using Shared.DTOs.Vendor;
 using Shared.Errors;
@@ -16,8 +15,7 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly DatabaseContext _context;
         private readonly UserManager<AppUser> _userManager;
-        private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IBackgroundTaskQueue? _taskQueue;
+        private readonly IBackgroundJobClient _backgroundJobs;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
         private readonly IContentModerationService _contentModeration;
@@ -25,16 +23,14 @@ namespace Graduation.BLL.Services.Implementations
         public VendorService(
             DatabaseContext context,
             UserManager<AppUser> userManager,
-            IServiceScopeFactory scopeFactory,
+            IBackgroundJobClient backgroundJobs,
             ILogger<VendorService> logger,
             ICodeAssignmentService codeAssignment,
-            IContentModerationService contentModeration,
-            IBackgroundTaskQueue? taskQueue = null)
+            IContentModerationService contentModeration)
         {
             _context = context;
             _userManager = userManager;
-            _scopeFactory = scopeFactory;
-            _taskQueue = taskQueue;
+            _backgroundJobs = backgroundJobs;
             _codeAssignment = codeAssignment;
             _logger = logger;
             _contentModeration = contentModeration;
@@ -256,40 +252,10 @@ namespace Graduation.BLL.Services.Implementations
 
             if (vendor.User != null && !string.IsNullOrEmpty(vendor.User.Email))
             {
-                var emailCopy = vendor.User.Email;
-                var storeNameCopy = vendor.StoreName;
-
-                if (_taskQueue != null)
-                {
-                    _taskQueue.QueueBackgroundWorkItem(async (sp, token) =>
-                    {
-                        var emailService = sp.GetRequiredService<IEmailService>();
-                        await emailService.SendVendorApprovalEmailAsync(
-                            emailCopy, storeNameCopy, isApproved, rejectionReason);
-                    });
-                }
-                else
-                {
-                    var scope = _scopeFactory.CreateScope();
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                            await emailService.SendVendorApprovalEmailAsync(
-                                emailCopy, storeNameCopy, isApproved, rejectionReason);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex,
-                                "Failed to send vendor approval email to {Email}", emailCopy);
-                        }
-                        finally
-                        {
-                            scope.Dispose();
-                        }
-                    });
-                }
+                var email = vendor.User.Email;
+                var store = vendor.StoreName;
+                _backgroundJobs.Enqueue<IEmailService>(s =>
+                    s.SendVendorApprovalEmailAsync(email, store, isApproved, rejectionReason));
             }
 
             _logger.LogInformation(

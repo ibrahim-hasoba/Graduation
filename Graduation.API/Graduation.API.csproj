@@ -9,6 +9,8 @@
 
 	<ItemGroup>
 		<!-- Observability -->
+		<PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
+		<PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
 		<PackageReference Include="Microsoft.Extensions.Localization" Version="8.0.25" />
 		<PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
 		<PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />

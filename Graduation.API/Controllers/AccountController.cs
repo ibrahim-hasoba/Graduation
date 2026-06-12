@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Shared.DTOs;
 using Shared.DTOs.Auth;
-using Shared.BackgroundTasks;
+using Hangfire;
 using Shared.Errors;
 
 namespace Graduation.API.Controllers
@@ -33,8 +33,7 @@ namespace Graduation.API.Controllers
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IOrderService _orderService;
         private readonly IVendorService _vendorService;
-        private readonly IServiceScopeFactory _scopeFactory;
-        private readonly IBackgroundTaskQueue? _taskQueue;
+        private readonly IBackgroundJobClient _backgroundJobs;
         private readonly ILogger<AccountController> _logger;
 
         public AccountController(
@@ -51,9 +50,8 @@ namespace Graduation.API.Controllers
             IOrderService orderService,
             IVendorService vendorService,
             ILanguageService lang,
-            IServiceScopeFactory scopeFactory,
-            ILogger<AccountController> logger,
-            IBackgroundTaskQueue? taskQueue = null)
+            IBackgroundJobClient backgroundJobs,
+            ILogger<AccountController> logger)
             : base(lang)
         {
             _userManager = userManager;
@@ -68,8 +66,7 @@ namespace Graduation.API.Controllers
             _codeAssignment = codeAssignment;
             _orderService = orderService;
             _vendorService = vendorService;
-            _scopeFactory = scopeFactory;
-            _taskQueue = taskQueue;
+            _backgroundJobs = backgroundJobs;
             _logger = logger;
         }
         /// <summary>Registers a new user account and sends an OTP verification email.</summary>
@@ -166,16 +163,13 @@ namespace Graduation.API.Controllers
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
-            _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
-            {
-                var notificationService = sp.GetRequiredService<INotificationService>();
-                await notificationService.CreateNotificationAsync(
+            _backgroundJobs.Enqueue<INotificationService>(ns =>
+                ns.CreateNotificationAsync(
                     user.Id,
                     "New Login Detected",
                     $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
                     "If this wasn't you, please change your password immediately.",
-                    "Security");
-            });
+                    "Security", null, null, null));
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
@@ -264,16 +258,13 @@ namespace Graduation.API.Controllers
 
             if (isNewToken)
             {
-                _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
-                {
-                    var notificationService = sp.GetRequiredService<INotificationService>();
-                    await notificationService.CreateNotificationAsync(
+                _backgroundJobs.Enqueue<INotificationService>(ns =>
+                    ns.CreateNotificationAsync(
                         userId,
                         "New Login Detected",
                         $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
                         "If this wasn't you, please change your password immediately.",
-                        "Security");
-                });
+                        "Security", null, null, null));
             }
 
             return OkResult(message: Lang.GetMessage(LangKeys.Auth.FcmUpdated));
@@ -432,16 +423,13 @@ namespace Graduation.API.Controllers
 
             await _userManager.ResetAccessFailedCountAsync(user);
 
-            _taskQueue?.QueueBackgroundWorkItem(async (sp, token) =>
-            {
-                var notificationService = sp.GetRequiredService<INotificationService>();
-                await notificationService.CreateNotificationAsync(
+            _backgroundJobs.Enqueue<INotificationService>(ns =>
+                ns.CreateNotificationAsync(
                     user.Id,
                     "New Login Detected",
                     $"You logged in on {DateTime.UtcNow:MMM dd, yyyy 'at' HH:mm} UTC. " +
                     "If this wasn't you, please change your password immediately.",
-                    "Security");
-            });
+                    "Security", null, null, null));
 
             return await GenerateAuthResponse(user, loginDto.RememberMe);
         }
