@@ -16,6 +16,7 @@
         public EgyptianGovernorate? MadeInGovernorate { get; set; }
         public bool IsFeatured { get; set; } = false;
         public bool IsActive { get; set; } = true;
+        public bool IsDeleted { get; set; } = false;
         public int ViewCount { get; set; } = 0;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

@@ -259,7 +259,7 @@ namespace Graduation.BLL.Services.Implementations
                             try
                             {
                                 await _emailService.SendOrderConfirmationEmailAsync(
-                                    user.Email, orderNumber, order.TotalAmount);
+                                    user.Email, orderNumber!, order.TotalAmount);
                             }
                             catch (Exception ex)
                             {

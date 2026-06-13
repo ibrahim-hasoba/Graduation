@@ -9,9 +9,9 @@ namespace Graduation.DAL.Entities
     public class CartItemVariant
     {
         public int CartItemId { get; set; }
-        public CartItem CartItem { get; set; }
+        public CartItem CartItem { get; set; } = null!;
 
         public int ProductVariantId { get; set; }
-        public ProductVariant ProductVariant { get; set; }
+        public ProductVariant ProductVariant { get; set; } = null!;
     }
 }

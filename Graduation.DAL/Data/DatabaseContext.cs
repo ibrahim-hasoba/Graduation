@@ -169,6 +169,8 @@ namespace Graduation.DAL.Data
                 entity.HasIndex(p => new { p.IsActive, p.Price });
                 entity.HasIndex(p => new { p.CategoryId, p.IsActive, p.Price });
                 entity.HasIndex(p => new { p.VendorId, p.IsActive, p.CreatedAt });
+                entity.HasIndex(p => new { p.IsActive, p.StockQuantity });
+                entity.HasIndex(p => new { p.IsFeatured, p.IsActive, p.StockQuantity });
             });
 
             builder.Entity<ProductImage>(entity =>

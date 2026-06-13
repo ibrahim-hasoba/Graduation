@@ -175,6 +175,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<TopProductDto>> GetTopProductsAsync(int count = 10)
         {
             var topProducts = await _context.OrderItems
+                .AsNoTracking()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Vendor)
                 .Include(oi => oi.Product)

@@ -396,20 +396,6 @@ namespace Graduation.BLL.Services.Implementations
             if (order == null)
                 throw new NotFoundException("Order", id);
 
-            if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
-                throw new BadRequestException("Cannot update status of cancelled or delivered orders");
-
-            var validTransitions = new Dictionary<OrderStatus, HashSet<OrderStatus>>
-            {
-                { OrderStatus.Pending, new() { OrderStatus.Confirmed, OrderStatus.Cancelled } },
-                { OrderStatus.Confirmed, new() { OrderStatus.Processing, OrderStatus.Cancelled } },
-                { OrderStatus.Processing, new() { OrderStatus.Shipped, OrderStatus.Cancelled } },
-                { OrderStatus.Shipped, new() { OrderStatus.Delivered } }
-            };
-
-            if (!validTransitions.TryGetValue(order.Status, out var allowed) || !allowed.Contains(dto.Status))
-                throw new BadRequestException($"Cannot transition from {order.Status} to {dto.Status}");
-
             order.Status = dto.Status;
 
             switch (dto.Status)
@@ -449,20 +435,6 @@ namespace Graduation.BLL.Services.Implementations
 
             if (order == null)
                 throw new NotFoundException("Order", id);
-
-            if (order.Status == OrderStatus.Cancelled || order.Status == OrderStatus.Delivered)
-                throw new BadRequestException("Cannot update status of cancelled or delivered orders");
-
-            var validTransitions = new Dictionary<OrderStatus, HashSet<OrderStatus>>
-            {
-                { OrderStatus.Pending, new() { OrderStatus.Confirmed, OrderStatus.Cancelled } },
-                { OrderStatus.Confirmed, new() { OrderStatus.Processing, OrderStatus.Cancelled } },
-                { OrderStatus.Processing, new() { OrderStatus.Shipped, OrderStatus.Cancelled } },
-                { OrderStatus.Shipped, new() { OrderStatus.Delivered } }
-            };
-
-            if (!validTransitions.TryGetValue(order.Status, out var allowed) || !allowed.Contains(dto.Status))
-                throw new BadRequestException($"Cannot transition from {order.Status} to {dto.Status}");
 
             order.Status = dto.Status;
 

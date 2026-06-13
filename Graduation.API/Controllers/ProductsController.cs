@@ -130,7 +130,7 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.NotVendor));
 
-            var product = await _productService.UpdateProductAsync(id, vendor.Code, dto);
+            var product = await _productService.UpdateProductAsync(id, vendor.Code!, dto);
             return OkResult(data: product, message: Lang.GetMessage(LangKeys.Product.Updated));
         }
         /// <summary>Deletes a product owned by the authenticated vendor.</summary>
@@ -145,7 +145,7 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.DeleteNotVendor));
 
-            await _productService.DeleteProductAsync(id, vendor.Code);
+            await _productService.DeleteProductAsync(id, vendor.Code!);
             return OkResult(message: Lang.GetMessage(LangKeys.Product.Deleted));
         }
         /// <summary>Updates the stock quantity of a product owned by the authenticated vendor.</summary>

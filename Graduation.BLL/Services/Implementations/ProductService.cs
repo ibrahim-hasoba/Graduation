@@ -119,7 +119,9 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Category)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .Include(p => p.Variants.Where(v => v.IsActive));
+                .Include(p => p.Variants.Where(v => v.IsActive))
+                .Where(p => !p.IsDeleted)
+                .AsNoTracking();
 
         public async Task<ProductDto> GetProductByIdAsync(int id)
         {
@@ -152,8 +154,28 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .Where(p => p.IsActive)
+                .AsNoTracking()
+                .Where(p => p.IsActive && !p.IsDeleted)
                 .AsQueryable();
+
+            return await SearchProductsQueryAsync(query, searchDto);
+        }
+
+        public async Task<ProductSearchResultDto> AdminSearchProductsAsync(ProductSearchDto searchDto)
+        {
+            var query = _context.Products
+                .Include(p => p.Vendor)
+                .Include(p => p.Category)
+                .Include(p => p.Images)
+                .Include(p => p.Reviews.Where(r => r.IsApproved))
+                .AsNoTracking()
+                .AsQueryable();
+
+            return await SearchProductsQueryAsync(query, searchDto);
+        }
+
+        private async Task<ProductSearchResultDto> SearchProductsQueryAsync(IQueryable<Product> query, ProductSearchDto searchDto)
+        {
 
             if (!string.IsNullOrWhiteSpace(searchDto.SearchTerm))
             {
@@ -231,7 +253,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .Where(p => p.VendorId == vendorId)
+                .AsNoTracking()
+                .Where(p => p.VendorId == vendorId && !p.IsDeleted)
                 .OrderByDescending(p => p.CreatedAt);
 
             var totalCount = await query.CountAsync();
@@ -254,7 +277,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .Where(p => p.IsFeatured && p.IsActive && p.StockQuantity > 0)
+                .AsNoTracking()
+                .Where(p => p.IsFeatured && p.IsActive && !p.IsDeleted && p.StockQuantity > 0)
                 .OrderByDescending(p => p.ViewCount);
 
             var totalCount = await query.CountAsync();
@@ -299,6 +323,7 @@ namespace Graduation.BLL.Services.Implementations
                 throw new UnauthorizedException("You can only delete your own products");
 
             product.IsActive = false;
+            product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }
@@ -345,6 +370,7 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
             product.IsActive = false;
+            product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
         }

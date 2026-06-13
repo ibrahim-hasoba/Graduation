@@ -167,7 +167,7 @@ namespace Graduation.BLL.Services.Implementations
             if (category == null)
                 throw new NotFoundException("Category not found");
 
-            var allIdsToDelete = await GetAllSubcategoryIdsRecursiveAsync(id);
+            var allIdsToDelete = await GetAllSubcategoryIdsAsync(id);
             allIdsToDelete.Add(id);
 
             var hasProducts = await _context.Products
@@ -189,23 +189,32 @@ namespace Graduation.BLL.Services.Implementations
                 categoriesToDelete.Count - 1, category.NameEn);
         }
 
-        private async Task<List<int>> GetAllSubcategoryIdsRecursiveAsync(int parentId)
+        private async Task<List<int>> GetAllSubcategoryIdsAsync(int parentId)
         {
-            var results = new List<int>();
-            var children = await _context.Categories
-                .Where(c => c.ParentCategoryId == parentId)
-                .Select(c => c.Id)
+            var all = await _context.Categories
+                .Select(c => new { c.Id, c.ParentCategoryId })
+                .AsNoTracking()
                 .ToListAsync();
 
-            results.AddRange(children);
+            var lookup = all
+                .GroupBy(c => c.ParentCategoryId)
+                .ToDictionary(g => g.Key ?? -1, g => g.Select(c => c.Id).ToList());
+
+            var results = new List<int>();
+            CollectDescendantIds(parentId, lookup, results);
+            return results;
+        }
+
+        private static void CollectDescendantIds(int parentId, Dictionary<int, List<int>> lookup, List<int> results)
+        {
+            if (!lookup.TryGetValue(parentId, out var children))
+                return;
 
             foreach (var childId in children)
             {
-                var grandchildren = await GetAllSubcategoryIdsRecursiveAsync(childId);
-                results.AddRange(grandchildren);
+                results.Add(childId);
+                CollectDescendantIds(childId, lookup, results);
             }
-
-            return results;
         }
 
         public async Task<PagedCategoryResultDto> GetAllCategoriesAsync(CategoryQueryDto query)
@@ -217,6 +226,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(c => c.SubCategories)
                     .ThenInclude(s => s.SubCategories)
                         .ThenInclude(ss => ss.SubCategories)
+                .AsNoTracking()
                 .AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(query.Status))
@@ -278,6 +288,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Include(c => c.SubCategories)
                     .ThenInclude(s => s.SubCategories)
                         .ThenInclude(ss => ss.SubCategories)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)
@@ -355,30 +366,34 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<bool> HasCircularReferenceAsync(int categoryId, int potentialParentId)
         {
-            var parent = await _context.Categories
-                .FirstOrDefaultAsync(c => c.Id == potentialParentId);
-            while (parent != null)
+            var all = await _context.Categories
+                .Select(c => new { c.Id, c.ParentCategoryId })
+                .AsNoTracking()
+                .ToListAsync();
+
+            var parentMap = all
+                .Where(c => c.ParentCategoryId.HasValue)
+                .ToDictionary(c => c.Id, c => c.ParentCategoryId!.Value);
+
+            var current = potentialParentId;
+            while (parentMap.TryGetValue(current, out var parent))
             {
-                if (parent.Id == categoryId) return true;
-                if (parent.ParentCategoryId == null) return false;
-                parent = await _context.Categories
-                    .FirstOrDefaultAsync(c => c.Id == parent.ParentCategoryId);
+                if (parent == categoryId) return true;
+                current = parent;
             }
             return false;
         }
 
         private async Task DeactivateSubcategoriesAsync(int parentCategoryId)
         {
-            var subcategories = await _context.Categories
-                .Where(c => c.ParentCategoryId == parentCategoryId)
-                .ToListAsync();
+            var allSubIds = await GetAllSubcategoryIdsAsync(parentCategoryId);
+            if (allSubIds.Count == 0) return;
 
-            foreach (var sub in subcategories)
-            {
-                sub.Status = CategoryStatus.Inactive;
-                sub.UpdatedAt = DateTime.UtcNow;
-                await DeactivateSubcategoriesAsync(sub.Id);
-            }
+            await _context.Categories
+                .Where(c => allSubIds.Contains(c.Id))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(c => c.Status, CategoryStatus.Inactive)
+                    .SetProperty(c => c.UpdatedAt, DateTime.UtcNow));
         }
     }
 }
