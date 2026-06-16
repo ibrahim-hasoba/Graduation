@@ -301,7 +301,8 @@ namespace Graduation.BLL.Services.Implementations
                 .Select(g => new { CategoryId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.CategoryId, x => x.Count);
 
-            return MapToDto(category, productCounts.GetValueOrDefault(id, 0), productCounts);
+            var totalCount = allIds.Sum(id => productCounts.GetValueOrDefault(id, 0));
+            return MapToDto(category, totalCount, productCounts);
         }
 
         public async Task<bool> CategoryExistsAsync(int id)
@@ -346,7 +347,7 @@ namespace Graduation.BLL.Services.Implementations
                 Description = category.Description,
                 ImageUrl = category.ImageUrl,
                 ParentCategoryId = category.ParentCategoryId,
-                ProductCount = productCounts.GetValueOrDefault(category.Id, 0),
+                ProductCount = GetTotalProductCount(category, productCounts),
                 Status = category.Status.ToString(),
                 CreatedAt = category.CreatedAt,
                 UpdatedAt = category.UpdatedAt,
@@ -355,6 +356,14 @@ namespace Graduation.BLL.Services.Implementations
                 .Select(s => MapToHierarchyDto(s, productCounts))
                 .ToList()
             };
+
+        private static int GetTotalProductCount(Category category, Dictionary<int, int> productCounts)
+        {
+            var count = productCounts.GetValueOrDefault(category.Id, 0);
+            foreach (var sub in category.SubCategories ?? new List<Category>())
+                count += GetTotalProductCount(sub, productCounts);
+            return count;
+        }
 
         private IEnumerable<int> GetAllIdsFromTree(Category category)
         {

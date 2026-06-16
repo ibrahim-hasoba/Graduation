@@ -68,18 +68,25 @@ namespace Graduation.API.Controllers
                 .Take(pageSize)
                 .ToListAsync();
 
-            var dtos = categories.Select(c => new CategoryDto
+            var dtos = categories.Select(c =>
             {
-                Code = c.Code,
-                Id = c.Id,
-                NameAr = c.NameAr,
-                NameEn = c.NameEn,
-                Description = c.Description,
-                ImageUrl = c.ImageUrl,
-                ProductCount = productCounts.GetValueOrDefault(c.Id, 0),
-                Status = c.Status.ToString(),
-                CreatedAt = c.CreatedAt,
-                UpdatedAt = c.UpdatedAt
+                var total = productCounts.GetValueOrDefault(c.Id, 0);
+                total += c.SubCategories
+                    .Select(s => productCounts.GetValueOrDefault(s.Id, 0))
+                    .Sum();
+                return new CategoryDto
+                {
+                    Code = c.Code,
+                    Id = c.Id,
+                    NameAr = c.NameAr,
+                    NameEn = c.NameEn,
+                    Description = c.Description,
+                    ImageUrl = c.ImageUrl,
+                    ProductCount = total,
+                    Status = c.Status.ToString(),
+                    CreatedAt = c.CreatedAt,
+                    UpdatedAt = c.UpdatedAt
+                };
             }).ToList();
 
             return OkResult(
