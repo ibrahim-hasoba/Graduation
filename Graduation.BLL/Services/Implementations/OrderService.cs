@@ -341,6 +341,48 @@ namespace Graduation.BLL.Services.Implementations
             return MapToDto(order);
         }
 
+        public async Task<OrderDto> AdminGetOrderByIdAsync(int id)
+        {
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null)
+                throw new NotFoundException("Order", id);
+
+            return MapToDto(order);
+        }
+
+        public async Task<OrderDto> GetOrderByIdForVendorAsync(int id, int vendorId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.User)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Vendor)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Product)
+                        .ThenInclude(p => p.Images)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.SelectedVariants)
+                        .ThenInclude(sv => sv.ProductVariant)
+                .FirstOrDefaultAsync(o => o.Id == id && o.OrderItems.Any(oi => oi.Product.VendorId == vendorId));
+
+            if (order == null)
+                throw new NotFoundException("Order", id);
+
+            return MapToDto(order);
+        }
+
         public async Task<PagedResult<OrderListDto>> GetUserOrdersAsync(string userId, int pageNumber = 1, int pageSize = 10)
         {
 

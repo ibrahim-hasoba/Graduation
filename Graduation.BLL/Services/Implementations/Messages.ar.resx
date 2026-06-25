@@ -60,6 +60,7 @@
   <data name="Email_AlreadyExists"><value>يوجد مستخدم بهذا البريد الإلكتروني بالفعل</value></data>
   <data name="Phone_AlreadyRegistered"><value>رقم الهاتف مسجل بالفعل</value></data>
   <data name="OTP_RecentlySent"><value>تم إرسال الرمز مؤخراً. حاول مرة أخرى بعد دقيقة.</value></data>
+  <data name="OTP_Expired"><value>انتهت صلاحية الرمز. يرجى طلب رمز جديد.</value></data>
   <data name="OTP_TooMany"><value>طلبات كثيرة جداً. حاول لاحقاً.</value></data>
   <data name="Registration_Success"><value>تم التسجيل بنجاح! يرجى التحقق من بريدك الإلكتروني.</value></data>
   <data name="Registration_EmailFailed"><value>فشل التسجيل لعدم إمكانية إرسال بريد التحقق. يرجى المحاولة لاحقاً.</value></data>
@@ -139,6 +140,7 @@
   <data name="Order_LocationUpdated"><value>تم مزامنة موقع GPS بنجاح</value></data>
 
   <!-- Products -->
+  <data name="Product_NotFound"><value>المنتج غير موجود</value></data>
   <data name="Product_Created"><value>تم إنشاء المنتج بنجاح</value></data>
   <data name="Product_Updated"><value>تم تحديث المنتج بنجاح</value></data>
   <data name="Product_Deleted"><value>تم حذف المنتج بنجاح</value></data>

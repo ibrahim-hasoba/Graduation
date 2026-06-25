@@ -12,6 +12,8 @@ namespace Graduation.API
             public const string InvalidCredentials = "Invalid_Credentials";
             public const string EmailNotVerified = "Email_NotVerified";
             public const string EmailAlreadyExists = "Email_AlreadyExists";
+            public const string EmailAlreadyVerified = "Email_AlreadyVerified";
+            public const string EmailConfirmFailed = "Email_ConfirmFailed";
             public const string PhoneAlreadyRegistered = "Phone_AlreadyRegistered";
             public const string RegistrationSuccess = "Registration_Success";
             public const string RegistrationEmailFailed = "Registration_EmailFailed";
@@ -81,6 +83,7 @@ namespace Graduation.API
         public static class Category
         {
             public const string NotFound = "Category_NotFound";
+            public const string Created = "Category_Created";
             public const string Updated = "Category_Updated";
             public const string Activated = "Category_Activated";
             public const string Deactivated = "Category_Deactivated";
@@ -120,6 +123,7 @@ namespace Graduation.API
             public const string Created = "Product_Created";
             public const string Updated = "Product_Updated";
             public const string Deleted = "Product_Deleted";
+            public const string VendorNotApproved = "Product_VendorNotApproved";
             public const string NotVendor = "Product_NotVendor";
             public const string NoVendor = "Product_NoVendor";
             public const string DeleteNotVendor = "Product_DeleteNotVendor";
@@ -140,6 +144,8 @@ namespace Graduation.API
             public const string Submitted = "Review_Submitted";
             public const string Deleted = "Review_Deleted";
             public const string Reported = "Review_Reported";
+            public const string Approved = "Review_Approved";
+            public const string Rejected = "Review_Rejected";
         }
 
         public static class Report
@@ -178,6 +184,8 @@ namespace Graduation.API
             public const string Rejected = "Vendor_Rejected";
             public const string RejectionRequired = "Vendor_RejectionRequired";
             public const string OrderNotFound = "Vendor_OrderNotFound";
+            public const string AdminRequired = "Vendor_AdminRequired";
+            public const string NotApproved = "Vendor_NotApproved";
         }
 
         public static class Role

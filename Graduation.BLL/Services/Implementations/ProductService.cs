@@ -440,6 +440,7 @@ namespace Graduation.BLL.Services.Implementations
             return new ProductDto
             {
                 Id = product.Id,
+                VendorCode = product.Vendor.Code!,
                 NameAr = product.NameAr,
                 NameEn = product.NameEn,
                 DescriptionAr = product.DescriptionAr,

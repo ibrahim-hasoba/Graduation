@@ -95,8 +95,23 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> GetOrderById(int id)
         {
             var userId = GetRequiredUserId();
-            var order = await _orderService.GetOrderByIdAsync(id, userId);
-            return OkResult(data: order);
+
+            OrderDto result;
+
+            if (User.IsInRole("Admin"))
+            {
+                result = await _orderService.AdminGetOrderByIdAsync(id);
+            }
+            else
+            {
+                var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
+                if (vendor != null)
+                    result = await _orderService.GetOrderByIdForVendorAsync(id, vendor.Id);
+                else
+                    result = await _orderService.GetOrderByIdAsync(id, userId);
+            }
+
+            return OkResult(data: result);
         }
         /// <summary>Gets all orders containing the authenticated vendor's products.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]

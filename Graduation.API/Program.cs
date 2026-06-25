@@ -364,11 +364,10 @@ namespace Graduation.API
                 {
                     options.AddPolicy("AllowFrontend", policy =>
                     {
-                        policy
-                            .WithOrigins("http://localhost:3000", "https://heka-eg.netlify.app")
-                            .AllowAnyMethod()
-                            .AllowAnyHeader()
-                            .AllowCredentials();
+                        policy.AllowAnyOrigin()
+                                .AllowAnyMethod()
+                                .AllowAnyHeader();
+
                     });
                 });
 

@@ -1,7 +1,7 @@
 using Shared.Errors;
+using Graduation.API;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Graduation.API.Controllers
@@ -29,14 +29,14 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadImage([FromForm] ImageUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_NoFile")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.NoFile)));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, request.Folder ?? "general");
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_Uploaded"),
+                message = _lang.GetMessage(LangKeys.Image.Uploaded),
                 data = new { imageUrl }
             });
         }
@@ -50,14 +50,14 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadMultipleImages([FromForm] MultipleImagesUploadRequest request)
         {
             if (request.Files == null || !request.Files.Any())
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_NoFiles")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.NoFiles)));
 
             var imageUrls = await _imageService.UploadImagesAsync(request.Files, request.Folder ?? "general");
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_MultipleUploaded", imageUrls.Count),
+                message = _lang.GetMessage(LangKeys.Image.MultipleUploaded, imageUrls.Count),
                 data = new { imageUrls }
             });
         }
@@ -71,17 +71,17 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadProductImages([FromForm] ProductImagesUploadRequest request)
         {
             if (request.Files == null || !request.Files.Any())
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_NoFiles")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.NoFiles)));
 
             if (request.Files.Count > 5)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_MaxExceeded")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.MaxExceeded)));
 
             var results = await _imageService.UploadProductImagesAsync(request.Files);
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_ProductUploaded", results.Count),
+                message = _lang.GetMessage(LangKeys.Image.ProductUploaded, results.Count),
                 data = new
                 {
                     imageUrls = results.Select(r => r.imageUrl).ToList(),
@@ -99,14 +99,14 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadVendorLogo([FromForm] SingleFileUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_NoFile")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.NoFile)));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, "vendors/logos");
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_LogoUploaded"),
+                message = _lang.GetMessage(LangKeys.Image.LogoUploaded),
                 data = new { imageUrl }
             });
         }
@@ -120,14 +120,14 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> UploadVendorBanner([FromForm] SingleFileUploadRequest request)
         {
             if (request.File == null || request.File.Length == 0)
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_NoFile")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.NoFile)));
 
             var imageUrl = await _imageService.UploadImageAsync(request.File, "vendors/banners");
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_BannerUploaded"),
+                message = _lang.GetMessage(LangKeys.Image.BannerUploaded),
                 data = new { imageUrl }
             });
         }
@@ -141,17 +141,17 @@ namespace Graduation.API.Controllers
         public async Task<IActionResult> DeleteImage([FromQuery] string imageUrl)
         {
             if (string.IsNullOrEmpty(imageUrl))
-                return BadRequest(new ApiResponse(400, _lang.GetMessage("Image_UrlRequired")));
+                return BadRequest(new ApiResponse(400, _lang.GetMessage(LangKeys.Image.UrlRequired)));
 
             var deleted = await _imageService.DeleteImageAsync(imageUrl);
 
             if (!deleted)
-                return NotFound(new ApiResponse(404, _lang.GetMessage("Image_NotFound")));
+                return NotFound(new ApiResponse(404, _lang.GetMessage(LangKeys.Image.NotFound)));
 
             return Ok(new
             {
                 success = true,
-                message = _lang.GetMessage("Image_Deleted")
+                message = _lang.GetMessage(LangKeys.Image.Deleted)
             });
         }
     }

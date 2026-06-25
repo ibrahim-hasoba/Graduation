@@ -10,6 +10,8 @@ namespace Graduation.BLL.Services.Interfaces
     {
         Task<CreateOrderResultDto> CreateOrderAsync(string userId, CreateOrderDto dto);
         Task<OrderDto> GetOrderByIdAsync(int id, string userId);
+        Task<OrderDto> AdminGetOrderByIdAsync(int id);
+        Task<OrderDto> GetOrderByIdForVendorAsync(int id, int vendorId);
         Task<PagedResult<OrderListDto>> GetUserOrdersAsync(string userId, int pageNumber = 1, int pageSize = 10);
         Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId);
         Task<OrderDto> UpdateOrderStatusAsync(int id, int vendorId, UpdateOrderStatusDto dto);

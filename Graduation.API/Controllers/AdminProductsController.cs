@@ -49,7 +49,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [HttpGet("{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
+        [HttpGet("code/{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
         public async Task<IActionResult> GetProductByCode(string code)
         {
             var product = await _productService.GetProductByCodeAsync(code);
