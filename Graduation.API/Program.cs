@@ -29,7 +29,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Serilog;
 using System.IO;
 using System.Reflection;
@@ -134,24 +134,17 @@ namespace Graduation.API
                         Description = "JWT Authorization header using the Bearer scheme. Enter your token in the text input below."
                     });
 
-                    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+                    options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
                     {
                         {
-                            new OpenApiSecurityScheme
-                            {
-                                Reference = new OpenApiReference
-                                {
-                                    Type = ReferenceType.SecurityScheme,
-                                    Id = "Bearer"
-                                }
-                            },
-                            Array.Empty<string>()
+                            new OpenApiSecuritySchemeReference("Bearer", _, null!),
+                            new List<string>()
                         }
                     });
 
                     options.MapType<IFormFile>(() => new OpenApiSchema
                     {
-                        Type = "string",
+                        Type = JsonSchemaType.String,
                         Format = "binary"
                     });
 

@@ -1,68 +1,75 @@
 # Heka API
 
-Multi-vendor e-commerce marketplace API built with .NET 8 Clean Architecture, serving the Egyptian market with bilingual (English/Arabic) support.
+[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](.github/PULL_REQUEST_TEMPLATE.md)
+
+Multi-vendor e-commerce marketplace API built with **.NET 8 Clean Architecture**, serving the Egyptian market with full bilingual (English/Arabic) support.
 
 ## Tech Stack
 
-- **.NET 8** — ASP.NET Core Web API
-- **SQL Server** + Entity Framework Core
-- **JWT** authentication with refresh tokens
-- **Google OAuth** & email OTP verification
-- **Paymob** payment gateway integration
-- **Firebase Cloud Messaging** push notifications
-- **Serilog** structured logging
-- **Swagger/OpenAPI** documentation
-- **Prometheus** metrics
+| Category         | Technologies |
+|-----------------|--------------|
+| **Runtime**     | .NET 8, ASP.NET Core |
+| **Database**    | SQL Server + Entity Framework Core |
+| **Auth**        | JWT + Refresh Tokens, Google OAuth, Email OTP |
+| **Payments**    | Paymob gateway integration |
+| **Messaging**   | Firebase Cloud Messaging (push notifications) |
+| **Background**  | Hangfire (fire-and-forget, retries, dead-letter) |
+| **Logging**     | Serilog (structured, file + console sinks) |
+| **API Docs**    | Swagger / OpenAPI |
+| **Monitoring**  | Prometheus metrics at `/metrics` |
+| **DI / Mapping**| Scrutor (assembly scanning), AutoMapper |
 
 ## Project Structure
 
 ```
-Graduation.API/     Presentation layer — controllers, middleware, hosted services
-Graduation.BLL/     Business logic layer — services, background jobs, Paymob integration
-Graduation.DAL/     Data access layer — DbContext, entities, migrations
-Shared/             Shared utilities — code generator, background task queue
+Graduation.API/     ASP.NET Core Web API — controllers, middleware, hosted services
+Graduation.BLL/     Business logic — services, DTOs, background jobs, external integrations
+Graduation.DAL/     Data access — EF Core DbContext, entities, migrations, repositories
 ```
+
+Built with **Clean Architecture**: API depends on BLL, BLL depends on DAL. Inversion of control at the infrastructure boundaries.
 
 ## Prerequisites
 
-- .NET 8 SDK
-- SQL Server instance
-- (Optional) Paymob account for payment integration
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- SQL Server instance (local or remote)
+- (Optional) [Paymob](https://paymob.com) account for payments
 - (Optional) Firebase project for push notifications
 
 ## Setup
 
-1. **Clone and configure connection string:**
+```bash
+# Clone
+git clone https://github.com/your-org/heka-api.git
+cd heka-api
+
+# Configure connection string & JWT secret in appsettings.Development.json
+# (see below for required settings)
+
+# Run
+dotnet run --project Graduation.API
+```
+
+### Required Configuration
 
 ```json
-// appsettings.json or user-secrets
 {
   "ConnectionStrings": {
     "DefaultConnection": "Server=.;Database=HekaDb;Trusted_Connection=True;TrustServerCertificate=True"
   },
   "JWTSettings": {
-    "securityKey": "your-256-bit-key-here-at-least-32-chars",
+    "securityKey": "your-256-bit-key-at-least-32-chars",
     "validIssuer": "HekaAPI",
     "validAudience": "HekaApp"
   }
 }
 ```
 
-2. **Run the application:**
-
-```bash
-dotnet run --project Graduation.API
-```
-
-Migrations apply automatically on startup. An admin user and default roles are seeded on first run:
-
-| Role     | Email                     | Password   |
-|----------|---------------------------|------------|
-| Admin    | admin@graduationapp.com   | Admin@123  |
-
 ## API Overview
 
-~140 endpoints organized across controllers:
+~140 endpoints across 18 controllers:
 
 | Controller        | Base Path              | Auth     | Description                    |
 |-------------------|------------------------|----------|--------------------------------|
@@ -75,7 +82,7 @@ Migrations apply automatically on startup. An admin user and default roles are s
 | Orders            | `/api/orders`          | Mixed    | Order lifecycle & tracking     |
 | Payments          | `/api/payments`        | Mixed    | Paymob integration & webhook   |
 | Products          | `/api/products`        | Mixed    | Product catalog (vendor owned) |
-| Product Variants  | `/api/products/{id}/variants` | Mixed | Variant management         |
+| Product Variants  | `/api/products/{id}/variants` | Mixed | Variant management          |
 | Reviews           | `/api/reviews`         | Mixed    | Product reviews & reporting    |
 | Vendors           | `/api/vendors`         | Vendor   | Vendor profile & orders        |
 | Wishlist          | `/api/wishlist`        | JWT      | Wishlist management            |
@@ -85,7 +92,7 @@ Migrations apply automatically on startup. An admin user and default roles are s
 | Brands            | `/api/brands`          | Public   | Vendor brands listing          |
 | Images            | `/api/images`          | JWT      | Image upload/deletion          |
 
-## Roles
+## Roles & Permissions
 
 - **Admin** — full system control, reports, vendor approval, user management
 - **Vendor** — store profile, product CRUD, order fulfillment, GPS tracking
@@ -93,15 +100,23 @@ Migrations apply automatically on startup. An admin user and default roles are s
 
 ## Key Features
 
-- Multi-language (English / Arabic) via `Accept-Language` header
-- Rate limiting on auth and OTP endpoints
-- Email OTP for registration and password reset
-- Refresh token rotation with revocation
-- Paymob payment gateway (credit card, cash on delivery)
-- Real-time order GPS tracking
-- Firebase push notifications
-- Admin dashboard with 9 report types
-- Review moderation system with reporting
-- Product variants (size, color, etc.)
-- Background job processing with retry & dead-letter
-- Prometheus metrics at `/metrics`
+- **Multi-language** — English / Arabic via `Accept-Language` header
+- **Rate limiting** — on auth and OTP endpoints
+- **Email OTP** — registration and password reset verification
+- **Refresh token rotation** — with revocation on reuse
+- **Paymob payments** — credit card + cash on delivery
+- **Real-time GPS tracking** — order delivery location updates
+- **Push notifications** — Firebase Cloud Messaging
+- **Admin dashboard** — 9 report types with chart data
+- **Review moderation** — reporting system for inappropriate content
+- **Product variants** — sizes, colors, and other options
+- **Background jobs** — Hangfire with retry and dead-letter queue
+- **Prometheus** — app metrics at `/metrics`
+
+## Contributing
+
+PRs are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+Licensed under the [MIT License](LICENSE).

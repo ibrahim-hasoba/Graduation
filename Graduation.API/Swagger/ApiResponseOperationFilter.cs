@@ -1,4 +1,4 @@
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using Graduation.API.Errors;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +17,7 @@ namespace Graduation.API.Swagger
                 operation.Responses["200"] = new OpenApiResponse
                 {
                     Description = "Successful response",
-                    Content =
+                    Content = new Dictionary<string, OpenApiMediaType>
                     {
                         ["application/json"] = new OpenApiMediaType { Schema = schema }
                     }
@@ -32,7 +32,7 @@ namespace Graduation.API.Swagger
                     operation.Responses[code] = new OpenApiResponse
                     {
                         Description = "Error",
-                        Content =
+                        Content = new Dictionary<string, OpenApiMediaType>
                         {
                             ["application/json"] = new OpenApiMediaType { Schema = errSchema }
                         }
@@ -50,7 +50,7 @@ namespace Graduation.API.Swagger
                 operation.Responses["401"] = new OpenApiResponse
                 {
                     Description = "Unauthorized",
-                    Content =
+                    Content = new Dictionary<string, OpenApiMediaType>
                     {
                         ["application/json"] = new OpenApiMediaType { Schema = errSchema }
                     }

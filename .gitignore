@@ -387,3 +387,7 @@ Heka_API_Postman_Collection.json
 
 # Content moderation word list (customizable per environment)
 badwords.json
+
+# Runtime logs
+stderr.txt
+stdout.txt

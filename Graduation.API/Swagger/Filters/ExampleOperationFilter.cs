@@ -1,5 +1,4 @@
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text.Json;
 using Graduation.API.Swagger.Attributes;
@@ -29,7 +28,7 @@ namespace Graduation.API.Swagger.Filters
 
                 foreach (var media in operation.RequestBody.Content.Values)
                 {
-                    media.Example = new OpenApiString(json);
+                    media.Example = System.Text.Json.Nodes.JsonNode.Parse(json);
                 }
             }
 
@@ -38,7 +37,7 @@ namespace Graduation.API.Swagger.Filters
 
             foreach (var attr in respAttrs)
             {
-                if (!operation.Responses.TryGetValue(attr.StatusCode, out var resp)) continue;
+                if (operation.Responses?.TryGetValue(attr.StatusCode, out var resp) != true) continue;
                 if (!typeof(IExampleProvider).IsAssignableFrom(attr.ProviderType)) continue;
 
                 var provider = Activator.CreateInstance(attr.ProviderType) as IExampleProvider;
@@ -47,9 +46,9 @@ namespace Graduation.API.Swagger.Filters
                 var exampleObj = provider.GetExample();
                 var json = JsonSerializer.Serialize(exampleObj, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
-                foreach (var media in resp.Content?.Values ?? Enumerable.Empty<OpenApiMediaType>())
+                foreach (var media in resp!.Content?.Values ?? Enumerable.Empty<Microsoft.OpenApi.OpenApiMediaType>())
                 {
-                    media.Example = new OpenApiString(json);
+                    media.Example = System.Text.Json.Nodes.JsonNode.Parse(json);
                 }
             }
         }
