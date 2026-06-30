@@ -1,4 +1,4 @@
-using Shared.DTOs.Category;
+using Graduation.BLL.DTOs.Category;
 
 namespace Graduation.BLL.Services.Interfaces
 {

@@ -18,8 +18,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Graduation.DAL\Graduation.DAL.csproj" />
-		<ProjectReference Include="..\Shared\Shared.csproj" />
-
 	</ItemGroup>
 
 </Project>

@@ -1,5 +1,5 @@
-﻿using FluentValidation;
-using Shared.DTOs.Cart;
+using FluentValidation;
+using Graduation.BLL.DTOs.Cart;
 
 namespace Graduation.BLL.Validators
 {

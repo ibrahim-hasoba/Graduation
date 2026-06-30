@@ -20,7 +20,7 @@ namespace Graduation.API.HostedServices
     ///   2. Before deletion, a "final warning" email is sent at the 48-hour mark giving the
     ///      user 24 more hours and a direct link to resend the verification email.
     ///   3. Users who have no OTP record at all (meaning our OTP system never successfully
-    ///      sent them a code) are skipped — deleting them would hide an email-delivery bug.
+    ///      sent them a code) are skipped ï¿½ deleting them would hide an email-delivery bug.
     ///   4. Service run interval is configurable via UnverifiedUserCleanup:RunIntervalHours.
     /// </summary>
     public class UnverifiedUserCleanupService : BackgroundService

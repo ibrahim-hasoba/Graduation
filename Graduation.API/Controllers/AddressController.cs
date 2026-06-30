@@ -1,12 +1,12 @@
 using Graduation.DAL.Data;
-using Graduation.API.Errors;
+using Graduation.BLL.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Address;
+using Graduation.BLL.DTOs.Address;
 
 namespace Graduation.API.Controllers
 {

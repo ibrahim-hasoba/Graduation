@@ -2,7 +2,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
-using Shared.DTOs.Product;
+using Graduation.BLL.DTOs.Product;
 
 namespace Graduation.API.Controllers
 {
@@ -112,10 +112,10 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Variant.NotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Variant.NotVendor));
 
             if (!vendor.IsApproved)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Variant.VendorNotApproved));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Variant.VendorNotApproved));
 
             return (vendor.Id, false);
         }

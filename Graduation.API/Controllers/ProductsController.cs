@@ -3,7 +3,7 @@ using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
-using Shared.DTOs.Product;
+using Graduation.BLL.DTOs.Product;
 
 namespace Graduation.API.Controllers
 {
@@ -71,7 +71,7 @@ namespace Graduation.API.Controllers
         /// <summary>Gets a single product by its alphanumeric code.</summary>
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [HttpGet("{code:regex(^[[A-Za-z0-9-]]{{3,}}$)}")]
+        [HttpGet("{code:regex(^(?=.*[[A-Za-z]])[[A-Za-z0-9-]]{{3,}}$)}")]
         public async Task<IActionResult> GetProductByCode(string code)
         {
             var product = await _productService.GetProductByCodeAsync(code);
@@ -101,7 +101,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                return NotFound(new Shared.Errors.ApiResponse(404, Lang.GetMessage(LangKeys.Product.NoVendor)));
+                return NotFound(new Graduation.API.Errors.ApiResponse(404, Lang.GetMessage(LangKeys.Product.NoVendor)));
 
             var result = await _productService.GetVendorProductsAsync(vendor.Id, pageNumber, pageSize);
             return OkResult(data: result);
@@ -128,7 +128,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.NotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.NotVendor));
 
             var product = await _productService.UpdateProductAsync(id, vendor.Code!, dto);
             return OkResult(data: product, message: Lang.GetMessage(LangKeys.Product.Updated));
@@ -143,7 +143,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.DeleteNotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.DeleteNotVendor));
 
             await _productService.DeleteProductAsync(id, vendor.Code!);
             return OkResult(message: Lang.GetMessage(LangKeys.Product.Deleted));
@@ -159,7 +159,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.StockNotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Product.StockNotVendor));
 
             await _productService.UpdateStockAsync(id, dto.Quantity, vendor.Id);
             return OkResult(message: Lang.GetMessage(LangKeys.Product.StockUpdated));

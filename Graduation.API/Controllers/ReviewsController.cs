@@ -2,7 +2,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
-using Shared.DTOs.Review;
+using Graduation.BLL.DTOs.Review;
 
 namespace Graduation.API.Controllers
 {
@@ -73,7 +73,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var deleted = await _reviewService.DeleteReviewAsync(reviewId, userId);
             if (!deleted)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFound));
 
             return OkResult(message: Lang.GetMessage(LangKeys.Review.Deleted));
         }

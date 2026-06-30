@@ -41,7 +41,6 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Graduation.BLL\Graduation.BLL.csproj" />
-		<ProjectReference Include="..\Shared\Shared.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

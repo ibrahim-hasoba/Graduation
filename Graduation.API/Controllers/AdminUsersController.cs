@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Admin;
+using Graduation.BLL.DTOs.Admin;
 using System.Text;
 
 namespace Graduation.API.Controllers
@@ -49,7 +49,7 @@ namespace Graduation.API.Controllers
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+            if (user == null) throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var fullProfilePictureUrl = _imageService.GetFullImageUrl(user.ProfilePictureUrl!);
 
@@ -142,11 +142,11 @@ namespace Graduation.API.Controllers
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
 
             if (requestingAdminId == userId)
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.CannotDeleteSelf));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.CannotDeleteSelf));
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             await _orderService.HandleUserAccountDeletionAsync(userId);
 
@@ -165,7 +165,7 @@ namespace Graduation.API.Controllers
 
             var result = await _userManager.DeleteAsync(user);
             if (!result.Succeeded)
-                throw new Shared.Errors.BadRequestException(
+                throw new Graduation.BLL.Errors.BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _activityLog.LogAsync(GetRequiredUserId(), "Delete", "User", user.Code, $"Deleted user {user.Email}");
@@ -177,7 +177,7 @@ namespace Graduation.API.Controllers
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+            if (user == null) throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             if (user.LockoutEnd != null && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
@@ -198,7 +198,7 @@ namespace Graduation.API.Controllers
         {
             var existingUser = await _userManager.FindByEmailAsync(dto.Email);
             if (existingUser != null)
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Auth.EmailAlreadyExists));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.Auth.EmailAlreadyExists));
 
             var user = new AppUser
             {
@@ -215,11 +215,11 @@ namespace Graduation.API.Controllers
             var result = await _userManager.CreateAsync(user, dto.Password);
 
             if (!result.Succeeded)
-                throw new Shared.Errors.BadRequestException(
+                throw new Graduation.BLL.Errors.BadRequestException(
                     string.Join(", ", result.Errors.Select(e => e.Description)));
 
             if (!await _context.Roles.AnyAsync(r => r.Name == dto.Role))
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Role.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Role.NotFound));
 
             await _userManager.AddToRoleAsync(user, dto.Role);
             await _codeAssignment.AssignUserCodeAsync(user);
@@ -245,7 +245,7 @@ namespace Graduation.API.Controllers
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+            if (user == null) throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             user.FirstName = dto.FirstName ?? user.FirstName;
             user.LastName = dto.LastName ?? user.LastName;
@@ -254,7 +254,7 @@ namespace Graduation.API.Controllers
 
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
-                throw new Shared.Errors.BadRequestException(result.Errors.First().Description);
+                throw new Graduation.BLL.Errors.BadRequestException(result.Errors.First().Description);
 
             await _activityLog.LogAsync(GetRequiredUserId(), "Update", "User", user.Code, $"Updated user {user.Email}");
 
@@ -275,16 +275,16 @@ namespace Graduation.API.Controllers
         {
             var userId = await _codeLookup.ResolveUserIdAsync(userCode);
             var user = await _userManager.FindByIdAsync(userId);
-            if (user == null) throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+            if (user == null) throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var isTargetAdmin = await _userManager.IsInRoleAsync(user, "Admin");
             if (isTargetAdmin)
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.AdminPasswordReset));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.User.AdminPasswordReset));
 
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
             if (!result.Succeeded)
-                throw new Shared.Errors.BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
+                throw new Graduation.BLL.Errors.BadRequestException(string.Join(", ", result.Errors.Select(e => e.Description)));
 
             await _userManager.UpdateSecurityStampAsync(user);
             await _activityLog.LogAsync(GetRequiredUserId(), "ResetPassword", "User", user.Code, $"Reset password for user {user.Email}");

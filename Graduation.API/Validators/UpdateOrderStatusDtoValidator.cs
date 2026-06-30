@@ -1,6 +1,6 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Graduation.DAL.Entities;
-using Shared.DTOs.Order;
+using Graduation.BLL.DTOs.Order;
 
 namespace Graduation.API.Validators
 {

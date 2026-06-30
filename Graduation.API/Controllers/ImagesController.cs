@@ -1,4 +1,4 @@
-using Shared.Errors;
+using Graduation.API.Errors;
 using Graduation.API;
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;

@@ -1,4 +1,4 @@
-﻿namespace Graduation.API.HostedServices
+namespace Graduation.API.HostedServices
 {
     using global::Graduation.DAL.Data;
     using Microsoft.EntityFrameworkCore;

@@ -1,7 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Shared.Errors;
+using Graduation.API.Errors;
 
 namespace Graduation.API.Filters
 {

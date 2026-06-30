@@ -1,6 +1,6 @@
 using Graduation.DAL.Entities;
-using Shared.DTOs;
-using Shared.DTOs.Product;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Product;
 
 namespace Graduation.BLL.Services.Interfaces
 {

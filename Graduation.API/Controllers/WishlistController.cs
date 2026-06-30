@@ -2,7 +2,7 @@ using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Graduation.API.Extensions;
-using Shared.DTOs.Wishlist;
+using Graduation.BLL.DTOs.Wishlist;
 
 namespace Graduation.API.Controllers
 {

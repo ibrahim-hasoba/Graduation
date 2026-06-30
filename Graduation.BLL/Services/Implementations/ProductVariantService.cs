@@ -1,10 +1,10 @@
-﻿using Graduation.BLL.Services.Interfaces;
+using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs.Product;
-using Shared.Errors;
+using Graduation.BLL.DTOs.Product;
+using Graduation.BLL.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;

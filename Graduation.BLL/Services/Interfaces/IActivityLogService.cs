@@ -1,4 +1,4 @@
-using Shared.DTOs.Admin;
+using Graduation.BLL.DTOs.Admin;
 
 namespace Graduation.BLL.Services.Interfaces
 {

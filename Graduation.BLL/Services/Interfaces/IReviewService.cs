@@ -1,5 +1,5 @@
-﻿using Shared.DTOs;
-using Shared.DTOs.Review;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Review;
 
 namespace Graduation.BLL.Services.Interfaces
 {

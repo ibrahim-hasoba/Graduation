@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Vendor;
+using Graduation.BLL.DTOs.Vendor;
 
 namespace Graduation.API.Controllers
 {
@@ -108,7 +108,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             return OkResult(data: MapToDto(vendor));
         }
@@ -123,16 +123,16 @@ namespace Graduation.API.Controllers
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.User.NotFound));
 
             var exists = await _context.Vendors.AnyAsync(v => v.UserId == userId);
             if (exists)
-                throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.AlreadyExists));
+                throw new Graduation.BLL.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.AlreadyExists));
 
             var nameExists = await _context.Vendors
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
             if (nameExists)
-                throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
+                throw new Graduation.BLL.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
 
             var initialStatus = dto.IsApproved
                 ? VendorApprovalStatus.Approved
@@ -192,7 +192,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             if (!string.IsNullOrWhiteSpace(dto.StoreName) &&
                 !dto.StoreName.Equals(vendor.StoreName, StringComparison.OrdinalIgnoreCase))
@@ -201,7 +201,7 @@ namespace Graduation.API.Controllers
                     .AnyAsync(v => v.Id != id &&
                                    v.StoreName.ToLower() == dto.StoreName.ToLower());
                 if (nameExists)
-                    throw new Shared.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
+                    throw new Graduation.BLL.Errors.ConflictException(Lang.GetMessage(LangKeys.Vendor.NameExists));
 
                 vendor.StoreName = dto.StoreName;
             }
@@ -280,7 +280,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(v => v.Id == id);
 
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var appUser = await _userManager.FindByIdAsync(vendor.UserId);
             if (appUser != null && await _userManager.IsInRoleAsync(appUser, "Vendor"))
@@ -316,7 +316,7 @@ namespace Graduation.API.Controllers
             string vendorCode, [FromBody] VendorApprovalDto dto)
         {
             if (!dto.IsApproved && string.IsNullOrWhiteSpace(dto.RejectionReason))
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Vendor.RejectionRequired));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.Vendor.RejectionRequired));
 
             var id = await _codeLookup.ResolveVendorIdAsync(vendorCode);
             var result = await _vendorService.ApproveVendorAsync(

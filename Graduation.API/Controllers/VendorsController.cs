@@ -4,9 +4,9 @@ using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Order;
-using Shared.DTOs.ReturnRequest;
-using Shared.DTOs.Vendor;
+using Graduation.BLL.DTOs.Order;
+using Graduation.BLL.DTOs.ReturnRequest;
+using Graduation.BLL.DTOs.Vendor;
 using Graduation.API.Extensions;
 
 namespace Graduation.API.Controllers
@@ -43,7 +43,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             return OkResult(data: vendor);
         }
@@ -57,7 +57,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var updated = await _vendorService.UpdateVendorAsync(vendor.Id, userId, dto);
             return OkResult(data: updated);
@@ -71,7 +71,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
             return OkResult(data: orders);
@@ -86,7 +86,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var order = await _context.Orders
                 .Include(o => o.User)
@@ -100,7 +100,7 @@ namespace Graduation.API.Controllers
                     && o.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id));
 
             if (order == null)
-                throw new Shared.Errors.NotFoundException("Order", orderId);
+                throw new Graduation.BLL.Errors.NotFoundException("Order", orderId);
 
             return OkResult(data: order);
         }
@@ -115,7 +115,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var updated = await _orderService.UpdateOrderStatusAsync(orderId, vendor.Id, dto);
             return OkResult(data: updated);
@@ -130,7 +130,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var order = await _context.Orders
                 .Include(o => o.OrderItems)
@@ -139,7 +139,7 @@ namespace Graduation.API.Controllers
                     && o.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id));
 
             if (order == null)
-                throw new Shared.Errors.NotFoundException("Order", orderId);
+                throw new Graduation.BLL.Errors.NotFoundException("Order", orderId);
 
             var timeline = new List<object>();
 
@@ -183,7 +183,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var products = await _productService.GetVendorProductsAsync(vendor.Id);
             return OkResult(data: products);
@@ -197,7 +197,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var totalProducts = await _context.Products
                 .CountAsync(p => p.VendorId == vendor.Id && p.IsActive);
@@ -234,14 +234,14 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var order = await _context.Orders
                 .FirstOrDefaultAsync(o => o.Id == orderId
                     && o.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id));
 
             if (order == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Vendor.OrderNotFound));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Vendor.OrderNotFound));
 
             if (order.Status != OrderStatus.Shipped)
                 return BadRequest(new Errors.ApiResult(message: Lang.GetMessage(LangKeys.Order.LocationShippedOnly)));
@@ -259,7 +259,7 @@ namespace Graduation.API.Controllers
         {
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId)
-                ?? throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                ?? throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var requests = await _context.ReturnRequests
                 .Include(r => r.User)
@@ -297,7 +297,7 @@ namespace Graduation.API.Controllers
         {
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId)
-                ?? throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
+                ?? throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
 
             var returnRequest = await _context.ReturnRequests
                 .Include(r => r.Order)
@@ -305,10 +305,10 @@ namespace Graduation.API.Controllers
                         .ThenInclude(oi => oi.Product)
                 .FirstOrDefaultAsync(r => r.Id == returnId
                     && r.Order.OrderItems.Any(oi => oi.Product.VendorId == vendor.Id))
-                ?? throw new Shared.Errors.NotFoundException("Return request", returnId);
+                ?? throw new Graduation.BLL.Errors.NotFoundException("Return request", returnId);
 
             if (returnRequest.Status != ReturnRequestStatus.Pending)
-                throw new Shared.Errors.BadRequestException("Return request has already been reviewed");
+                throw new Graduation.BLL.Errors.BadRequestException("Return request has already been reviewed");
 
             returnRequest.Status = dto.Status;
             returnRequest.ReviewedAt = DateTime.UtcNow;
@@ -316,7 +316,7 @@ namespace Graduation.API.Controllers
             if (dto.Status == ReturnRequestStatus.Rejected)
             {
                 if (string.IsNullOrWhiteSpace(dto.RejectionReason))
-                    throw new Shared.Errors.BadRequestException("Rejection reason is required");
+                    throw new Graduation.BLL.Errors.BadRequestException("Rejection reason is required");
                 returnRequest.RejectionReason = dto.RejectionReason;
             }
 

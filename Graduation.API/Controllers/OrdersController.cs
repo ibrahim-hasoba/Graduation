@@ -6,8 +6,8 @@ using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Order;
-using Shared.DTOs.ReturnRequest;
+using Graduation.BLL.DTOs.Order;
+using Graduation.BLL.DTOs.ReturnRequest;
 
 namespace Graduation.API.Controllers
 {
@@ -122,7 +122,7 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Order.NotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Order.NotVendor));
 
             var orders = await _orderService.GetVendorOrdersAsync(vendor.Id);
             return OkResult(data: orders);
@@ -145,7 +145,7 @@ namespace Graduation.API.Controllers
 
             var vendor = await _vendorService.GetVendorByUserIdAsync(userId);
             if (vendor == null)
-                throw new Shared.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Order.UpdateNotVendor));
+                throw new Graduation.BLL.Errors.UnauthorizedException(Lang.GetMessage(LangKeys.Order.UpdateNotVendor));
 
             var vendorResult = await _orderService.UpdateOrderStatusAsync(id, vendor.Id, dto);
             return OkResult(data: vendorResult, message: Lang.GetMessage(LangKeys.Order.StatusUpdated));
@@ -187,15 +187,15 @@ namespace Graduation.API.Controllers
             var userId = GetRequiredUserId();
 
             var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId)
-                ?? throw new Shared.Errors.NotFoundException("Order", id);
+                ?? throw new Graduation.BLL.Errors.NotFoundException("Order", id);
 
             if (order.Status != DAL.Entities.OrderStatus.Delivered)
-                throw new Shared.Errors.BadRequestException("Order has not been delivered yet");
+                throw new Graduation.BLL.Errors.BadRequestException("Order has not been delivered yet");
 
             var existingPending = await _context.ReturnRequests
                 .AnyAsync(r => r.OrderId == id && r.Status == DAL.Entities.ReturnRequestStatus.Pending);
             if (existingPending)
-                throw new Shared.Errors.BadRequestException("A pending return request already exists for this order");
+                throw new Graduation.BLL.Errors.BadRequestException("A pending return request already exists for this order");
 
             var returnRequest = new DAL.Entities.ReturnRequest
             {

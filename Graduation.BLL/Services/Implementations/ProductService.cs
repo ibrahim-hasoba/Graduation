@@ -4,9 +4,9 @@ using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
-using Shared.DTOs;
-using Shared.DTOs.Product;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Product;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {

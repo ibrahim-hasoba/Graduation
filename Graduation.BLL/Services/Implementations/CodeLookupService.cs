@@ -1,7 +1,7 @@
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Microsoft.EntityFrameworkCore;
-using Shared.Errors;
+using Graduation.BLL.Errors;
 using System;
 using System.Collections.Generic;
 using System.Linq;

@@ -3,8 +3,8 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs.Payment;
-using Shared.Errors;
+using Graduation.BLL.DTOs.Payment;
+using Graduation.BLL.Errors;
 using System.Security.Cryptography;
 using System.Text;
 

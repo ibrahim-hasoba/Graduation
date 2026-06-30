@@ -1,10 +1,10 @@
-using Shared.Errors;
+using Graduation.BLL.Errors;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs.Wishlist;
+using Graduation.BLL.DTOs.Wishlist;
 
 namespace Graduation.BLL.Services.Implementations
 {

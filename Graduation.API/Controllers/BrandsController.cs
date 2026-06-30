@@ -1,8 +1,8 @@
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using Shared.DTOs;
-using Shared.DTOs.Vendor;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Vendor;
+using Graduation.API.Errors;
 
 namespace Graduation.API.Controllers
 {

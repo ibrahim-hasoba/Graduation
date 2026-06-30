@@ -30,7 +30,6 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
-using Shared;
 using System.IO;
 using System.Reflection;
 using System.Text;

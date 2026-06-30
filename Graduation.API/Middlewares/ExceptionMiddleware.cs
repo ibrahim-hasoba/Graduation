@@ -1,7 +1,7 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
-using SharedErrors = Shared.Errors;
-using ApiErrors = Graduation.API.Errors;
+using Graduation.API.Errors;
+using Graduation.BLL.Errors;
 
 namespace Graduation.API.Middlewares
 {
@@ -30,28 +30,23 @@ namespace Graduation.API.Middlewares
 
                 context.Response.ContentType = "application/json";
 
-                SharedErrors.ApiResponse response;
+                ApiResponse response;
 
-                if (ex is SharedErrors.BusinessException sharedBizEx)
+                if (ex is BusinessException bizEx)
                 {
-                    context.Response.StatusCode = sharedBizEx.StatusCode;
-                    response = new SharedErrors.ApiResponse(sharedBizEx.StatusCode, sharedBizEx.Message);
-                }
-                else if (ex is ApiErrors.BusinessException apiBizEx)
-                {
-                    context.Response.StatusCode = apiBizEx.StatusCode;
-                    response = new SharedErrors.ApiResponse(apiBizEx.StatusCode, apiBizEx.Message);
+                    context.Response.StatusCode = bizEx.StatusCode;
+                    response = new ApiResponse(bizEx.StatusCode, bizEx.Message);
                 }
                 else
                 {
                     context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
                     response = _env.IsDevelopment()
-                        ? new SharedErrors.ApiException(
+                        ? new ApiException(
                             (int)HttpStatusCode.InternalServerError,
                             ex.Message,
                             ex.StackTrace)
-                        : new SharedErrors.ApiException(
+                        : new ApiException(
                             (int)HttpStatusCode.InternalServerError,
                             "An internal server error occurred");
                 }

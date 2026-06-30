@@ -24,7 +24,7 @@ namespace Graduation.API.Controllers
 
         /// <summary>Creates a new discount coupon.</summary>
         [HttpPost]
-        public async Task<IActionResult> CreateCoupon([FromBody] Shared.DTOs.Coupon.CreateCouponDto dto)
+        public async Task<IActionResult> CreateCoupon([FromBody] Graduation.BLL.DTOs.Coupon.CreateCouponDto dto)
         {
             var coupon = await _couponService.CreateAsync(dto);
             await _activityLog.LogAsync(GetRequiredUserId(), "Create", "Coupon", coupon.Code, $"Created coupon {coupon.Code}");
@@ -33,7 +33,7 @@ namespace Graduation.API.Controllers
 
         /// <summary>Updates an existing coupon.</summary>
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateCoupon(int id, [FromBody] Shared.DTOs.Coupon.UpdateCouponDto dto)
+        public async Task<IActionResult> UpdateCoupon(int id, [FromBody] Graduation.BLL.DTOs.Coupon.UpdateCouponDto dto)
         {
             var coupon = await _couponService.UpdateAsync(id, dto);
             await _activityLog.LogAsync(GetRequiredUserId(), "Update", "Coupon", coupon.Code, $"Updated coupon {coupon.Code}");
@@ -63,7 +63,7 @@ namespace Graduation.API.Controllers
         {
             var coupon = await _couponService.GetByIdAsync(id);
             if (coupon == null)
-                throw new Shared.Errors.NotFoundException("Coupon", id);
+                throw new Graduation.BLL.Errors.NotFoundException("Coupon", id);
             return OkResult(data: coupon);
         }
     }

@@ -2,9 +2,9 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs;
-using Shared.DTOs.Review;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Review;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {
@@ -109,7 +109,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>Admin overload — all pending reviews across all vendors.</summary>
+        /// <summary>Admin overload ï¿½ all pending reviews across all vendors.</summary>
         public async Task<PagedResult<ReviewDto>> GetPendingReviewsAsync(int pageNumber, int pageSize)
         {
             var query = _context.ProductReviews
@@ -134,7 +134,7 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>Vendor overload — pending reviews for a specific vendor's products.</summary>
+        /// <summary>Vendor overload ï¿½ pending reviews for a specific vendor's products.</summary>
         public async Task<List<ReviewDto>> GetPendingReviewsAsync(int vendorId)
         {
             var reviews = await _context.ProductReviews

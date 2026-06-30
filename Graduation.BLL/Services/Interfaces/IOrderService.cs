@@ -1,5 +1,5 @@
-﻿using Shared.DTOs;
-using Shared.DTOs.Order;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Order;
 using System;
 using System.Collections.Generic;
 using System.Text;

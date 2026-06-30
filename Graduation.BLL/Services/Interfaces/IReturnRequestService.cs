@@ -1,4 +1,4 @@
-using Shared.DTOs.ReturnRequest;
+using Graduation.BLL.DTOs.ReturnRequest;
 
 namespace Graduation.BLL.Services.Interfaces
 {

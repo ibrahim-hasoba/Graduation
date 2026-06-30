@@ -3,8 +3,8 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs.Notification;
-using Shared.Errors;
+using Graduation.BLL.DTOs.Notification;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {

@@ -41,7 +41,7 @@ namespace Graduation.API.Controllers
         {
             var report = await _reviewReportService.GetReportByIdAsync(reportId);
             if (report == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
             return OkResult(data: report);
         }
         /// <summary>Approves a review report and takes action on the reported review.</summary>
@@ -55,7 +55,7 @@ namespace Graduation.API.Controllers
             var adminId = GetRequiredUserId();
             var result = await _reviewReportService.ApproveReportAsync(reportId, adminId);
             if (!result)
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
             await _activityLog.LogAsync(adminId, "Approve", "Review", reportId.ToString(), $"Approved review report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.Approved));
         }
@@ -70,7 +70,7 @@ namespace Graduation.API.Controllers
             var adminId = GetRequiredUserId();
             var result = await _reviewReportService.DismissReportAsync(reportId, adminId);
             if (!result)
-                throw new Shared.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
+                throw new Graduation.BLL.Errors.BadRequestException(Lang.GetMessage(LangKeys.Report.NotFoundOrResolved));
             await _activityLog.LogAsync(adminId, "Dismiss", "Review", reportId.ToString(), $"Dismissed review report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.Dismissed));
         }
@@ -84,7 +84,7 @@ namespace Graduation.API.Controllers
             var adminId = GetRequiredUserId();
             var result = await _reviewReportService.DeleteReviewFromReportAsync(reportId, adminId);
             if (!result)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Review.NotFoundSimple), reportId);
             await _activityLog.LogAsync(adminId, "Delete", "Review", reportId.ToString(), $"Deleted review from report #{reportId}");
             return OkResult(message: Lang.GetMessage(LangKeys.Report.ReviewDeleted));
         }

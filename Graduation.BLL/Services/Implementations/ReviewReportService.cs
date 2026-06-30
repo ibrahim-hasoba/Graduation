@@ -2,9 +2,9 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs;
-using Shared.DTOs.Review;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Review;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {

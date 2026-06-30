@@ -1,5 +1,5 @@
 
-using Shared.DTOs.Notification;
+using Graduation.BLL.DTOs.Notification;
 
 namespace Graduation.BLL.Services.Interfaces
 {

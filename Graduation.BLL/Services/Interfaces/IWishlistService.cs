@@ -1,4 +1,4 @@
-using Shared.DTOs.Wishlist;
+using Graduation.BLL.DTOs.Wishlist;
 
 namespace Graduation.BLL.Services.Interfaces
 {

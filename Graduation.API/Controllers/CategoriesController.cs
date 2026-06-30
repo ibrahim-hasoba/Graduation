@@ -4,8 +4,8 @@ using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs.Category;
-using Shared.DTOs.Product;
+using Graduation.BLL.DTOs.Category;
+using Graduation.BLL.DTOs.Product;
 
 namespace Graduation.API.Controllers
 {
@@ -106,7 +106,7 @@ namespace Graduation.API.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id && c.Status == CategoryStatus.Active);
 
             if (category == null)
-                throw new Shared.Errors.NotFoundException(Lang.GetMessage(LangKeys.Category.NotFound));
+                throw new Graduation.BLL.Errors.NotFoundException(Lang.GetMessage(LangKeys.Category.NotFound));
 
             var productCount = await _context.Products
                 .CountAsync(p => p.CategoryId == id && p.IsActive);

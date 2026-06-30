@@ -3,7 +3,7 @@ using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.Errors;
+using Graduation.BLL.Errors;
 
 namespace Graduation.API.Controllers
 {
@@ -24,7 +24,7 @@ namespace Graduation.API.Controllers
             return userId;
         }
 
-        protected async Task<Shared.DTOs.Vendor.VendorDto> GetCurrentVendorAsync(IVendorService vendorService)
+        protected async Task<Graduation.BLL.DTOs.Vendor.VendorDto> GetCurrentVendorAsync(IVendorService vendorService)
         {
             var userId = GetRequiredUserId();
             var vendor = await vendorService.GetVendorByUserIdAsync(userId);

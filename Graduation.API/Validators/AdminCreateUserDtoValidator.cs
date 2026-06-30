@@ -1,6 +1,6 @@
-﻿using FluentValidation;
-using Shared.DTOs.Admin;
-using Shared.DTOs.Auth;
+using FluentValidation;
+using Graduation.BLL.DTOs.Admin;
+using Graduation.BLL.DTOs.Auth;
 
 namespace Graduation.API.Validators
 {

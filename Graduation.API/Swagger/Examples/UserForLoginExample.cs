@@ -1,4 +1,4 @@
-using Shared.DTOs;
+using Graduation.BLL.DTOs;
 
 namespace Graduation.API.Swagger.Examples
 {

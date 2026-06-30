@@ -10,10 +10,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Shared.DTOs;
-using Shared.DTOs.Auth;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Auth;
 using Hangfire;
-using Shared.Errors;
+using Graduation.BLL.Errors;
+using Graduation.API.Errors;
 
 namespace Graduation.API.Controllers
 {
@@ -648,7 +649,7 @@ namespace Graduation.API.Controllers
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [Authorize]
         [HttpPost("register-vendor")]
-        public async Task<IActionResult> RegisterVendor([FromBody] Shared.DTOs.Vendor.VendorRegisterDto dto)
+        public async Task<IActionResult> RegisterVendor([FromBody] Graduation.BLL.DTOs.Vendor.VendorRegisterDto dto)
         {
             var userId = GetRequiredUserId();
             var result = await _vendorService.RegisterVendorAsync(userId, dto);

@@ -1,4 +1,4 @@
-using Shared.DTOs.Product;
+using Graduation.BLL.DTOs.Product;
 using System;
 using System.Collections.Generic;
 using System.Linq;

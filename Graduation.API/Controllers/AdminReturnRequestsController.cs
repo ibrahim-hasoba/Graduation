@@ -34,7 +34,7 @@ namespace Graduation.API.Controllers
                 .Include(r => r.ReviewedBy)
                 .Include(r => r.Order)
                 .OrderByDescending(r => r.CreatedAt)
-                .Select(r => new Shared.DTOs.ReturnRequest.ReturnRequestDto
+                .Select(r => new Graduation.BLL.DTOs.ReturnRequest.ReturnRequestDto
                 {
                     Id = r.Id,
                     OrderId = r.OrderId,
@@ -54,16 +54,16 @@ namespace Graduation.API.Controllers
 
         /// <summary>Approves or rejects a return request.</summary>
         [HttpPost("{returnId}/review")]
-        public async Task<IActionResult> ReviewReturnRequest(int returnId, [FromBody] Shared.DTOs.ReturnRequest.UpdateReturnStatusDto dto)
+        public async Task<IActionResult> ReviewReturnRequest(int returnId, [FromBody] Graduation.BLL.DTOs.ReturnRequest.UpdateReturnStatusDto dto)
         {
             var adminId = GetRequiredUserId();
             var result = await _context.ReturnRequests
                 .Include(r => r.Order)
                 .FirstOrDefaultAsync(r => r.Id == returnId)
-                ?? throw new Shared.Errors.NotFoundException("Return request", returnId);
+                ?? throw new Graduation.BLL.Errors.NotFoundException("Return request", returnId);
 
             if (result.Status != DAL.Entities.ReturnRequestStatus.Pending)
-                throw new Shared.Errors.BadRequestException("Return request has already been reviewed");
+                throw new Graduation.BLL.Errors.BadRequestException("Return request has already been reviewed");
 
             result.Status = dto.Status;
             result.ReviewedById = adminId;
@@ -72,7 +72,7 @@ namespace Graduation.API.Controllers
             if (dto.Status == DAL.Entities.ReturnRequestStatus.Rejected)
             {
                 if (string.IsNullOrWhiteSpace(dto.RejectionReason))
-                    throw new Shared.Errors.BadRequestException("Rejection reason is required");
+                    throw new Graduation.BLL.Errors.BadRequestException("Rejection reason is required");
                 result.RejectionReason = dto.RejectionReason;
             }
 

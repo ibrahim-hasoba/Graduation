@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using Auth.DTOs;
 
 namespace Graduation.API.Validators

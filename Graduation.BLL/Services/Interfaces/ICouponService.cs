@@ -1,4 +1,4 @@
-using Shared.DTOs.Coupon;
+using Graduation.BLL.DTOs.Coupon;
 
 namespace Graduation.BLL.Services.Interfaces
 {

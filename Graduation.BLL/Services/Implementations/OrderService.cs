@@ -4,11 +4,11 @@ using Graduation.DAL.Entities;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs;
-using Shared.DTOs.Coupon;
-using Shared.DTOs.Order;
-using Shared.DTOs.Payment;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Coupon;
+using Graduation.BLL.DTOs.Order;
+using Graduation.BLL.DTOs.Payment;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {

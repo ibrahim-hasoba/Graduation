@@ -5,9 +5,9 @@ using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Shared.DTOs;
-using Shared.DTOs.Vendor;
-using Shared.Errors;
+using Graduation.BLL.DTOs;
+using Graduation.BLL.DTOs.Vendor;
+using Graduation.BLL.Errors;
 
 namespace Graduation.BLL.Services.Implementations
 {

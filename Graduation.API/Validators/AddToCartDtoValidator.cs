@@ -1,5 +1,5 @@
-﻿using FluentValidation;
-using Shared.DTOs.Cart;
+using FluentValidation;
+using Graduation.BLL.DTOs.Cart;
 using System.Linq;
 
 namespace Graduation.API.Validators

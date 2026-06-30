@@ -1,7 +1,7 @@
 using Graduation.BLL.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Shared.Errors;
+using Graduation.BLL.Errors;
 
 namespace Graduation.API.Controllers
 {
@@ -33,7 +33,7 @@ namespace Graduation.API.Controllers
             [FromQuery] string? vendorCode = null)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
+                return BadRequest(new Graduation.API.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             int? vendorId = null;
             if (!string.IsNullOrEmpty(vendorCode))
@@ -52,7 +52,7 @@ namespace Graduation.API.Controllers
             [FromQuery] DateTime endDate)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
+                return BadRequest(new Graduation.API.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetSalesByCategoryAsync(startDate, endDate);
             return OkResult(data: report);
@@ -100,7 +100,7 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
+                return BadRequest(new Graduation.API.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetRevenueByVendorAsync(startDate, endDate, take);
             return OkResult(data: report);
@@ -116,7 +116,7 @@ namespace Graduation.API.Controllers
             [FromQuery] int take = 10)
         {
             if (startDate == DateTime.MinValue || endDate == DateTime.MinValue)
-                return BadRequest(new Shared.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
+                return BadRequest(new Graduation.API.Errors.ApiResponse(400, Lang.GetMessage(LangKeys.Report.DateRangeRequired)));
 
             var report = await _reportService.GetTopProductsAsync(startDate, endDate, take);
             return OkResult(data: report);
