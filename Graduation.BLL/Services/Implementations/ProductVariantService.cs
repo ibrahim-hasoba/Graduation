@@ -1,31 +1,27 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Graduation.BLL.DTOs.Product;
 using Graduation.BLL.Errors;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace Graduation.BLL.Services.Implementations
 {
     public class ProductVariantService : IProductVariantService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly ILogger<ProductVariantService> _logger;
 
-        public ProductVariantService(DatabaseContext context, ILogger<ProductVariantService> logger)
+        public ProductVariantService(IUnitOfWork uow, ILogger<ProductVariantService> logger)
         {
-            _context = context;
+            _uow = uow;
             _logger = logger;
         }
 
         private async Task<Product> GetProductAndVerifyOwnerAsync(int productId, int? vendorId, bool isAdmin)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .FirstOrDefaultAsync(p => p.Id == productId);
 
             if (product == null)
@@ -62,11 +58,11 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<ProductVariantGroupDto>> GetProductVariantsAsync(int productId)
         {
-            var exists = await _context.Products.AnyAsync(p => p.Id == productId && p.IsActive);
+            var exists = await _uow.Repository<Product>().Query().AnyAsync(p => p.Id == productId && p.IsActive);
             if (!exists)
                 throw new NotFoundException("Product", productId);
 
-            var variants = await _context.ProductVariants
+            var variants = await _uow.Repository<ProductVariant>().Query()
                 .Where(v => v.ProductId == productId && v.IsActive)
                 .OrderBy(v => v.TypeName)
                 .ThenBy(v => v.DisplayOrder)
@@ -81,7 +77,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductVariantDto> GetVariantByIdAsync(int variantId)
         {
-            var variant = await _context.ProductVariants
+            var variant = await _uow.Repository<ProductVariant>().Query()
                 .FirstOrDefaultAsync(v => v.Id == variantId && v.IsActive);
 
             if (variant == null)
@@ -95,7 +91,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             await GetProductAndVerifyOwnerAsync(productId, vendorId, isAdmin);
 
-            var duplicate = await _context.ProductVariants
+            var duplicate = await _uow.Repository<ProductVariant>().Query()
                 .AnyAsync(v => v.ProductId == productId
                             && v.TypeName == dto.TypeName
                             && v.Value == dto.Value
@@ -118,8 +114,8 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.ProductVariants.Add(variant);
-            await _context.SaveChangesAsync();
+            _uow.Repository<ProductVariant>().Add(variant);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Variant added: ProductId={ProductId}, Type={Type}, Value={Value}",
@@ -135,13 +131,13 @@ namespace Graduation.BLL.Services.Implementations
 
             var normalizedType = NormalizeTypeName(dto.TypeName);
 
-            var strategy = _context.Database.CreateExecutionStrategy();
+            var strategy = _uow.Context.Database.CreateExecutionStrategy();
             return await strategy.ExecuteAsync(async () =>
             {
-                await using var transaction = await _context.Database.BeginTransactionAsync();
+                await using var transaction = await _uow.Context.Database.BeginTransactionAsync();
                 try
                 {
-                    var existing = await _context.ProductVariants
+                    var existing = await _uow.Repository<ProductVariant>().Query()
                         .Where(v => v.ProductId == productId
                                  && v.TypeName == normalizedType
                                  && v.IsActive)
@@ -163,8 +159,8 @@ namespace Graduation.BLL.Services.Implementations
                         CreatedAt = DateTime.UtcNow
                     }).ToList();
 
-                    _context.ProductVariants.AddRange(newVariants);
-                    await _context.SaveChangesAsync();
+                    _uow.Repository<ProductVariant>().AddRange(newVariants);
+                    await _uow.SaveChangesAsync();
                     await transaction.CommitAsync();
 
                     _logger.LogInformation(
@@ -184,7 +180,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<ProductVariantDto> UpdateVariantAsync(
             int variantId, int? vendorId, bool isAdmin, UpdateProductVariantDto dto)
         {
-            var variant = await _context.ProductVariants
+            var variant = await _uow.Repository<ProductVariant>().Query()
                 .Include(v => v.Product)
                 .FirstOrDefaultAsync(v => v.Id == variantId && v.IsActive);
 
@@ -194,7 +190,7 @@ namespace Graduation.BLL.Services.Implementations
             if (!isAdmin && variant.Product.VendorId != vendorId)
                 throw new UnauthorizedException("You can only update variants for your own products.");
 
-            var isDuplicate = await _context.ProductVariants
+            var isDuplicate = await _uow.Repository<ProductVariant>().Query()
                 .AnyAsync(v => v.Id != variantId
                             && v.ProductId == variant.ProductId
                             && v.TypeName == dto.TypeName
@@ -213,7 +209,7 @@ namespace Graduation.BLL.Services.Implementations
             variant.DisplayOrder = dto.DisplayOrder;
             variant.IsActive = dto.IsActive;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Variant updated: VariantId={VariantId}, Type={Type}, Value={Value}",
@@ -224,7 +220,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task DeleteVariantAsync(int variantId, int? vendorId, bool isAdmin)
         {
-            var variant = await _context.ProductVariants
+            var variant = await _uow.Repository<ProductVariant>().Query()
                 .Include(v => v.Product)
                 .FirstOrDefaultAsync(v => v.Id == variantId && v.IsActive);
 
@@ -235,7 +231,7 @@ namespace Graduation.BLL.Services.Implementations
                 throw new UnauthorizedException("You can only delete variants for your own products.");
 
             variant.IsActive = false;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Variant soft-deleted: VariantId={VariantId}", variantId);
         }
@@ -246,7 +242,7 @@ namespace Graduation.BLL.Services.Implementations
 
             var normalized = NormalizeTypeName(typeName);
 
-            var variants = await _context.ProductVariants
+            var variants = await _uow.Repository<ProductVariant>().Query()
                 .Where(v => v.ProductId == productId && v.TypeName == normalized && v.IsActive)
                 .ToListAsync();
 
@@ -256,7 +252,7 @@ namespace Graduation.BLL.Services.Implementations
             foreach (var v in variants)
                 v.IsActive = false;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Variant type deleted: ProductId={ProductId}, Type={Type}, Count={Count}",

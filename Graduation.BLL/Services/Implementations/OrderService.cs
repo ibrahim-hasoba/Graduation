@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -14,7 +14,7 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class OrderService : IOrderService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly IEmailService _emailService;
         private readonly IBackgroundJobClient _backgroundJobs;
         private readonly ILogger<OrderService> _logger;
@@ -22,14 +22,14 @@ namespace Graduation.BLL.Services.Implementations
         private readonly ICouponService _couponService;
 
         public OrderService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             IEmailService emailService,
             IBackgroundJobClient backgroundJobs,
             ILogger<OrderService> logger,
             IPaymentService paymentService,
             ICouponService couponService)
         {
-            _context = context;
+            _uow = uow;
             _emailService = emailService;
             _backgroundJobs = backgroundJobs;
             _logger = logger;
@@ -52,7 +52,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (dto.AddressId.HasValue)
             {
-                var savedAddress = await _context.UserAddresses
+                var savedAddress = await _uow.Repository<UserAddress>().Query()
                     .FirstOrDefaultAsync(a => a.Id == dto.AddressId.Value && a.UserId == userId);
 
                 if (savedAddress == null)
@@ -73,19 +73,19 @@ namespace Graduation.BLL.Services.Implementations
                 resolvedLng = dto.Longitude;
             }
 
-            var strategy = _context.Database.CreateExecutionStrategy();
+            var strategy = _uow.Context.Database.CreateExecutionStrategy();
 
             List<CartItem> cartItems = null!;
             List<Order> createdOrders = null!;
 
             await strategy.ExecuteAsync(async () =>
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(
+                await using var transaction = await _uow.Context.Database.BeginTransactionAsync(
                     System.Data.IsolationLevel.Serializable);
 
                 try
                 {
-                    cartItems = await _context.CartItems
+                    cartItems = await _uow.Repository<CartItem>().Query()
                         .Include(ci => ci.Product)
                             .ThenInclude(p => p.Vendor)
                         .Include(ci => ci.SelectedVariants)
@@ -142,7 +142,7 @@ namespace Graduation.BLL.Services.Implementations
                             {
                                 foreach (var sv in item.SelectedVariants)
                                 {
-                                    int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                    int rowsAffected = await _uow.ExecuteSqlInterpolatedAsync($@"
                                         UPDATE ProductVariants
                                         SET StockQuantity = StockQuantity - {item.Quantity}
                                         WHERE Id = {sv.ProductVariantId}
@@ -157,7 +157,7 @@ namespace Graduation.BLL.Services.Implementations
                             }
                             else
                             {
-                                int rowsAffected = await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                                int rowsAffected = await _uow.ExecuteSqlInterpolatedAsync($@"
                                     UPDATE Products
                                     SET StockQuantity = StockQuantity - {item.Quantity}
                                     WHERE Id = {item.ProductId}
@@ -166,7 +166,7 @@ namespace Graduation.BLL.Services.Implementations
 
                                 if (rowsAffected == 0)
                                 {
-                                    var product = await _context.Products
+                                    var product = await _uow.Repository<Product>().Query()
                                         .AsNoTracking()
                                         .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
@@ -205,7 +205,7 @@ namespace Graduation.BLL.Services.Implementations
                             DiscountAmount = discountAmount,
                             TotalAmount = totalAmount,
                             Status = OrderStatus.Pending,
-                            CouponId = couponResult != null && !createdOrders.Any() ? (await _context.Coupons.Where(c => c.Code == couponResult.Code).Select(c => (int?)c.Id).FirstOrDefaultAsync()) : null,
+                            CouponId = couponResult != null && !createdOrders.Any() ? (await _uow.Repository<Coupon>().Query().Where(c => c.Code == couponResult.Code).Select(c => (int?)c.Id).FirstOrDefaultAsync()) : null,
                             PaymentMethod = dto.PaymentMethod,
                             PaymentStatus = PaymentStatus.Pending,
                             OrderDate = DateTime.UtcNow,
@@ -219,7 +219,7 @@ namespace Graduation.BLL.Services.Implementations
                             Notes = dto.Notes
                         };
 
-                        _context.Orders.Add(order);
+                        _uow.Repository<Order>().Add(order);
                         createdOrders.Add(order);
 
                         foreach (var cartItem in items)
@@ -243,18 +243,18 @@ namespace Graduation.BLL.Services.Implementations
                         }
                     }
 
-                    _context.OrderItems.AddRange(allOrderItems);
+                    _uow.Repository<OrderItem>().AddRange(allOrderItems);
 
-                    _context.CartItems.RemoveRange(cartItems);
+                    _uow.Repository<CartItem>().DeleteRange(cartItems);
 
-                    await _context.SaveChangesAsync();
+                    await _uow.SaveChangesAsync();
                     await transaction.CommitAsync();
 
                     if (couponResult != null)
                     {
-                        var coupon = await _context.Coupons.FirstAsync(c => c.Code == couponResult.Code);
+                        var coupon = await _uow.Repository<Coupon>().Query().FirstAsync(c => c.Code == couponResult.Code);
                         coupon.CurrentUsageCount++;
-                        await _context.SaveChangesAsync();
+                        await _uow.SaveChangesAsync();
                     }
 
                     _logger.LogInformation(
@@ -270,7 +270,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (dto.PaymentMethod == PaymentMethod.CashOnDelivery)
             {
-                var user = await _context.Users.FindAsync(userId);
+                var user = await _uow.Repository<AppUser>().GetByIdAsync(userId);
                 if (user?.Email != null)
                 {
                     var first = createdOrders.First();
@@ -322,7 +322,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> GetOrderByIdAsync(int id, string userId)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -343,7 +343,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> AdminGetOrderByIdAsync(int id)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -364,7 +364,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> GetOrderByIdForVendorAsync(int id, int vendorId)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -386,7 +386,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<PagedResult<OrderListDto>> GetUserOrdersAsync(string userId, int pageNumber = 1, int pageSize = 10)
         {
 
-            var query = _context.Orders
+            var query = _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Vendor)
@@ -411,7 +411,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<OrderListDto>> GetVendorOrdersAsync(int vendorId)
         {
-            var orders = await _context.Orders
+            var orders = await _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Vendor)
@@ -424,7 +424,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<OrderDto> UpdateOrderStatusAsync(int id, int vendorId, UpdateOrderStatusDto dto)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -459,13 +459,13 @@ namespace Graduation.BLL.Services.Implementations
                     break;
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return MapToDto(order);
         }
 
         public async Task<OrderDto> AdminUpdateOrderStatusAsync(int id, UpdateOrderStatusDto dto)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -499,13 +499,13 @@ namespace Graduation.BLL.Services.Implementations
                     break;
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return MapToDto(order);
         }
 
         public async Task<OrderDto> CancelOrderAsync(int id, string userId, string reason)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
@@ -529,7 +529,7 @@ namespace Graduation.BLL.Services.Implementations
             order.CancellationReason = reason;
 
             await RestoreStockAsync(order.OrderItems);
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return MapToDto(order);
         }
 
@@ -541,7 +541,7 @@ namespace Graduation.BLL.Services.Implementations
                 {
                     foreach (var sv in item.SelectedVariants)
                     {
-                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        await _uow.ExecuteSqlInterpolatedAsync($@"
                             UPDATE ProductVariants
                             SET StockQuantity = StockQuantity + {item.Quantity}
                             WHERE Id = {sv.ProductVariantId}");
@@ -549,7 +549,7 @@ namespace Graduation.BLL.Services.Implementations
                 }
                 else
                 {
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    await _uow.ExecuteSqlInterpolatedAsync($@"
                         UPDATE Products
                         SET StockQuantity = StockQuantity + {item.Quantity}
                         WHERE Id = {item.ProductId}");
@@ -558,7 +558,7 @@ namespace Graduation.BLL.Services.Implementations
         }
         public async Task HandleUserAccountDeletionAsync(string userId)
         {
-            var activeOrders = await _context.Orders
+            var activeOrders = await _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.SelectedVariants)
                 .Where(o => o.UserId == userId &&
@@ -569,7 +569,7 @@ namespace Graduation.BLL.Services.Implementations
             foreach (var order in activeOrders)
                 await RestoreStockAsync(order.OrderItems);
 
-            var allOrders = await _context.Orders
+            var allOrders = await _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.SelectedVariants)
                 .Where(o => o.UserId == userId)
@@ -580,13 +580,13 @@ namespace Graduation.BLL.Services.Implementations
                 foreach (var item in order.OrderItems)
                 {
                     if (item.SelectedVariants != null && item.SelectedVariants.Any())
-                        _context.Set<OrderItemVariant>().RemoveRange(item.SelectedVariants);
+                        _uow.Repository<OrderItemVariant>().DeleteRange(item.SelectedVariants);
                 }
-                _context.OrderItems.RemoveRange(order.OrderItems);
+                _uow.Repository<OrderItem>().DeleteRange(order.OrderItems);
             }
 
-            _context.Orders.RemoveRange(allOrders);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Order>().DeleteRange(allOrders);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation(
                 "All {Count} order(s) deleted for user {UserId} before account deletion",
@@ -594,7 +594,7 @@ namespace Graduation.BLL.Services.Implementations
         }
         public async Task<OrderMapTrackingDto> GetOrderMapTrackingAsync(string orderNumber, string userId)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
                         .ThenInclude(p => p.Vendor)
@@ -689,7 +689,7 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<OrderDto> GetOrderByIdInternalAsync(int id)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)

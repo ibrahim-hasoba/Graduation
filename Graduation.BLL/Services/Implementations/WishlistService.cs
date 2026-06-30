@@ -1,7 +1,7 @@
 using Graduation.BLL.Errors;
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Graduation.BLL.DTOs.Wishlist;
@@ -10,20 +10,20 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class WishlistService : IWishlistService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly ILogger<WishlistService> _logger;
 
         public WishlistService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             ILogger<WishlistService> logger)
         {
-            _context = context;
+            _uow = uow;
             _logger = logger;
         }
 
         public async Task<WishlistDto> AddToWishlistAsync(string userId, int productId)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews)
@@ -32,7 +32,7 @@ namespace Graduation.BLL.Services.Implementations
             if (product == null)
                 throw new NotFoundException("Product not found");
 
-            var existingWishlist = await _context.Wishlists
+            var existingWishlist = await _uow.Repository<Wishlist>().Query()
                 .FirstOrDefaultAsync(w => w.UserId == userId && w.ProductId == productId);
 
             if (existingWishlist != null)
@@ -45,8 +45,8 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Wishlists.Add(wishlist);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Wishlist>().Add(wishlist);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Product added to wishlist: ProductId={ProductId}, UserId={UserId}",
                 productId, userId);
@@ -56,14 +56,14 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task RemoveFromWishlistAsync(string userId, int productId)
         {
-            var wishlist = await _context.Wishlists
+            var wishlist = await _uow.Repository<Wishlist>().Query()
                 .FirstOrDefaultAsync(w => w.UserId == userId && w.ProductId == productId);
 
             if (wishlist == null)
                 throw new NotFoundException("Wishlist item not found");
 
-            _context.Wishlists.Remove(wishlist);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Wishlist>().Delete(wishlist);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Product removed from wishlist: ProductId={ProductId}, UserId={UserId}",
                 productId, userId);
@@ -71,7 +71,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<WishlistDto>> GetUserWishlistAsync(string userId)
         {
-            var wishlistItems = await _context.Wishlists
+            var wishlistItems = await _uow.Repository<Wishlist>().Query()
                 .Where(w => w.UserId == userId)
                 .Include(w => w.Product)
                     .ThenInclude(p => p!.Vendor)
@@ -91,18 +91,18 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<bool> IsInWishlistAsync(string userId, int productId)
         {
-            return await _context.Wishlists
+            return await _uow.Repository<Wishlist>().Query()
                 .AnyAsync(w => w.UserId == userId && w.ProductId == productId);
         }
 
         public async Task ClearWishlistAsync(string userId)
         {
-            var wishlistItems = await _context.Wishlists
+            var wishlistItems = await _uow.Repository<Wishlist>().Query()
                 .Where(w => w.UserId == userId)
                 .ToListAsync();
 
-            _context.Wishlists.RemoveRange(wishlistItems);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Wishlist>().DeleteRange(wishlistItems);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Wishlist cleared: UserId={UserId}", userId);
         }

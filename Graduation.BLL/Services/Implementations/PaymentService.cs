@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Graduation.BLL.DTOs.Payment;
@@ -12,20 +12,20 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class PaymentService : IPaymentService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly IPaymobService _paymob;
         private readonly INotificationService _notifications;
         private readonly IEmailService _emailService;
         private readonly ILogger<PaymentService> _logger;
 
         public PaymentService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             IPaymobService paymob,
             INotificationService notifications,
             IEmailService emailService,
             ILogger<PaymentService> logger)
         {
-            _context = context;
+            _uow = uow;
             _paymob = paymob;
             _notifications = notifications;
             _emailService = emailService;
@@ -34,7 +34,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PaymentDto> InitiatePaymentAsync(int orderId, string clientType = "web")
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .Include(o => o.User)
                 .AsNoTracking()
                 .FirstOrDefaultAsync(o => o.Id == orderId)
@@ -56,7 +56,7 @@ namespace Graduation.BLL.Services.Implementations
 
             var cityForPaymob = order.ShippingAddress ?? "Egypt";
 
-            var existing = await _context.Payments
+            var existing = await _uow.Repository<Payment>().Query()
                 .FirstOrDefaultAsync(p => p.OrderId == orderId);
 
             if (existing != null)
@@ -97,7 +97,7 @@ namespace Graduation.BLL.Services.Implementations
 
                 existing.Status = PaymentStatus2.Pending;
                 existing.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                await _uow.SaveChangesAsync();
 
                 return MapToDto(existing, order.OrderNumber);
             }
@@ -123,11 +123,11 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Payments.Add(payment);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Payment>().Add(payment);
+            await _uow.SaveChangesAsync();
 
             payment.Code = BuildCode(payment.Id);
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             return MapToDto(payment, order.OrderNumber);
         }
@@ -138,7 +138,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             if (!_paymob.VerifyHmac(callbackData, receivedHmac))
             {
-                _logger.LogWarning("Invalid HMAC � webhook rejected");
+                _logger.LogWarning("Invalid HMAC — webhook rejected");
                 return;
             }
 
@@ -151,10 +151,10 @@ namespace Graduation.BLL.Services.Implementations
             var isSuccess = string.Equals(successStr, "true", StringComparison.OrdinalIgnoreCase);
             var isRefund = string.Equals(isRefundStr, "true", StringComparison.OrdinalIgnoreCase);
 
-            var strategy = _context.Database.CreateExecutionStrategy();
+            var strategy = _uow.Context.Database.CreateExecutionStrategy();
             await strategy.ExecuteAsync(async () =>
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(
+                await using var transaction = await _uow.Context.Database.BeginTransactionAsync(
                     System.Data.IsolationLevel.Serializable);
 
                 try
@@ -162,31 +162,29 @@ namespace Graduation.BLL.Services.Implementations
                     Payment? payment = null;
                     Order? order = null;
 
-                    // First try to find payment by PaymobOrderId (works for retries with unique merchantOrderId)
                     if (!string.IsNullOrEmpty(paymobOrderIdStr) && int.TryParse(paymobOrderIdStr, out var paymobOrderId))
                     {
-                        payment = await _context.Payments
+                        payment = await _uow.Repository<Payment>().Query()
                             .FirstOrDefaultAsync(p => p.PaymobOrderId == paymobOrderId);
                     }
 
                     if (payment != null)
                     {
-                        order = await _context.Orders
+                        order = await _uow.Repository<Order>().Query()
                             .Include(o => o.OrderItems)
                                 .ThenInclude(oi => oi.SelectedVariants)
                             .FirstOrDefaultAsync(o => o.Id == payment.OrderId);
                     }
-                    // Fallback: find by merchant_order_id -> OrderNumber
                     else if (!string.IsNullOrEmpty(orderNumber))
                     {
-                        order = await _context.Orders
+                        order = await _uow.Repository<Order>().Query()
                             .Include(o => o.OrderItems)
                                 .ThenInclude(oi => oi.SelectedVariants)
                             .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
                         if (order != null)
                         {
-                            payment = await _context.Payments
+                            payment = await _uow.Repository<Payment>().Query()
                                 .FirstOrDefaultAsync(p => p.OrderId == order.Id);
                         }
                     }
@@ -203,7 +201,7 @@ namespace Graduation.BLL.Services.Implementations
                         return;
                     }
 
-                    await _context.Entry(payment).ReloadAsync();
+                    await _uow.ReloadAsync(payment);
 
                     if (!string.IsNullOrEmpty(transactionId) &&
                         !string.IsNullOrEmpty(payment.PaymobTransactionId) &&
@@ -239,12 +237,12 @@ namespace Graduation.BLL.Services.Implementations
                         order.Status = OrderStatus.Confirmed;
                         order.ConfirmedAt = DateTime.UtcNow;
 
-                        var cartItems = await _context.CartItems
+                        var cartItems = await _uow.Repository<CartItem>().Query()
                             .Where(ci => ci.UserId == order.UserId)
                             .ToListAsync();
 
                         if (cartItems.Any())
-                            _context.CartItems.RemoveRange(cartItems);
+                            _uow.Repository<CartItem>().DeleteRange(cartItems);
 
                         await _notifications.CreateNotificationAsync(
                             order.UserId,
@@ -253,7 +251,7 @@ namespace Graduation.BLL.Services.Implementations
                             "Payment",
                             order.Id);
 
-                        var user = await _context.Users.FindAsync(order.UserId);
+                        var user = await _uow.Repository<AppUser>().GetByIdAsync(order.UserId);
                         if (user?.Email != null)
                         {
                             try
@@ -288,7 +286,7 @@ namespace Graduation.BLL.Services.Implementations
                             order.Id);
                     }
 
-                    await _context.SaveChangesAsync();
+                    await _uow.SaveChangesAsync();
                     await transaction.CommitAsync();
 
                     _logger.LogInformation(
@@ -307,7 +305,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             var cutoff = DateTime.UtcNow.AddMinutes(-timeoutMinutes);
 
-            var staleOrders = await _context.Orders
+            var staleOrders = await _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.SelectedVariants)
                 .Where(o =>
@@ -323,9 +321,9 @@ namespace Graduation.BLL.Services.Implementations
             {
                 order.Status = OrderStatus.Cancelled;
                 order.CancelledAt = DateTime.UtcNow;
-                order.CancellationReason = "Payment timeout � auto-cancelled";
+                order.CancellationReason = "Payment timeout — auto-cancelled";
 
-                var payment = await _context.Payments
+                var payment = await _uow.Repository<Payment>().Query()
                     .FirstOrDefaultAsync(p => p.OrderId == order.Id);
 
                 if (payment != null && payment.Status == PaymentStatus2.Pending)
@@ -341,12 +339,12 @@ namespace Graduation.BLL.Services.Implementations
                     "Stale order auto-cancelled: {OrderNumber}", order.OrderNumber);
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<PaymentDto> GetByOrderNumberAsync(string orderNumber, string userId)
         {
-            var order = await _context.Orders
+            var order = await _uow.Repository<Order>().Query()
                 .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.UserId == userId)
                 ?? throw new NotFoundException($"Order '{orderNumber}' not found");
 
@@ -360,7 +358,7 @@ namespace Graduation.BLL.Services.Implementations
                     CreatedAt = order.OrderDate
                 };
 
-            var payment = await _context.Payments
+            var payment = await _uow.Repository<Payment>().Query()
                 .FirstOrDefaultAsync(p => p.OrderId == order.Id)
                 ?? throw new NotFoundException("Payment record not found");
 
@@ -373,9 +371,8 @@ namespace Graduation.BLL.Services.Implementations
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
-            var query = _context.Payments
-                .Include(p => p.Order)
-                .AsQueryable();
+            IQueryable<Payment> query = _uow.Repository<Payment>().Query();
+            query = query.Include(p => p.Order);
 
             if (!string.IsNullOrWhiteSpace(status) &&
                 Enum.TryParse<PaymentStatus2>(status, ignoreCase: true, out var statusEnum))
@@ -407,7 +404,7 @@ namespace Graduation.BLL.Services.Implementations
                 {
                     foreach (var sv in item.SelectedVariants)
                     {
-                        await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                        await _uow.ExecuteSqlInterpolatedAsync($@"
                             UPDATE ProductVariants
                             SET StockQuantity = StockQuantity + {item.Quantity}
                             WHERE Id = {sv.ProductVariantId}");
@@ -415,7 +412,7 @@ namespace Graduation.BLL.Services.Implementations
                 }
                 else
                 {
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+                    await _uow.ExecuteSqlInterpolatedAsync($@"
                         UPDATE Products
                         SET StockQuantity = StockQuantity + {item.Quantity}
                         WHERE Id = {item.ProductId}");

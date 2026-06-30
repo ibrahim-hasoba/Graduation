@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.Report;
 using Graduation.BLL.Errors;
@@ -9,21 +9,20 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ReportService : IReportService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public ReportService(DatabaseContext context)
+        public ReportService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task<SalesReportDto> GetSalesReportAsync(
             DateTime startDate, DateTime endDate, int? vendorId = null)
         {
-            var query = _context.Orders
+            var query = _uow.Repository<Order>().Query()
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.Product)
-                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate)
-                .AsQueryable();
+                .Where(o => o.OrderDate >= startDate && o.OrderDate <= endDate);
 
             if (vendorId.HasValue)
                 query = query.Where(o => o.OrderItems.Any(oi => oi.Product.VendorId == vendorId.Value));
@@ -52,7 +51,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<CategorySalesDto>> GetSalesByCategoryAsync(
             DateTime startDate, DateTime endDate)
         {
-            return await _context.OrderItems
+            return await _uow.Repository<OrderItem>().Query()
                 .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Category)
@@ -74,12 +73,12 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorPerformanceDto> GetVendorPerformanceAsync(int vendorId)
         {
-            var vendor = await _context.Vendors
+            var vendor = await _uow.Repository<Vendor>().Query()
                 .Include(v => v.Products)
                 .FirstOrDefaultAsync(v => v.Id == vendorId)
                 ?? throw new NotFoundException("Vendor", vendorId);
 
-            var vendorItems = await _context.OrderItems
+            var vendorItems = await _uow.Repository<OrderItem>().Query()
                 .IgnoreQueryFilters()
                 .Include(oi => oi.Order)
                 .Include(oi => oi.Product)
@@ -139,13 +138,13 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<CustomerInsightsDto> GetCustomerInsightsAsync()
         {
-            var totalCustomers = await _context.Users.CountAsync();
-            var activeCustomers = await _context.Orders
+            var totalCustomers = await _uow.Repository<AppUser>().CountAsync();
+            var activeCustomers = await _uow.Repository<Order>().Query()
                 .Select(o => o.UserId)
                 .Distinct()
                 .CountAsync();
 
-            var repeatCustomers = await _context.Orders
+            var repeatCustomers = await _uow.Repository<Order>().Query()
                 .GroupBy(o => o.UserId)
                 .CountAsync(g => g.Count() > 1);
 
@@ -162,7 +161,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<LowStockProductDto>> GetLowStockProductsAsync(int threshold = 10)
         {
-            return await _context.Products
+            return await _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Where(p => p.IsActive && p.StockQuantity <= threshold)
                 .OrderBy(p => p.StockQuantity)
@@ -180,7 +179,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<List<VendorRevenueDto>> GetRevenueByVendorAsync(
             DateTime startDate, DateTime endDate, int take = 10)
         {
-            return await _context.OrderItems
+            return await _uow.Repository<OrderItem>().Query()
                 .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Vendor)
@@ -204,7 +203,7 @@ namespace Graduation.BLL.Services.Implementations
             DateTime startDate, DateTime endDate, int take = 10)
         {
 
-            var grouped = await _context.OrderItems
+            var grouped = await _uow.Repository<OrderItem>().Query()
                 .IgnoreQueryFilters()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Vendor)
@@ -232,7 +231,7 @@ namespace Graduation.BLL.Services.Implementations
                 .ToListAsync();
 
             var productIds = grouped.Select(g => g.ProductId).ToList();
-            var images = await _context.ProductImages
+            var images = await _uow.Repository<ProductImage>().Query()
                 .Where(i => productIds.Contains(i.ProductId))
                 .GroupBy(i => i.ProductId)
                 .Select(g => new
@@ -256,7 +255,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<OrderStatusSummaryDto>> GetOrderStatusSummaryAsync()
         {
-            return await _context.Orders
+            return await _uow.Repository<Order>().Query()
                 .GroupBy(o => o.Status)
                 .Select(g => new OrderStatusSummaryDto
                 {
@@ -271,7 +270,7 @@ namespace Graduation.BLL.Services.Implementations
         {
             var sixMonthsAgo = DateTime.UtcNow.AddDays(-180);
 
-            return await _context.Users
+            return await _uow.Repository<AppUser>().Query()
                 .Where(u => u.CreatedAt >= sixMonthsAgo)
                 .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
                 .Select(g => new UserTrendDto

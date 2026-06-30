@@ -1,7 +1,7 @@
 using Graduation.BLL.Errors;
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 
@@ -9,11 +9,11 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class RefreshTokenService : IRefreshTokenService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public RefreshTokenService(DatabaseContext context)
+        public RefreshTokenService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task<RefreshToken> GenerateRefreshTokenAsync(string userId, string ipAddress , bool rememberMe = false)
@@ -29,22 +29,22 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedByIp = ipAddress
             };
 
-            _context.RefreshTokens.Add(refreshToken);
-            await _context.SaveChangesAsync();
+            _uow.Repository<RefreshToken>().Add(refreshToken);
+            await _uow.SaveChangesAsync();
 
             return refreshToken;
         }
 
         public async Task<RefreshToken?> GetRefreshTokenAsync(string token)
         {
-            return await _context.RefreshTokens
+            return await _uow.Repository<RefreshToken>().Query()
                 .Include(rt => rt.User)
                 .FirstOrDefaultAsync(rt => rt.Token == token);
         }
 
         public async Task<RefreshToken?> ValidateRefreshTokenAsync(string token, string userId)
         {
-            var refreshToken = await _context.RefreshTokens
+            var refreshToken = await _uow.Repository<RefreshToken>().Query()
                 .Include(rt => rt.User)
                 .FirstOrDefaultAsync(rt => rt.Token == token);
 
@@ -59,7 +59,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task RevokeTokenAsync(string token, string ipAddress, string? replacedByToken = null)
         {
-            var refreshToken = await _context.RefreshTokens
+            var refreshToken = await _uow.Repository<RefreshToken>().Query()
                 .FirstOrDefaultAsync(rt => rt.Token == token);
 
             if (refreshToken == null)
@@ -72,12 +72,12 @@ namespace Graduation.BLL.Services.Implementations
             refreshToken.RevokedByIp = ipAddress;
             refreshToken.ReplacedByToken = replacedByToken;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task RevokeUserTokensAsync(string userId, string ipAddress)
         {
-            var userTokens = await _context.RefreshTokens
+            var userTokens = await _uow.Repository<RefreshToken>().Query()
                     .Where(rt => rt.UserId == userId
                                     && rt.RevokedAt == null
                                     && rt.ExpiresAt > DateTime.UtcNow)
@@ -89,20 +89,20 @@ namespace Graduation.BLL.Services.Implementations
                 token.RevokedByIp = ipAddress;
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task CleanupExpiredTokensAsync()
         {
-            var expiredTokens = await _context.RefreshTokens
+            var expiredTokens = await _uow.Repository<RefreshToken>().Query()
                 .Where(rt => rt.ExpiresAt < DateTime.UtcNow)
                 .ToListAsync();
 
-            _context.RefreshTokens.RemoveRange(expiredTokens);
-            await _context.SaveChangesAsync();
+            _uow.Repository<RefreshToken>().DeleteRange(expiredTokens);
+            await _uow.SaveChangesAsync();
         }
 
-        private string GenerateToken()
+        private static string GenerateToken()
         {
             var randomBytes = new byte[64];
             using var rng = RandomNumberGenerator.Create();

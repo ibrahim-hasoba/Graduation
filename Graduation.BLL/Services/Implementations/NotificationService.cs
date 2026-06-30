@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Graduation.BLL.DTOs.Notification;
@@ -10,12 +10,12 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class NotificationService : INotificationService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly IFirebaseService _firebaseService;
         private readonly ILogger<NotificationService> _logger;
-        public NotificationService(DatabaseContext context , IFirebaseService firebaseService , ILogger<NotificationService> logger)
+        public NotificationService(IUnitOfWork uow , IFirebaseService firebaseService , ILogger<NotificationService> logger)
         {
-            _context = context;
+            _uow = uow;
             _firebaseService = firebaseService;
             _logger = logger;
         }
@@ -26,9 +26,8 @@ namespace Graduation.BLL.Services.Implementations
             int pageNumber = 1,
             int pageSize = 20)
         {
-            var query = _context.Notifications
-                .Where(n => n.UserId == userId)
-                .AsQueryable();
+            var query = _uow.Repository<Notification>().Query()
+                .Where(n => n.UserId == userId);
 
             if (unreadOnly)
                 query = query.Where(n => !n.IsRead);
@@ -61,23 +60,28 @@ namespace Graduation.BLL.Services.Implementations
                 PageNumber = pageNumber,
                 PageSize = pageSize,
                 TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
-                UnreadCount = await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead)
+                UnreadCount = await _uow.Repository<Notification>().Query()
+                    .CountAsync(n => n.UserId == userId && !n.IsRead)
             };
         }
 
         public async Task BulkDeleteAsync(IEnumerable<int> ids, string userId)
         {
-            await _context.Notifications
+            var notifications = await _uow.Repository<Notification>().Query()
                 .Where(n => ids.Contains(n.Id) && n.UserId == userId)
-                .ExecuteDeleteAsync();
+                .ToListAsync();
+
+            _uow.Repository<Notification>().DeleteRange(notifications);
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<int> GetUnreadCountAsync(string userId)
-            => await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead);
+            => await _uow.Repository<Notification>().Query()
+                .CountAsync(n => n.UserId == userId && !n.IsRead);
 
         public async Task MarkAsReadAsync(int notificationId, string userId)
         {
-            var notification = await _context.Notifications
+            var notification = await _uow.Repository<Notification>().Query()
                 .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
 
             if (notification == null)
@@ -87,13 +91,13 @@ namespace Graduation.BLL.Services.Implementations
             {
                 notification.IsRead = true;
                 notification.ReadAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                await _uow.SaveChangesAsync();
             }
         }
 
         public async Task MarkAllAsReadAsync(string userId)
         {
-            await _context.Notifications
+            await _uow.Context.Notifications
                 .Where(n => n.UserId == userId && !n.IsRead)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(n => n.IsRead, true)
@@ -102,14 +106,14 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task DeleteNotificationAsync(int notificationId, string userId)
         {
-            var notification = await _context.Notifications
+            var notification = await _uow.Repository<Notification>().Query()
                 .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
 
             if (notification == null)
                 throw new NotFoundException("Notification not found");
 
-            _context.Notifications.Remove(notification);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Notification>().Delete(notification);
+            await _uow.SaveChangesAsync();
         }
 
         public async Task CreateNotificationAsync(
@@ -134,12 +138,12 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Notifications.Add(notification);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Notification>().Add(notification);
+            await _uow.SaveChangesAsync();
 
             try
             {
-                var user = await _context.Users
+                var user = await _uow.Repository<AppUser>().Query()
                     .Where(u => u.Id == userId)
                     .Select(u => new { u.FcmToken })
                     .FirstOrDefaultAsync();
@@ -158,7 +162,7 @@ namespace Graduation.BLL.Services.Implementations
 
                     if (result == FcmSendResult.InvalidToken)
                     {
-                        await _context.Users
+                        await _uow.Context.Users
                             .Where(u => u.Id == userId)
                             .ExecuteUpdateAsync(s => s.SetProperty(u => u.FcmToken, (string?)null));
                         _logger.LogInformation("Cleared invalid FCM token for user {UserId}", userId);
@@ -186,7 +190,7 @@ namespace Graduation.BLL.Services.Implementations
             int? orderId = null,
             int? productId = null)
         {
-            var vendor = await _context.Vendors.FindAsync(vendorId);
+            var vendor = await _uow.Repository<Vendor>().GetByIdAsync(vendorId);
             if (vendor == null) return;
 
             await CreateNotificationAsync(vendor.UserId, title, message, type,

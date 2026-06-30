@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs;
 using Graduation.BLL.DTOs.Review;
@@ -10,24 +10,24 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ReviewService : IReviewService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly INotificationService _notificationService;
 
-        public ReviewService(DatabaseContext context, INotificationService notificationService)
+        public ReviewService(IUnitOfWork uow, INotificationService notificationService)
         {
-            _context = context;
+            _uow = uow;
             _notificationService = notificationService;
         }
 
         public async Task<ReviewDto> CreateReviewAsync(string userId, CreateReviewDto dto)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .IgnoreQueryFilters()
                 .Include(p => p.Vendor)
                 .FirstOrDefaultAsync(p => p.Id == dto.ProductId)
                 ?? throw new NotFoundException("Product", dto.ProductId);
 
-            var hasPurchased = await _context.OrderItems
+            var hasPurchased = await _uow.Repository<OrderItem>().Query()
                 .IgnoreQueryFilters()
                 .AnyAsync(oi => oi.ProductId == dto.ProductId
                              && oi.Order.UserId == userId
@@ -37,7 +37,7 @@ namespace Graduation.BLL.Services.Implementations
                 throw new BadRequestException(
                     "You can only review products you have purchased and received.");
 
-            var existing = await _context.ProductReviews
+            var existing = await _uow.Repository<ProductReview>().Query()
                 .FirstOrDefaultAsync(r => r.ProductId == dto.ProductId && r.UserId == userId);
 
             if (existing != null)
@@ -53,8 +53,8 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.ProductReviews.Add(review);
-            await _context.SaveChangesAsync();
+            _uow.Repository<ProductReview>().Add(review);
+            await _uow.SaveChangesAsync();
 
             if (product.VendorId > 0)
             {
@@ -72,7 +72,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ReviewDto?> GetReviewByIdAsync(int reviewId)
         {
-            var review = await _context.ProductReviews
+            var review = await _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
@@ -84,7 +84,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<PagedResult<ReviewDto>> GetProductReviewsAsync(
                         int productId, int pageNumber, int pageSize, bool approvedOnly = true)
         {
-            var query = _context.ProductReviews
+            var query = _uow.Repository<ProductReview>().Query()
                 .Include(r => r.User)
                 .Include(r => r.Product)
                 .Where(r => r.ProductId == productId);
@@ -109,10 +109,9 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>Admin overload � all pending reviews across all vendors.</summary>
         public async Task<PagedResult<ReviewDto>> GetPendingReviewsAsync(int pageNumber, int pageSize)
         {
-            var query = _context.ProductReviews
+            var query = _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
@@ -134,10 +133,9 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>Vendor overload � pending reviews for a specific vendor's products.</summary>
         public async Task<List<ReviewDto>> GetPendingReviewsAsync(int vendorId)
         {
-            var reviews = await _context.ProductReviews
+            var reviews = await _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
@@ -151,7 +149,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<PagedResult<ReviewDto>> GetUserReviewsAsync(
                     string userId, int pageNumber, int pageSize)
         {
-            var query = _context.ProductReviews
+            var query = _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .Include(r => r.User)
                 .Include(r => r.Product)
@@ -173,13 +171,9 @@ namespace Graduation.BLL.Services.Implementations
             };
         }
 
-        /// <summary>
-        /// FIX #20: Notifies the reviewer when their review is approved or rejected.
-        /// Returns false if the review was not found (controller maps this to 404).
-        /// </summary>
         public async Task<bool> ApproveReviewAsync(int id, bool isApproved = true)
         {
-            var review = await _context.ProductReviews
+            var review = await _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .Include(r => r.Product)
                 .FirstOrDefaultAsync(r => r.Id == id);
@@ -187,7 +181,7 @@ namespace Graduation.BLL.Services.Implementations
             if (review == null) return false;
 
             review.IsApproved = isApproved;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             if (!string.IsNullOrEmpty(review.UserId))
             {
@@ -205,13 +199,9 @@ namespace Graduation.BLL.Services.Implementations
             return true;
         }
 
-        /// <summary>
-        /// Returns false if review not found or the user is not the owner (controller maps to 404).
-        /// Admins bypass the ownership check via isAdmin = true.
-        /// </summary>
         public async Task<bool> DeleteReviewAsync(int id, string userId, bool isAdmin = false)
         {
-            var review = await _context.ProductReviews
+            var review = await _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(r => r.Id == id);
 
@@ -219,14 +209,14 @@ namespace Graduation.BLL.Services.Implementations
 
             if (!isAdmin && review.UserId != userId) return false;
 
-            _context.ProductReviews.Remove(review);
-            await _context.SaveChangesAsync();
+            _uow.Repository<ProductReview>().Delete(review);
+            await _uow.SaveChangesAsync();
             return true;
         }
 
         public async Task<ReviewSummaryDto> GetProductReviewSummaryAsync(int productId)
         {
-            var reviews = await _context.ProductReviews
+            var reviews = await _uow.Repository<ProductReview>().Query()
                 .Where(r => r.ProductId == productId && r.IsApproved)
                 .ToListAsync();
 

@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs;
 using Graduation.BLL.DTOs.Review;
@@ -10,18 +10,18 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ReviewReportService : IReviewReportService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly IReviewService _reviewService;
 
-        public ReviewReportService(DatabaseContext context, IReviewService reviewService)
+        public ReviewReportService(IUnitOfWork uow, IReviewService reviewService)
         {
-            _context = context;
+            _uow = uow;
             _reviewService = reviewService;
         }
 
         public async Task<ReviewReportDto> CreateReportAsync(string userId, CreateReviewReportDto dto)
         {
-            var review = await _context.ProductReviews
+            var review = await _uow.Repository<ProductReview>().Query()
                 .IgnoreQueryFilters()
                 .FirstOrDefaultAsync(r => r.Id == dto.ReviewId)
                 ?? throw new NotFoundException("Review", dto.ReviewId);
@@ -29,7 +29,7 @@ namespace Graduation.BLL.Services.Implementations
             if (review.UserId == userId)
                 throw new BadRequestException("You cannot report your own review");
 
-            var existing = await _context.Set<ReviewReport>()
+            var existing = await _uow.Repository<ReviewReport>().Query()
                 .AnyAsync(r => r.ReviewId == dto.ReviewId && r.ReportedByUserId == userId && r.Status == ReviewReportStatus.Pending);
 
             if (existing)
@@ -44,8 +44,8 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Set<ReviewReport>().Add(report);
-            await _context.SaveChangesAsync();
+            _uow.Repository<ReviewReport>().Add(report);
+            await _uow.SaveChangesAsync();
 
             return await GetReportByIdAsync(report.Id)
                 ?? throw new Exception("Failed to retrieve created report");
@@ -53,7 +53,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PagedResult<ReviewReportDto>> GetPendingReportsAsync(int pageNumber, int pageSize)
         {
-            var query = _context.Set<ReviewReport>()
+            var query = _uow.Repository<ReviewReport>().Query()
                 .Include(r => r.Review)
                 .Include(r => r.ReportedByUser)
                 .Include(r => r.ResolvedBy)
@@ -77,7 +77,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ReviewReportDto?> GetReportByIdAsync(int reportId)
         {
-            var report = await _context.Set<ReviewReport>()
+            var report = await _uow.Repository<ReviewReport>().Query()
                 .Include(r => r.Review)
                 .Include(r => r.ReportedByUser)
                 .Include(r => r.ResolvedBy)
@@ -88,7 +88,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<bool> ApproveReportAsync(int reportId, string adminUserId)
         {
-            var report = await _context.Set<ReviewReport>()
+            var report = await _uow.Repository<ReviewReport>().Query()
                 .Include(r => r.Review)
                 .FirstOrDefaultAsync(r => r.Id == reportId);
 
@@ -105,13 +105,13 @@ namespace Graduation.BLL.Services.Implementations
                 review.IsApproved = false;
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return true;
         }
 
         public async Task<bool> DismissReportAsync(int reportId, string adminUserId)
         {
-            var report = await _context.Set<ReviewReport>()
+            var report = await _uow.Repository<ReviewReport>().Query()
                 .FirstOrDefaultAsync(r => r.Id == reportId);
 
             if (report == null) return false;
@@ -121,13 +121,13 @@ namespace Graduation.BLL.Services.Implementations
             report.ResolvedAt = DateTime.UtcNow;
             report.ResolvedById = adminUserId;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return true;
         }
 
         public async Task<bool> DeleteReviewFromReportAsync(int reportId, string adminUserId)
         {
-            var report = await _context.Set<ReviewReport>()
+            var report = await _uow.Repository<ReviewReport>().Query()
                 .Include(r => r.Review)
                 .FirstOrDefaultAsync(r => r.Id == reportId);
 
@@ -136,14 +136,14 @@ namespace Graduation.BLL.Services.Implementations
             var review = report.Review;
             if (review != null)
             {
-                _context.ProductReviews.Remove(review);
+                _uow.Repository<ProductReview>().Delete(review);
             }
 
             report.Status = ReviewReportStatus.Approved;
             report.ResolvedAt = DateTime.UtcNow;
             report.ResolvedById = adminUserId;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return true;
         }
 

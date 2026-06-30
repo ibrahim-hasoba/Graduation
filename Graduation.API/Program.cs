@@ -16,6 +16,7 @@ using Prometheus;
 using Graduation.BLL.JwtFeatures;
 using Graduation.BLL.Paymob;
 using Graduation.BLL.Services.Implementations;
+using Graduation.BLL;
 using Graduation.BLL.Services.Interfaces;
 using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
@@ -244,39 +245,9 @@ namespace Graduation.API
                     };
                 });
 
-                builder.Services.AddScoped<JwtHandler>();
-                builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
-                builder.Services.AddScoped<IVendorService, VendorService>();
-                builder.Services.AddScoped<IEmailService, EmailService>();
-                builder.Services.AddScoped<IProductService, ProductService>();
-                builder.Services.AddScoped<ICartService, CartService>();
-                builder.Services.AddScoped<IOrderService, OrderService>();
-                builder.Services.AddScoped<IReviewService, ReviewService>();
-                builder.Services.AddScoped<IReviewReportService, ReviewReportService>();
-                builder.Services.AddScoped<IAdminService, AdminService>();
-                builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
-                builder.Services.AddScoped<IImageService, ImageService>();
-                builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
-                builder.Services.AddScoped<ICategoryService, CategoryService>();
-                builder.Services.AddScoped<IOtpService, OtpService>();
-                builder.Services.AddScoped<IWishlistService, WishlistService>();
-                builder.Services.AddScoped<INotificationService, NotificationService>();
-                builder.Services.AddScoped<IReportService, ReportService>();
-                builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
-                builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
-                builder.Services.AddScoped<ICodeAssignmentService, CodeAssignmentService>();
-                builder.Services.Configure<PaymobSettings>(builder.Configuration.GetSection("PaymobSettings"));
-                builder.Services.AddHttpClient<IPaymobService, PaymobService>();
-                builder.Services.AddScoped<IPaymentService, PaymentService>();
-                builder.Services.AddScoped<IFirebaseService, FirebaseService>();
-                builder.Services.AddScoped<ICouponService, CouponService>();
-                builder.Services.AddScoped<IReturnRequestService, ReturnRequestService>();
-                var badWordsPath = builder.Configuration.GetValue<string>("ContentModeration:BadWordsFilePath") ?? "badwords.json";
-                if (!Path.IsPathRooted(badWordsPath))
-                    badWordsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, badWordsPath);
-                builder.Services.AddSingleton<IContentModerationService>(
-                    _ => new ContentModerationService(badWordsPath));
-
+                builder.Services.AddMemoryCache();
+                builder.Services.AddApplicationServices(builder.Configuration);
+                builder.Services.AddAutoMapper(typeof(MappingProfile));
                 var firebaseKeyPath = Path.Combine(Directory.GetCurrentDirectory(), "firebase-admin.json");
                 if (File.Exists(firebaseKeyPath))
                 {

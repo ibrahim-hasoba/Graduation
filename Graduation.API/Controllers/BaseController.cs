@@ -1,8 +1,6 @@
 using Graduation.API.Extensions;
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.Errors;
 
 namespace Graduation.API.Controllers
@@ -31,45 +29,6 @@ namespace Graduation.API.Controllers
             if (vendor == null)
                 throw new NotFoundException(Lang.GetMessage(LangKeys.Vendor.NotFound));
             return vendor;
-        }
-
-        protected async Task<T> ExecuteInTransactionAsync<T>(DatabaseContext context, Func<Task<T>> action)
-        {
-            var strategy = context.Database.CreateExecutionStrategy();
-            return await strategy.ExecuteAsync(async () =>
-            {
-                await using var transaction = await context.Database.BeginTransactionAsync();
-                try
-                {
-                    var result = await action();
-                    await transaction.CommitAsync();
-                    return result;
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
-            });
-        }
-
-        protected async Task ExecuteInTransactionAsync(DatabaseContext context, Func<Task> action)
-        {
-            var strategy = context.Database.CreateExecutionStrategy();
-            await strategy.ExecuteAsync(async () =>
-            {
-                await using var transaction = await context.Database.BeginTransactionAsync();
-                try
-                {
-                    await action();
-                    await transaction.CommitAsync();
-                }
-                catch
-                {
-                    await transaction.RollbackAsync();
-                    throw;
-                }
-            });
         }
 
         protected IActionResult OkResult(object? data = null, string? message = null, int? count = null)

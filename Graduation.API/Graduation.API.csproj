@@ -9,6 +9,7 @@
 
 	<ItemGroup>
 		<!-- Observability -->
+		<PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.0.1" />
 		<PackageReference Include="Hangfire.AspNetCore" Version="1.8.*" />
 		<PackageReference Include="Hangfire.SqlServer" Version="1.8.*" />
 		<PackageReference Include="Microsoft.Extensions.Localization" Version="8.0.25" />
@@ -26,6 +27,7 @@
 
 		<!-- Swagger/OpenAPI -->
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.11" />
+		<PackageReference Include="Scrutor" Version="7.0.0" />
 		<PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="6.8.1" />
 		<PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="6.8.1" />
 		<PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="6.8.1" />

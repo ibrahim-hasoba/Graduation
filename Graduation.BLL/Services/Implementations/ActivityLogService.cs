@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.Admin;
 
@@ -8,16 +8,16 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ActivityLogService : IActivityLogService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public ActivityLogService(DatabaseContext context)
+        public ActivityLogService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task LogAsync(string adminId, string action, string entityType, string? entityIdentifier, string description)
         {
-            _context.ActivityLogs.Add(new ActivityLog
+            _uow.Repository<ActivityLog>().Add(new ActivityLog
             {
                 AdminId = adminId,
                 Action = action,
@@ -26,12 +26,12 @@ namespace Graduation.BLL.Services.Implementations
                 Description = description,
                 CreatedAt = DateTime.UtcNow,
             });
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<List<RecentActivityDto>> GetRecentActivitiesAsync(int count = 10)
         {
-            return await _context.ActivityLogs
+            return await _uow.Repository<ActivityLog>().Query()
                 .Include(a => a.Admin)
                 .OrderByDescending(a => a.CreatedAt)
                 .Take(count)

@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Graduation.BLL.DTOs.Category;
@@ -10,18 +10,18 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class CategoryService : ICategoryService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ICodeLookupService _codeLookup;
         private readonly ILogger<CategoryService> _logger;
 
         public CategoryService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             ICodeAssignmentService codeAssignment,
             ICodeLookupService codeLookup,
             ILogger<CategoryService> logger)
         {
-            _context = context;
+            _uow = uow;
             _codeAssignment = codeAssignment;
             _codeLookup = codeLookup;
             _logger = logger;
@@ -34,7 +34,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (dto.ParentCategoryId.HasValue && dto.ParentCategoryId.Value > 0)
             {
-                var parentExists = await _context.Categories
+                var parentExists = await _uow.Repository<Category>().Query()
                     .AnyAsync(c => c.Id == dto.ParentCategoryId
                                && c.Status == CategoryStatus.Active);
                 if (!parentExists)
@@ -45,7 +45,7 @@ namespace Graduation.BLL.Services.Implementations
                 dto.ParentCategoryId = null;
             }
 
-            var duplicateName = await _context.Categories
+            var duplicateName = await _uow.Repository<Category>().Query()
                 .AnyAsync(c =>
                     (c.NameEn.ToLower() == dto.NameEn.ToLower() || c.NameAr == dto.NameAr)
                     && c.Status == CategoryStatus.Active);
@@ -63,8 +63,8 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Categories.Add(category);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Category>().Add(category);
+            await _uow.SaveChangesAsync();
 
             await _codeAssignment.AssignCategoryCodeAsync(category);
 
@@ -77,14 +77,14 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<CategoryDto> UpdateCategoryAsync(string categoryCode, UpdateCategoryDto dto)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
+            var category = await _uow.Repository<Category>().Query().FirstOrDefaultAsync(c => c.Id == id);
             if (category == null)
                 throw new NotFoundException("Category not found");
 
             if (!string.IsNullOrWhiteSpace(dto.NameEn) &&
                 !dto.NameEn.Equals(category.NameEn, StringComparison.OrdinalIgnoreCase))
             {
-                var dup = await _context.Categories
+                var dup = await _uow.Repository<Category>().Query()
                     .AnyAsync(c => c.Id != id
                                && c.NameEn.ToLower() == dto.NameEn.ToLower()
                                && c.Status == CategoryStatus.Active);
@@ -94,7 +94,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (!string.IsNullOrWhiteSpace(dto.NameAr) && dto.NameAr != category.NameAr)
             {
-                var dup = await _context.Categories
+                var dup = await _uow.Repository<Category>().Query()
                     .AnyAsync(c => c.Id != id
                                && c.NameAr == dto.NameAr
                                && c.Status == CategoryStatus.Active);
@@ -112,7 +112,7 @@ namespace Graduation.BLL.Services.Implementations
             {
                 if (newParentId.HasValue)
                 {
-                    var parentExists = await _context.Categories
+                    var parentExists = await _uow.Repository<Category>().Query()
                         .AnyAsync(c => c.Id == newParentId && c.Status == CategoryStatus.Active);
                     if (!parentExists)
                         throw new NotFoundException("Parent category not found");
@@ -124,7 +124,7 @@ namespace Graduation.BLL.Services.Implementations
             }
 
             category.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Category updated: {Name} (Code: {Code})",
                 category.NameEn, category.Code);
@@ -135,7 +135,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<CategoryDto> ToggleActivationAsync(string categoryCode)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
+            var category = await _uow.Repository<Category>().Query().FirstOrDefaultAsync(c => c.Id == id);
             if (category == null)
                 throw new NotFoundException("Category not found");
 
@@ -150,7 +150,7 @@ namespace Graduation.BLL.Services.Implementations
             }
 
             category.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             var action = category.Status == CategoryStatus.Active ? "activated" : "deactivated";
             _logger.LogInformation("Category {Action}: {Name} (Code: {Code})",
@@ -162,7 +162,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task DeleteCategoryAsync(string categoryCode)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _context.Categories.FirstOrDefaultAsync(c => c.Id == id);
+            var category = await _uow.Repository<Category>().Query().FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)
                 throw new NotFoundException("Category not found");
@@ -170,7 +170,7 @@ namespace Graduation.BLL.Services.Implementations
             var allIdsToDelete = await GetAllSubcategoryIdsAsync(id);
             allIdsToDelete.Add(id);
 
-            var hasProducts = await _context.Products
+            var hasProducts = await _uow.Repository<Product>().Query()
                 .AnyAsync(p => allIdsToDelete.Contains(p.CategoryId));
 
             if (hasProducts)
@@ -178,12 +178,12 @@ namespace Graduation.BLL.Services.Implementations
                     $"Cannot delete category '{category.NameEn}' or its subcategories. " +
                     "There are products still assigned to this category tree. Reassign them first.");
 
-            var categoriesToDelete = await _context.Categories
+            var categoriesToDelete = await _uow.Repository<Category>().Query()
                 .Where(c => allIdsToDelete.Contains(c.Id))
                 .ToListAsync();
 
-            _context.Categories.RemoveRange(categoriesToDelete);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Category>().DeleteRange(categoriesToDelete);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Category and {Count} subcategories deleted. Parent: {Name}",
                 categoriesToDelete.Count - 1, category.NameEn);
@@ -191,7 +191,7 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<List<int>> GetAllSubcategoryIdsAsync(int parentId)
         {
-            var all = await _context.Categories
+            var all = await _uow.Repository<Category>().Query()
                 .Select(c => new { c.Id, c.ParentCategoryId })
                 .AsNoTracking()
                 .ToListAsync();
@@ -222,12 +222,11 @@ namespace Graduation.BLL.Services.Implementations
             if (query.PageNumber < 1) query.PageNumber = 1;
             if (query.PageSize < 1 || query.PageSize > 100) query.PageSize = 20;
 
-            var dbQuery = _context.Categories
+            var dbQuery = _uow.Repository<Category>().Query()
                 .Include(c => c.SubCategories)
                     .ThenInclude(s => s.SubCategories)
                         .ThenInclude(ss => ss.SubCategories)
-                .AsNoTracking()
-                .AsQueryable();
+                .AsNoTracking();
 
             if (!string.IsNullOrWhiteSpace(query.Status))
             {
@@ -263,7 +262,7 @@ namespace Graduation.BLL.Services.Implementations
                 .Distinct()
                 .ToList();
 
-            var productCounts = await _context.Products
+            var productCounts = await _uow.Repository<Product>().Query()
                 .Where(p => allIds.Contains(p.CategoryId) && p.IsActive)
                 .GroupBy(p => p.CategoryId)
                 .Select(g => new { CategoryId = g.Key, Count = g.Count() })
@@ -284,7 +283,7 @@ namespace Graduation.BLL.Services.Implementations
         public async Task<CategoryDto> GetCategoryByCodeAsync(string categoryCode)
         {
             var id = await _codeLookup.ResolveCategoryIdAsync(categoryCode);
-            var category = await _context.Categories
+            var category = await _uow.Repository<Category>().Query()
                 .Include(c => c.SubCategories)
                     .ThenInclude(s => s.SubCategories)
                         .ThenInclude(ss => ss.SubCategories)
@@ -295,7 +294,7 @@ namespace Graduation.BLL.Services.Implementations
                 throw new NotFoundException("Category not found");
 
             var allIds = GetAllIdsFromTree(category).ToList();
-            var productCounts = await _context.Products
+            var productCounts = await _uow.Repository<Product>().Query()
                 .Where(p => allIds.Contains(p.CategoryId) && p.IsActive)
                 .GroupBy(p => p.CategoryId)
                 .Select(g => new { CategoryId = g.Key, Count = g.Count() })
@@ -306,13 +305,13 @@ namespace Graduation.BLL.Services.Implementations
         }
 
         public async Task<bool> CategoryExistsAsync(int id)
-            => await _context.Categories
+            => await _uow.Repository<Category>().Query()
                 .AnyAsync(c => c.Id == id && c.Status == CategoryStatus.Active);
 
         public async Task<bool> ValidateParentCategoryAsync(int? parentCategoryId)
         {
             if (!parentCategoryId.HasValue || parentCategoryId.Value <= 0) return true;
-            return await _context.Categories
+            return await _uow.Repository<Category>().Query()
                 .AnyAsync(c => c.Id == parentCategoryId && c.Status == CategoryStatus.Active);
         }
 
@@ -375,7 +374,7 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<bool> HasCircularReferenceAsync(int categoryId, int potentialParentId)
         {
-            var all = await _context.Categories
+            var all = await _uow.Repository<Category>().Query()
                 .Select(c => new { c.Id, c.ParentCategoryId })
                 .AsNoTracking()
                 .ToListAsync();
@@ -398,7 +397,7 @@ namespace Graduation.BLL.Services.Implementations
             var allSubIds = await GetAllSubcategoryIdsAsync(parentCategoryId);
             if (allSubIds.Count == 0) return;
 
-            await _context.Categories
+            await _uow.Context.Categories
                 .Where(c => allSubIds.Contains(c.Id))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(c => c.Status, CategoryStatus.Inactive)

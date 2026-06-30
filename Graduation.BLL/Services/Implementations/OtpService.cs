@@ -1,85 +1,73 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
-using Graduation.DAL.Entities;
-using Microsoft.EntityFrameworkCore;
-using System;
-using System.Linq;
+using Microsoft.Extensions.Caching.Memory;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
 
 namespace Graduation.BLL.Services.Implementations
 {
     public class OtpService : IOtpService
     {
-        private readonly DatabaseContext _context;
+        private readonly IMemoryCache _cache;
+        private const string OtpPrefix = "Otp:";
 
-        public OtpService(DatabaseContext context)
+        public OtpService(IMemoryCache cache)
         {
-            _context = context;
+            _cache = cache;
         }
 
-        public async Task<string> GenerateOtpAsync(string email, string purpose = "email_verification", int ttlMinutes = 10)
+        public Task<string> GenerateOtpAsync(string email, string purpose = "email_verification", int ttlMinutes = 10)
         {
-
             var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+            var key = $"{OtpPrefix}{purpose}:{email}";
 
-            var existing = await _context.EmailOtps
-                .Where(e => e.Email == email && e.Purpose == purpose && !e.Consumed)
-                .ToListAsync();
-
-            foreach (var e in existing)
+            var entry = new OtpEntry
             {
-                e.Consumed = true;
-            }
-
-            var otp = new EmailOtp
-            {
-                Email = email,
                 Code = code,
-                Purpose = purpose,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(ttlMinutes),
-                Consumed = false
+                ExpiresAt = DateTime.UtcNow.AddMinutes(ttlMinutes)
             };
 
-            _context.EmailOtps.Add(otp);
-            await _context.SaveChangesAsync();
+            _cache.Set(key, entry, entry.ExpiresAt);
 
-            return code;
+            return Task.FromResult(code);
         }
 
-        public async Task<bool> PeekOtpAsync(string email, string code, string purpose = "password_reset")
+        public Task<bool> PeekOtpAsync(string email, string code, string purpose = "password_reset")
         {
-            var otp = await _context.EmailOtps
-                .Where(e => e.Email == email && e.Purpose == purpose && !e.Consumed)
-                .OrderByDescending(e => e.CreatedAt)
-                .FirstOrDefaultAsync();
+            var key = $"{OtpPrefix}{purpose}:{email}";
 
-            if (otp == null) return false;
-            if (otp.ExpiresAt < DateTime.UtcNow) return false;
+            if (!_cache.TryGetValue(key, out OtpEntry? entry) || entry is null)
+                return Task.FromResult(false);
 
-            return CryptographicOperations.FixedTimeEquals(
-                System.Text.Encoding.UTF8.GetBytes(otp.Code),
-                System.Text.Encoding.UTF8.GetBytes(code));
+            if (entry.ExpiresAt < DateTime.UtcNow)
+                return Task.FromResult(false);
+
+            return Task.FromResult(CryptographicOperations.FixedTimeEquals(
+                System.Text.Encoding.UTF8.GetBytes(entry.Code),
+                System.Text.Encoding.UTF8.GetBytes(code)));
         }
 
-        public async Task<bool> ValidateOtpAsync(string email, string code, string purpose = "email_verification")
+        public Task<bool> ValidateOtpAsync(string email, string code, string purpose = "email_verification")
         {
-            var otp = await _context.EmailOtps
-                .Where(e => e.Email == email && e.Purpose == purpose && !e.Consumed)
-                .OrderByDescending(e => e.CreatedAt)
-                .FirstOrDefaultAsync();
+            var key = $"{OtpPrefix}{purpose}:{email}";
 
-            if (otp == null) return false;
-            if (otp.ExpiresAt < DateTime.UtcNow) return false;
+            if (!_cache.TryGetValue(key, out OtpEntry? entry) || entry is null)
+                return Task.FromResult(false);
+
+            if (entry.ExpiresAt < DateTime.UtcNow)
+                return Task.FromResult(false);
 
             if (!CryptographicOperations.FixedTimeEquals(
-                    System.Text.Encoding.UTF8.GetBytes(otp.Code),
+                    System.Text.Encoding.UTF8.GetBytes(entry.Code),
                     System.Text.Encoding.UTF8.GetBytes(code)))
-                return false;
+                return Task.FromResult(false);
 
-            otp.Consumed = true;
-            await _context.SaveChangesAsync();
-            return true;
+            _cache.Remove(key);
+            return Task.FromResult(true);
+        }
+
+        private class OtpEntry
+        {
+            public string Code { get; set; } = string.Empty;
+            public DateTime ExpiresAt { get; set; }
         }
     }
 }

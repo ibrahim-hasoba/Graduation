@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.Coupon;
 using Graduation.BLL.Errors;
@@ -9,16 +9,16 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class CouponService : ICouponService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public CouponService(DatabaseContext context)
+        public CouponService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task<CouponDto> CreateAsync(CreateCouponDto dto)
         {
-            if (await _context.Coupons.AnyAsync(c => c.Code == dto.Code.ToUpper()))
+            if (await _uow.Repository<Coupon>().Query().AnyAsync(c => c.Code == dto.Code.ToUpper()))
                 throw new BadRequestException($"Coupon code '{dto.Code.ToUpper()}' already exists");
 
             var coupon = new Coupon
@@ -34,14 +34,14 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow,
             };
 
-            _context.Coupons.Add(coupon);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Coupon>().Add(coupon);
+            await _uow.SaveChangesAsync();
             return await GetByIdInternalAsync(coupon.Id);
         }
 
         public async Task<CouponDto> UpdateAsync(int id, UpdateCouponDto dto)
         {
-            var coupon = await _context.Coupons.FindAsync(id)
+            var coupon = await _uow.Repository<Coupon>().GetByIdAsync(id)
                 ?? throw new NotFoundException("Coupon", id);
             if (dto.DiscountType.HasValue) coupon.DiscountType = dto.DiscountType.Value;
             if (dto.DiscountValue.HasValue) coupon.DiscountValue = dto.DiscountValue.Value;
@@ -50,27 +50,27 @@ namespace Graduation.BLL.Services.Implementations
             if (dto.IsActive.HasValue) coupon.IsActive = dto.IsActive.Value;
             if (dto.ExpiresAt.HasValue) coupon.ExpiresAt = dto.ExpiresAt;
             if (dto.VendorId.HasValue) coupon.VendorId = dto.VendorId;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return await GetByIdInternalAsync(id);
         }
 
         public async Task DeleteAsync(int id)
         {
-            var coupon = await _context.Coupons.FindAsync(id)
+            var coupon = await _uow.Repository<Coupon>().GetByIdAsync(id)
                 ?? throw new NotFoundException("Coupon", id);
-            _context.Coupons.Remove(coupon);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Coupon>().Delete(coupon);
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<CouponDto?> GetByIdAsync(int id)
         {
-            var coupon = await _context.Coupons.FindAsync(id);
+            var coupon = await _uow.Repository<Coupon>().GetByIdAsync(id);
             return coupon == null ? null : MapToDto(coupon);
         }
 
         public async Task<List<CouponDto>> GetAllAsync()
         {
-            return await _context.Coupons
+            return await _uow.Repository<Coupon>().Query()
                 .Include(c => c.Vendor)
                 .OrderByDescending(c => c.CreatedAt)
                 .Select(c => MapToDto(c))
@@ -79,7 +79,8 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ApplyCouponResultDto> ValidateAndCalculateAsync(string code, decimal orderSubTotal)
         {
-            var coupon = await _context.Coupons.FirstOrDefaultAsync(c => c.Code == code.ToUpper())
+            var coupon = await _uow.Repository<Coupon>().Query()
+                .FirstOrDefaultAsync(c => c.Code == code.ToUpper())
                 ?? throw new NotFoundException("Coupon not found");
 
             if (!coupon.IsActive)
@@ -110,7 +111,7 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<CouponDto> GetByIdInternalAsync(int id)
         {
-            var coupon = await _context.Coupons.Include(c => c.Vendor).FirstAsync(c => c.Id == id);
+            var coupon = await _uow.Repository<Coupon>().Query().Include(c => c.Vendor).FirstAsync(c => c.Id == id);
             return MapToDto(coupon);
         }
 

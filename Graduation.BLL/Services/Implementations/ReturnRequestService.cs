@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.ReturnRequest;
 using Graduation.BLL.Errors;
@@ -9,16 +9,16 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ReturnRequestService : IReturnRequestService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public ReturnRequestService(DatabaseContext context)
+        public ReturnRequestService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task<ReturnRequestDto> CreateAsync(string userId, CreateReturnRequestDto dto)
         {
-            var order = await _context.Orders.FindAsync(dto.OrderId)
+            var order = await _uow.Repository<Order>().GetByIdAsync(dto.OrderId)
                 ?? throw new NotFoundException("Order", dto.OrderId);
 
             if (order.UserId != userId)
@@ -27,7 +27,7 @@ namespace Graduation.BLL.Services.Implementations
             if (order.Status != OrderStatus.Delivered)
                 throw new BadRequestException("Only delivered orders can be returned");
 
-            var existing = await _context.ReturnRequests
+            var existing = await _uow.Repository<ReturnRequest>().Query()
                 .AnyAsync(r => r.OrderId == dto.OrderId && r.Status == ReturnRequestStatus.Pending);
             if (existing)
                 throw new BadRequestException("A return request for this order is already pending");
@@ -41,14 +41,14 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow,
             };
 
-            _context.ReturnRequests.Add(request);
-            await _context.SaveChangesAsync();
+            _uow.Repository<ReturnRequest>().Add(request);
+            await _uow.SaveChangesAsync();
             return await GetByIdInternalAsync(request.Id);
         }
 
         public async Task<ReturnRequestDto> UpdateStatusAsync(int returnId, string reviewerId, UpdateReturnStatusDto dto)
         {
-            var request = await _context.ReturnRequests
+            var request = await _uow.Repository<ReturnRequest>().Query()
                 .Include(r => r.Order)
                 .FirstOrDefaultAsync(r => r.Id == returnId)
                 ?? throw new NotFoundException("Return request", returnId);
@@ -75,13 +75,13 @@ namespace Graduation.BLL.Services.Implementations
                     request.Order.PaymentStatus = PaymentStatus.Refunded;
             }
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return await GetByIdInternalAsync(returnId);
         }
 
         public async Task<List<ReturnRequestDto>> GetByOrderAsync(int orderId)
         {
-            return await _context.ReturnRequests
+            return await _uow.Repository<ReturnRequest>().Query()
                 .Include(r => r.User)
                 .Include(r => r.ReviewedBy)
                 .Include(r => r.Order)
@@ -93,7 +93,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<ReturnRequestDto>> GetByUserAsync(string userId)
         {
-            return await _context.ReturnRequests
+            return await _uow.Repository<ReturnRequest>().Query()
                 .Include(r => r.ReviewedBy)
                 .Include(r => r.Order)
                 .Where(r => r.UserId == userId)
@@ -104,7 +104,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<ReturnRequestDto>> GetAllAsync()
         {
-            return await _context.ReturnRequests
+            return await _uow.Repository<ReturnRequest>().Query()
                 .Include(r => r.User)
                 .Include(r => r.ReviewedBy)
                 .Include(r => r.Order)
@@ -115,7 +115,7 @@ namespace Graduation.BLL.Services.Implementations
 
         private async Task<ReturnRequestDto> GetByIdInternalAsync(int id)
         {
-            var r = await _context.ReturnRequests
+            var r = await _uow.Repository<ReturnRequest>().Query()
                 .Include(x => x.User)
                 .Include(x => x.ReviewedBy)
                 .Include(x => x.Order)

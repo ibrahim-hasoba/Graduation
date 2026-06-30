@@ -1,7 +1,8 @@
+using AutoMapper;
 using Graduation.BLL.Errors;
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.Cart;
 
@@ -9,16 +10,18 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class CartService : ICartService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
+        private readonly IMapper _mapper;
 
-        public CartService(DatabaseContext context)
+        public CartService(IUnitOfWork uow, IMapper mapper)
         {
-            _context = context;
+            _uow = uow;
+            _mapper = mapper;
         }
 
         public async Task<CartDto> GetUserCartAsync(string userId)
         {
-            var cartItems = await _context.CartItems
+            var cartItems = await _uow.Repository<CartItem>().Query()
                 .AsNoTracking()
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
@@ -50,7 +53,7 @@ namespace Graduation.BLL.Services.Implementations
             if (dto.Quantity <= 0)
                 throw new BadRequestException("Quantity must be greater than 0");
 
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                     .Select(p => new { p.Id, p.IsActive, p.StockQuantity })
                     .FirstOrDefaultAsync(p => p.Id == dto.ProductId);
 
@@ -65,7 +68,7 @@ namespace Graduation.BLL.Services.Implementations
 
             if (requestedVariantIds.Any())
             {
-                selectedVariants = await _context.ProductVariants
+                selectedVariants = await _uow.Repository<ProductVariant>().Query()
                     .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
                     .ToListAsync();
 
@@ -77,8 +80,7 @@ namespace Graduation.BLL.Services.Implementations
             }
             else
             {
-
-                var hasVariants = await _context.ProductVariants
+                var hasVariants = await _uow.Repository<ProductVariant>().Query()
                     .AnyAsync(v => v.ProductId == dto.ProductId && v.IsActive);
 
                 if (hasVariants)
@@ -92,7 +94,7 @@ namespace Graduation.BLL.Services.Implementations
             if (availableStock < dto.Quantity)
                 throw new BadRequestException($"Only {availableStock} items available in stock");
 
-            var existingItems = await _context.CartItems
+            var existingItems = await _uow.Repository<CartItem>().Query()
                 .Include(ci => ci.SelectedVariants)
                 .Where(ci => ci.UserId == userId && ci.ProductId == dto.ProductId)
                 .ToListAsync();
@@ -109,7 +111,7 @@ namespace Graduation.BLL.Services.Implementations
                     throw new BadRequestException($"Cannot add more. Only {availableStock} items available");
 
                 existingItem.Quantity = newQuantity;
-                await _context.SaveChangesAsync();
+                await _uow.SaveChangesAsync();
 
                 return await GetCartItemDtoAsync(existingItem.Id);
             }
@@ -126,15 +128,15 @@ namespace Graduation.BLL.Services.Implementations
                 }).ToList()
             };
 
-            _context.CartItems.Add(cartItem);
-            await _context.SaveChangesAsync();
+            _uow.Repository<CartItem>().Add(cartItem);
+            await _uow.SaveChangesAsync();
 
             return await GetCartItemDtoAsync(cartItem.Id);
         }
 
         public async Task<CartItemDto> UpdateCartItemAsync(string userId, int cartItemId, UpdateCartItemDto dto)
         {
-            var cartItem = await _context.CartItems
+            var cartItem = await _uow.Repository<CartItem>().Query()
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)
                 .Include(ci => ci.Product.Vendor)
@@ -154,7 +156,7 @@ namespace Graduation.BLL.Services.Implementations
 
                 if (requestedVariantIds.Any())
                 {
-                    var newVariants = await _context.ProductVariants
+                    var newVariants = await _uow.Repository<ProductVariant>().Query()
                         .Where(v => requestedVariantIds.Contains(v.Id) && v.IsActive)
                         .ToListAsync();
 
@@ -164,7 +166,7 @@ namespace Graduation.BLL.Services.Implementations
                         throw new BadRequestException("One or more selected variants are invalid or not available.");
                     }
 
-                    var existingDuplicate = await _context.CartItems
+                    var existingDuplicate = await _uow.Repository<CartItem>().Query()
                         .Include(ci => ci.SelectedVariants)
                         .Where(ci => ci.UserId == userId && ci.ProductId == cartItem.ProductId && ci.Id != cartItemId)
                         .FirstOrDefaultAsync(ci =>
@@ -172,11 +174,9 @@ namespace Graduation.BLL.Services.Implementations
                             ci.SelectedVariants.All(sv => requestedVariantIds.Contains(sv.ProductVariantId)));
 
                     if (existingDuplicate != null)
-                    {
                         throw new BadRequestException("An item with these exact variants already exists in your cart. Please update its quantity instead.");
-                    }
 
-                    _context.RemoveRange(cartItem.SelectedVariants);
+                    _uow.Repository<CartItemVariant>().DeleteRange(cartItem.SelectedVariants);
 
                     cartItem.SelectedVariants = newVariants.Select(v => new CartItemVariant
                     {
@@ -187,14 +187,13 @@ namespace Graduation.BLL.Services.Implementations
                 }
                 else
                 {
-
-                    var hasVariants = await _context.ProductVariants
+                    var hasVariants = await _uow.Repository<ProductVariant>().Query()
                         .AnyAsync(v => v.ProductId == cartItem.ProductId && v.IsActive);
 
                     if (hasVariants)
                         throw new BadRequestException("Please select product variants (e.g. size or color).");
 
-                    _context.RemoveRange(cartItem.SelectedVariants);
+                    _uow.Repository<CartItemVariant>().DeleteRange(cartItem.SelectedVariants);
                     cartItem.SelectedVariants.Clear();
                     variantsToCheck.Clear();
                 }
@@ -208,38 +207,44 @@ namespace Graduation.BLL.Services.Implementations
                 throw new BadRequestException($"Only {availableStock} items available in stock");
 
             cartItem.Quantity = dto.Quantity;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             return await GetCartItemDtoAsync(cartItem.Id);
         }
 
         public async Task RemoveFromCartAsync(string userId, int cartItemId)
         {
-            var rowsDeleted = await _context.CartItems
-                .Where(ci => ci.Id == cartItemId && ci.UserId == userId)
-                .ExecuteDeleteAsync();
+            var repo = _uow.Repository<CartItem>();
+            var item = await repo.Query()
+                .FirstOrDefaultAsync(ci => ci.Id == cartItemId && ci.UserId == userId);
 
-            if (rowsDeleted == 0)
+            if (item == null)
                 throw new NotFoundException("Cart item not found");
+
+            repo.Delete(item);
+            await _uow.SaveChangesAsync();
         }
 
         public async Task ClearCartAsync(string userId)
         {
-            await _context.CartItems
+            var items = await _uow.Repository<CartItem>().Query()
                 .Where(ci => ci.UserId == userId)
-                .ExecuteDeleteAsync();
+                .ToListAsync();
+
+            _uow.Repository<CartItem>().DeleteRange(items);
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<int> GetCartItemsCountAsync(string userId)
         {
-            return await _context.CartItems
+            return await _uow.Repository<CartItem>().Query()
                 .Where(ci => ci.UserId == userId)
                 .SumAsync(ci => ci.Quantity);
         }
 
         private async Task<CartItemDto> GetCartItemDtoAsync(int cartItemId)
         {
-            var cartItem = await _context.CartItems
+            var cartItem = await _uow.Repository<CartItem>().Query()
                 .AsNoTracking()
                 .Include(ci => ci.Product)
                     .ThenInclude(p => p.Images)

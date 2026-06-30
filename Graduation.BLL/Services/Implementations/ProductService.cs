@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
 using System.Security.Claims;
@@ -12,16 +12,16 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class ProductService : IProductService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly IHttpContextAccessor _httpContextAccessor;
 
         public ProductService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             ICodeAssignmentService codeAssignment,
             IHttpContextAccessor httpContextAccessor)
         {
-            _context = context;
+            _uow = uow;
             _codeAssignment = codeAssignment;
             _httpContextAccessor = httpContextAccessor;
         }
@@ -33,7 +33,7 @@ namespace Graduation.BLL.Services.Implementations
             if (string.IsNullOrEmpty(userId))
                 return new HashSet<int>();
 
-            var ids = await _context.Wishlists
+            var ids = await _uow.Repository<Wishlist>().Query()
                 .Where(w => w.UserId == userId)
                 .Select(w => w.ProductId)
                 .ToListAsync();
@@ -43,7 +43,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductDto> CreateProductAsync(ProductCreateDto dto)
         {
-            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Code == dto.VendorCode);
+            var vendor = await _uow.Repository<Vendor>().Query().FirstOrDefaultAsync(v => v.Code == dto.VendorCode);
             if (vendor == null)
                 throw new NotFoundException($"Vendor with code '{dto.VendorCode}' was not found");
 
@@ -55,11 +55,11 @@ namespace Graduation.BLL.Services.Implementations
             if (!vendor.IsApproved || !vendor.IsActive)
                 throw new UnauthorizedException("Vendor is not approved or inactive");
 
-            var skuExists = await _context.Products.AnyAsync(p => p.SKU == dto.SKU);
+            var skuExists = await _uow.Repository<Product>().Query().AnyAsync(p => p.SKU == dto.SKU);
             if (skuExists)
                 throw new ConflictException($"Product with SKU '{dto.SKU}' already exists");
 
-            var category = await _context.Categories
+            var category = await _uow.Repository<Category>().Query()
                 .Include(c => c.SubCategories)
                 .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.Status == CategoryStatus.Active);
 
@@ -91,15 +91,15 @@ namespace Graduation.BLL.Services.Implementations
                 CreatedAt = DateTime.UtcNow
             };
 
-            _context.Products.Add(product);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Product>().Add(product);
+            await _uow.SaveChangesAsync();
             await _codeAssignment.AssignProductCodeAsync(product);
 
             if (dto.ImageUrls != null && dto.ImageUrls.Any())
             {
                 for (int i = 0; i < dto.ImageUrls.Count; i++)
                 {
-                    _context.ProductImages.Add(new ProductImage
+                    _uow.Repository<ProductImage>().Add(new ProductImage
                     {
                         ProductId = product.Id,
                         ImageUrl = dto.ImageUrls[i],
@@ -107,14 +107,14 @@ namespace Graduation.BLL.Services.Implementations
                         DisplayOrder = i
                     });
                 }
-                await _context.SaveChangesAsync();
+                await _uow.SaveChangesAsync();
             }
 
             return await GetProductByIdAsync(product.Id);
         }
 
         private IQueryable<Product> ProductsWithIncludes()
-            => _context.Products
+            => _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
@@ -149,27 +149,25 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductSearchResultDto> SearchProductsAsync(ProductSearchDto searchDto)
         {
-            var query = _context.Products
+            var query = _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
                 .AsNoTracking()
-                .Where(p => p.IsActive && !p.IsDeleted)
-                .AsQueryable();
+                .Where(p => p.IsActive && !p.IsDeleted);
 
             return await SearchProductsQueryAsync(query, searchDto);
         }
 
         public async Task<ProductSearchResultDto> AdminSearchProductsAsync(ProductSearchDto searchDto)
         {
-            var query = _context.Products
+            var query = _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Include(p => p.Reviews.Where(r => r.IsApproved))
-                .AsNoTracking()
-                .AsQueryable();
+                .AsNoTracking();
 
             return await SearchProductsQueryAsync(query, searchDto);
         }
@@ -248,7 +246,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PagedResult<ProductListDto>> GetVendorProductsAsync(int vendorId, int pageNumber = 1, int pageSize = 20)
         {
-            var query = _context.Products
+            var query = _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
@@ -272,7 +270,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PagedResult<ProductListDto>> GetFeaturedProductsAsync(int pageNumber = 1, int pageSize = 10)
         {
-            var query = _context.Products
+            var query = _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .Include(p => p.Category)
                 .Include(p => p.Images)
@@ -296,7 +294,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<ProductDto> UpdateProductAsync(int id, string vendorCode, ProductUpdateDto dto)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -312,7 +310,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task DeleteProductAsync(int id, string vendorCode)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -325,12 +323,12 @@ namespace Graduation.BLL.Services.Implementations
             product.IsActive = false;
             product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<bool> UpdateStockAsync(int id, int quantity, int? vendorId = null)
         {
-            var product = await _context.Products
+            var product = await _uow.Repository<Product>().Query()
                 .Include(p => p.Vendor)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -345,19 +343,19 @@ namespace Graduation.BLL.Services.Implementations
 
             product.StockQuantity = quantity;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return true;
         }
 
         public async Task IncrementViewCountAsync(int id)
         {
-            await _context.Database.ExecuteSqlInterpolatedAsync(
+            await _uow.ExecuteSqlInterpolatedAsync(
                 $"UPDATE Products SET ViewCount = ViewCount + 1 WHERE Id = {id}");
         }
 
         public async Task<ProductDto> AdminUpdateProductAsync(int id, ProductUpdateDto dto)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _uow.Repository<Product>().Query().FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
             await ApplyProductUpdate(product, dto);
@@ -366,41 +364,41 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task AdminDeleteProductAsync(int id)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _uow.Repository<Product>().Query().FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
             product.IsActive = false;
             product.IsDeleted = true;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task AdminUpdateStockAsync(int id, int quantity)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _uow.Repository<Product>().Query().FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
             if (quantity < 0) throw new BadRequestException("Stock quantity cannot be negative");
 
             product.StockQuantity = quantity;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         public async Task<ProductDto> AdminToggleProductStatusAsync(int id)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _uow.Repository<Product>().Query().FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) throw new NotFoundException("Product", "Id", id);
 
             product.IsActive = !product.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
             return await GetProductByIdAsync(id);
         }
 
         private async Task ApplyProductUpdate(Product product, ProductUpdateDto dto)
         {
-            var category = await _context.Categories
+            var category = await _uow.Repository<Category>().Query()
                 .Include(c => c.SubCategories)
                 .FirstOrDefaultAsync(c => c.Id == dto.CategoryId && c.Status == CategoryStatus.Active);
 
@@ -426,7 +424,7 @@ namespace Graduation.BLL.Services.Implementations
             product.IsActive = dto.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
         }
 
         private ProductDto MapToDto(Product product, HashSet<int> wishlistIds)

@@ -1,6 +1,7 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Graduation.BLL.DTOs.Admin;
 
@@ -8,11 +9,11 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class AdminService : IAdminService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
 
-        public AdminService(DatabaseContext context)
+        public AdminService(IUnitOfWork uow)
         {
-            _context = context;
+            _uow = uow;
         }
 
         public async Task<DashboardStatsDto> GetDashboardStatsAsync()
@@ -20,30 +21,32 @@ namespace Graduation.BLL.Services.Implementations
             var today = DateTime.UtcNow.Date;
             var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
 
+            var repo = _uow.Repository<AppUser>();
+
             var stats = new DashboardStatsDto
             {
-                TotalUsers = await _context.Users.CountAsync(),
-                TotalVendors = await _context.Vendors.CountAsync(),
-                PendingVendors = await _context.Vendors.CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Pending),
-                ActiveVendors = await _context.Vendors.CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Approved && v.IsActive),
-                TotalProducts = await _context.Products.CountAsync(),
-                ActiveProducts = await _context.Products.CountAsync(p => p.IsActive),
-                OutOfStockProducts = await _context.Products.CountAsync(p => p.StockQuantity == 0),
-                TotalOrders = await _context.Orders.CountAsync(),
-                PendingOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.Pending),
-                CompletedOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.Delivered),
-                CancelledOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.Cancelled),
-                TotalRevenue = await _context.Orders
+                TotalUsers = await repo.CountAsync(),
+                TotalVendors = await _uow.Repository<Vendor>().CountAsync(),
+                PendingVendors = await _uow.Repository<Vendor>().CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Pending),
+                ActiveVendors = await _uow.Repository<Vendor>().CountAsync(v => v.ApprovalStatus == VendorApprovalStatus.Approved && v.IsActive),
+                TotalProducts = await _uow.Repository<Product>().CountAsync(),
+                ActiveProducts = await _uow.Repository<Product>().CountAsync(p => p.IsActive),
+                OutOfStockProducts = await _uow.Repository<Product>().CountAsync(p => p.StockQuantity == 0),
+                TotalOrders = await _uow.Repository<Order>().CountAsync(),
+                PendingOrders = await _uow.Repository<Order>().CountAsync(o => o.Status == OrderStatus.Pending),
+                CompletedOrders = await _uow.Repository<Order>().CountAsync(o => o.Status == OrderStatus.Delivered),
+                CancelledOrders = await _uow.Repository<Order>().CountAsync(o => o.Status == OrderStatus.Cancelled),
+                TotalRevenue = await _uow.Repository<Order>().Query()
                     .Where(o => o.Status == OrderStatus.Delivered)
                     .SumAsync(o => o.TotalAmount),
-                MonthlyRevenue = await _context.Orders
+                MonthlyRevenue = await _uow.Repository<Order>().Query()
                     .Where(o => o.Status == OrderStatus.Delivered && o.OrderDate >= firstDayOfMonth)
                     .SumAsync(o => o.TotalAmount),
-                TotalCategories = await _context.Categories.CountAsync(c => c.Status == CategoryStatus.Active),
+                TotalCategories = await _uow.Repository<Category>().CountAsync(c => c.Status == CategoryStatus.Active),
 
-                NewUsersToday = await _context.Users.CountAsync(u => u.CreatedAt >= today),
+                NewUsersToday = await repo.Query().CountAsync(u => u.CreatedAt >= today),
 
-                NewOrdersToday = await _context.Orders.CountAsync(o => o.OrderDate >= today)
+                NewOrdersToday = await _uow.Repository<Order>().Query().CountAsync(o => o.OrderDate >= today)
             };
 
             return stats;
@@ -51,7 +54,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<TopVendorDto>> GetTopVendorsAsync(int count = 10)
         {
-            var approvedVendors = await _context.Vendors
+            var approvedVendors = await _uow.Repository<Vendor>().Query()
                 .Where(v => v.ApprovalStatus == VendorApprovalStatus.Approved)
                 .Select(v => new
                 {
@@ -64,7 +67,7 @@ namespace Graduation.BLL.Services.Implementations
 
             var vendorIds = approvedVendors.Select(v => v.Id).ToList();
 
-            var vendorOrderStats = await _context.OrderItems
+            var vendorOrderStats = await _uow.Repository<OrderItem>().Query()
                 .Where(oi => vendorIds.Contains(oi.Product.VendorId))
                 .GroupBy(oi => oi.Product.VendorId)
                 .Select(g => new
@@ -75,7 +78,7 @@ namespace Graduation.BLL.Services.Implementations
                 })
                 .ToListAsync();
 
-            var vendorRatingStats = await _context.ProductReviews
+            var vendorRatingStats = await _uow.Repository<ProductReview>().Query()
                 .Where(r => r.IsApproved && vendorIds.Contains(r.Product.VendorId))
                 .GroupBy(r => r.Product.VendorId)
                 .Select(g => new
@@ -110,7 +113,7 @@ namespace Graduation.BLL.Services.Implementations
             var last30Days = today.AddDays(-29);
             var last12Months = today.AddMonths(-11);
 
-            var dailySales = await _context.Orders
+            var dailySales = await _uow.Repository<Order>().Query()
                 .Where(o => o.OrderDate >= last30Days && o.Status == OrderStatus.Delivered)
                 .GroupBy(o => o.OrderDate.Date)
                 .Select(g => new ChartDataPoint
@@ -122,7 +125,7 @@ namespace Graduation.BLL.Services.Implementations
                 .OrderBy(x => x.Label)
                 .ToListAsync();
 
-            var monthlySales = await _context.Orders
+            var monthlySales = await _uow.Repository<Order>().Query()
                 .Where(o => o.OrderDate >= last12Months && o.Status == OrderStatus.Delivered)
                 .GroupBy(o => new { o.OrderDate.Year, o.OrderDate.Month })
                 .Select(g => new ChartDataPoint
@@ -143,21 +146,21 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<UserStatsDto> GetUserStatsAsync()
         {
-            var totalUsers = await _context.Users.CountAsync();
-            var verifiedUsers = await _context.Users.CountAsync(u => u.EmailConfirmed);
+            var totalUsers = await _uow.Repository<AppUser>().CountAsync();
+            var verifiedUsers = await _uow.Repository<AppUser>().Query().CountAsync(u => u.EmailConfirmed);
 
-            var customerRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Customer");
-            var vendorRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Vendor");
-            var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+            var customerRole = await _uow.Repository<IdentityRole>().Query().FirstOrDefaultAsync(r => r.Name == "Customer");
+            var vendorRole = await _uow.Repository<IdentityRole>().Query().FirstOrDefaultAsync(r => r.Name == "Vendor");
+            var adminRole = await _uow.Repository<IdentityRole>().Query().FirstOrDefaultAsync(r => r.Name == "Admin");
 
             var customersCount = customerRole != null
-                ? await _context.UserRoles.CountAsync(ur => ur.RoleId == customerRole.Id)
+                ? await _uow.Repository<IdentityUserRole<string>>().Query().CountAsync(ur => ur.RoleId == customerRole.Id)
                 : 0;
             var vendorsCount = vendorRole != null
-                ? await _context.UserRoles.CountAsync(ur => ur.RoleId == vendorRole.Id)
+                ? await _uow.Repository<IdentityUserRole<string>>().Query().CountAsync(ur => ur.RoleId == vendorRole.Id)
                 : 0;
             var adminsCount = adminRole != null
-                ? await _context.UserRoles.CountAsync(ur => ur.RoleId == adminRole.Id)
+                ? await _uow.Repository<IdentityUserRole<string>>().Query().CountAsync(ur => ur.RoleId == adminRole.Id)
                 : 0;
 
             return new UserStatsDto
@@ -174,7 +177,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<List<TopProductDto>> GetTopProductsAsync(int count = 10)
         {
-            var topProducts = await _context.OrderItems
+            var topProducts = await _uow.Repository<OrderItem>().Query()
                 .AsNoTracking()
                 .Include(oi => oi.Product)
                     .ThenInclude(p => p.Vendor)

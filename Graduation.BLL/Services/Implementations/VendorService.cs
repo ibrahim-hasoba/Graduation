@@ -1,6 +1,6 @@
 using Graduation.BLL.Services.Interfaces;
-using Graduation.DAL.Data;
 using Graduation.DAL.Entities;
+using Graduation.DAL.Repositories;
 using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -13,32 +13,29 @@ namespace Graduation.BLL.Services.Implementations
 {
     public class VendorService : IVendorService
     {
-        private readonly DatabaseContext _context;
+        private readonly IUnitOfWork _uow;
         private readonly UserManager<AppUser> _userManager;
         private readonly IBackgroundJobClient _backgroundJobs;
         private readonly ICodeAssignmentService _codeAssignment;
         private readonly ILogger<VendorService> _logger;
-        private readonly IContentModerationService _contentModeration;
 
         public VendorService(
-            DatabaseContext context,
+            IUnitOfWork uow,
             UserManager<AppUser> userManager,
             IBackgroundJobClient backgroundJobs,
             ILogger<VendorService> logger,
-            ICodeAssignmentService codeAssignment,
-            IContentModerationService contentModeration)
+            ICodeAssignmentService codeAssignment)
         {
-            _context = context;
+            _uow = uow;
             _userManager = userManager;
             _backgroundJobs = backgroundJobs;
             _codeAssignment = codeAssignment;
             _logger = logger;
-            _contentModeration = contentModeration;
         }
 
         public async Task<VendorDto> RegisterVendorAsync(string userId, VendorRegisterDto dto)
         {
-            var user = await _context.Users.FindAsync(userId);
+            var user = await _uow.Repository<AppUser>().GetByIdAsync(userId);
             if (user == null)
                 throw new NotFoundException("User not found");
 
@@ -47,26 +44,15 @@ namespace Graduation.BLL.Services.Implementations
                     "Email must be verified before registering as a vendor. " +
                     "Please check your inbox for the verification link.");
 
-            var existingVendor = await _context.Vendors
+            var existingVendor = await _uow.Repository<Vendor>().Query()
                 .FirstOrDefaultAsync(v => v.UserId == userId);
             if (existingVendor != null)
                 throw new ConflictException("You already have a vendor account");
 
-            var storeNameExists = await _context.Vendors
+            var storeNameExists = await _uow.Repository<Vendor>().Query()
                 .AnyAsync(v => v.StoreName.ToLower() == dto.StoreName.ToLower());
             if (storeNameExists)
                 throw new ConflictException("Store name already exists. Please choose a different name");
-
-            // Run content moderation on vendor information
-            var moderationFlags = new List<string>();
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreName).Flags);
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreNameAr).Flags);
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreDescription).Flags);
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.StoreDescriptionAr).Flags);
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.Address).Flags);
-            moderationFlags.AddRange(_contentModeration.Moderate(dto.City).Flags);
-
-            var isClean = moderationFlags.Count == 0;
 
             var vendor = new Vendor
             {
@@ -80,32 +66,22 @@ namespace Graduation.BLL.Services.Implementations
                 City = dto.City,
                 LogoUrl = dto.LogoUrl,
                 BannerUrl = dto.BannerUrl,
-                ApprovalStatus = isClean ? VendorApprovalStatus.Approved : VendorApprovalStatus.Pending,
+                ApprovalStatus = VendorApprovalStatus.Approved,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 Latitude = dto.Latitude,
                 Longitude = dto.Longitude
             };
 
-            _context.Vendors.Add(vendor);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Vendor>().Add(vendor);
+            await _uow.SaveChangesAsync();
 
-            if (isClean)
-            {
-                // Auto-approved: add Vendor role
-                if (!await _userManager.IsInRoleAsync(user, "Vendor"))
-                    await _userManager.AddToRoleAsync(user, "Vendor");
+            if (!await _userManager.IsInRoleAsync(user, "Vendor"))
+                await _userManager.AddToRoleAsync(user, "Vendor");
 
-                _logger.LogInformation(
-                    "Vendor auto-approved: {StoreName} by user {UserId} (clean content)",
-                    dto.StoreName, userId);
-            }
-            else
-            {
-                _logger.LogInformation(
-                    "Vendor flagged for review: {StoreName} by user {UserId}. Flags: {Flags}",
-                    dto.StoreName, userId, string.Join("; ", moderationFlags));
-            }
+            _logger.LogInformation(
+                "Vendor auto-approved: {StoreName} by user {UserId}",
+                dto.StoreName, userId);
 
             await _codeAssignment.AssignVendorCodeAsync(vendor);
 
@@ -114,7 +90,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorDto> GetVendorByIdAsync(int id)
         {
-            var vendor = await _context.Vendors
+            var vendor = await _uow.Repository<Vendor>().Query()
                 .Include(v => v.User)
                 .Include(v => v.Products)
                 .FirstOrDefaultAsync(v => v.Id == id);
@@ -127,7 +103,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorDto?> GetVendorByUserIdAsync(string userId)
         {
-            var vendor = await _context.Vendors
+            var vendor = await _uow.Repository<Vendor>().Query()
                 .Include(v => v.User)
                 .Include(v => v.Products)
                 .FirstOrDefaultAsync(v => v.UserId == userId);
@@ -137,9 +113,8 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<IEnumerable<VendorListDto>> GetAllVendorsAsync(bool? isApproved = null)
         {
-            var query = _context.Vendors
-                .Include(v => v.Products)
-                .AsQueryable();
+            IQueryable<Vendor> query = _uow.Repository<Vendor>().Query();
+            query = query.Include(v => v.Products);
 
             if (isApproved.HasValue)
             {
@@ -170,14 +145,14 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorDto> UpdateVendorAsync(int id, string userId, VendorUpdateDto dto)
         {
-            var vendor = await _context.Vendors.FirstOrDefaultAsync(v => v.Id == id);
+            var vendor = await _uow.Repository<Vendor>().Query().FirstOrDefaultAsync(v => v.Id == id);
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
             if (vendor.UserId != userId)
                 throw new UnauthorizedException("You are not authorized to update this vendor");
 
-            var storeNameExists = await _context.Vendors
+            var storeNameExists = await _uow.Repository<Vendor>().Query()
                 .AnyAsync(v => v.Id != id && v.StoreName.ToLower() == dto.StoreName.ToLower());
             if (storeNameExists)
                 throw new ConflictException("Store name already exists. Please choose a different name");
@@ -195,7 +170,7 @@ namespace Graduation.BLL.Services.Implementations
             vendor.Latitude = dto.Latitude;
             vendor.Longitude = dto.Longitude;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Vendor updated: {VendorId} - {StoreName}", id, dto.StoreName);
 
@@ -207,7 +182,7 @@ namespace Graduation.BLL.Services.Implementations
             bool isApproved,
             string? rejectionReason = null)
         {
-            var vendor = await _context.Vendors
+            var vendor = await _uow.Repository<Vendor>().Query()
                 .Include(v => v.User)
                 .FirstOrDefaultAsync(v => v.Id == id);
 
@@ -226,7 +201,7 @@ namespace Graduation.BLL.Services.Implementations
             }
 
             vendor.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             if (vendor.User != null)
             {
@@ -267,14 +242,14 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<VendorDto> ToggleVendorStatusAsync(int id)
         {
-            var vendor = await _context.Vendors.FindAsync(id);
+            var vendor = await _uow.Repository<Vendor>().GetByIdAsync(id);
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
             vendor.IsActive = !vendor.IsActive;
             vendor.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Vendor {VendorId} active status toggled to {IsActive}", id, vendor.IsActive);
@@ -284,12 +259,12 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task DeleteVendorAsync(int id)
         {
-            var vendor = await _context.Vendors.FindAsync(id);
+            var vendor = await _uow.Repository<Vendor>().GetByIdAsync(id);
             if (vendor == null)
                 throw new NotFoundException("Vendor", id);
 
-            _context.Vendors.Remove(vendor);
-            await _context.SaveChangesAsync();
+            _uow.Repository<Vendor>().Delete(vendor);
+            await _uow.SaveChangesAsync();
 
             _logger.LogInformation("Vendor deleted: {VendorId} - {StoreName}", id, vendor.StoreName);
         }
@@ -298,7 +273,7 @@ namespace Graduation.BLL.Services.Implementations
             int pageNumber = 1,
             int pageSize = 10)
         {
-            var query = _context.Vendors
+            var query = _uow.Repository<Vendor>().Query()
                 .Where(v => v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved);
 
             var totalCount = await query.CountAsync();
@@ -311,7 +286,7 @@ namespace Graduation.BLL.Services.Implementations
 
             var vendorIds = vendors.Select(v => v.Id).ToList();
 
-            var ratingStats = await _context.ProductReviews
+            var ratingStats = await _uow.Repository<ProductReview>().Query()
                 .Where(r => r.IsApproved && vendorIds.Contains(r.Product.VendorId))
                 .GroupBy(r => r.Product.VendorId)
                 .Select(g => new
@@ -349,7 +324,7 @@ namespace Graduation.BLL.Services.Implementations
 
         public async Task<PublicVendorDetailsDto> GetPublicVendorDetailsAsync(int id)
         {
-            var vendor = await _context.Vendors
+            var vendor = await _uow.Repository<Vendor>().Query()
                 .Where(v => v.Id == id && v.IsActive && v.ApprovalStatus == VendorApprovalStatus.Approved)
                 .Select(v => new PublicVendorDetailsDto
                 {
@@ -368,7 +343,7 @@ namespace Graduation.BLL.Services.Implementations
             if (vendor == null)
                 throw new NotFoundException("Vendor not found, or the store is currently inactive.");
 
-            var ratingStats = await _context.ProductReviews
+            var ratingStats = await _uow.Repository<ProductReview>().Query()
                 .Where(r => r.IsApproved && r.Product.VendorId == id)
                 .GroupBy(r => r.Product.VendorId)
                 .Select(g => new
@@ -388,7 +363,7 @@ namespace Graduation.BLL.Services.Implementations
         }
         public async Task UpdateOrderLocationAsync(int orderId, double lat, double lng)
         {
-            var order = await _context.Orders.FindAsync(orderId);
+            var order = await _uow.Repository<Order>().GetByIdAsync(orderId);
 
             if (order == null)
                 throw new NotFoundException("Order", orderId);
@@ -398,7 +373,7 @@ namespace Graduation.BLL.Services.Implementations
 
             try
             {
-                await _context.SaveChangesAsync();
+                await _uow.SaveChangesAsync();
                 _logger.LogInformation("Location updated for Order {OrderId}: Lat {Lat}, Lng {Lng}", orderId, lat, lng);
             }
             catch (Exception ex)
