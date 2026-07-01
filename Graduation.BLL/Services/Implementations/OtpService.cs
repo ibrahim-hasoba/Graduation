@@ -8,6 +8,7 @@ namespace Graduation.BLL.Services.Implementations
     {
         private readonly IMemoryCache _cache;
         private const string OtpPrefix = "Otp:";
+        private const string RatePrefix = "OtpRate:";
 
         public OtpService(IMemoryCache cache)
         {
@@ -27,7 +28,41 @@ namespace Graduation.BLL.Services.Implementations
 
             _cache.Set(key, entry, entry.ExpiresAt);
 
+            RecordSend(email, purpose);
+
             return Task.FromResult(code);
+        }
+
+        public Task<(bool allowed, string? reasonKey)> CheckRateLimitAsync(string email, string purpose = "email_verification")
+        {
+            var rateKey = $"{RatePrefix}{purpose}:{email}";
+            var now = DateTime.UtcNow;
+
+            if (!_cache.TryGetValue(rateKey, out List<DateTime>? sends) || sends is null)
+                return Task.FromResult((true, (string?)null));
+
+            sends.RemoveAll(t => now - t > TimeSpan.FromHours(1));
+
+            var oneMinuteAgo = now.AddMinutes(-1);
+            if (sends.Any(t => t >= oneMinuteAgo))
+                return Task.FromResult<(bool, string?)>((false, purpose == "password_reset" ? "Code_RecentlySent" : "OTP_RecentlySent"));
+
+            if (sends.Count >= 5)
+                return Task.FromResult<(bool, string?)>((false, purpose == "password_reset" ? "Code_TooMany" : "OTP_TooMany"));
+
+            return Task.FromResult((true, (string?)null));
+        }
+
+        private void RecordSend(string email, string purpose)
+        {
+            var rateKey = $"{RatePrefix}{purpose}:{email}";
+            var now = DateTime.UtcNow;
+
+            var sends = _cache.GetOrCreate(rateKey, _ => new List<DateTime>())!;
+            sends.RemoveAll(t => now - t > TimeSpan.FromHours(1));
+            sends.Add(now);
+
+            _cache.Set(rateKey, sends, TimeSpan.FromHours(1));
         }
 
         public Task<bool> PeekOtpAsync(string email, string code, string purpose = "password_reset")

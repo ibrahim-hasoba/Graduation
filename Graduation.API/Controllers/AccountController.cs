@@ -89,16 +89,9 @@ namespace Graduation.API.Controllers
                     throw new ConflictException(Lang.GetMessage(LangKeys.Auth.PhoneAlreadyRegistered));
             }
 
-            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
-            var recent = await _context.EmailOtps
-                .AnyAsync(e => e.Email == userDto.Email && e.CreatedAt >= oneMinuteAgo);
-            if (recent)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.RecentlySent)));
-
-            var lastHourCount = await _context.EmailOtps
-                .CountAsync(e => e.Email == userDto.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
-            if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.TooMany)));
+            var (allowed, reasonKey) = await _otpService.CheckRateLimitAsync(userDto.Email!);
+            if (!allowed)
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(reasonKey!)));
 
             var hasher = new PasswordHasher<AppUser>();
             var passwordHash = hasher.HashPassword(null!, userDto.Password!);
@@ -313,17 +306,9 @@ namespace Graduation.API.Controllers
             if (user == null)
                 return OkResult(message: Lang.GetMessage(LangKeys.Password.ForgotPasswordSent));
 
-            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
-            var recent = await _context.EmailOtps
-                .AnyAsync(e => e.Email == dto.Email && e.Purpose == "password_reset" && e.CreatedAt >= oneMinuteAgo);
-            if (recent)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.CodeRecentlySent)));
-
-            var lastHourCount = await _context.EmailOtps
-                .CountAsync(e => e.Email == dto.Email && e.Purpose == "password_reset"
-                              && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
-            if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.CodeTooMany)));
+            var (allowed, reasonKey) = await _otpService.CheckRateLimitAsync(dto.Email!, purpose: "password_reset");
+            if (!allowed)
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(reasonKey!)));
 
             var code = await _otpService.GenerateOtpAsync(dto.Email!, purpose: "password_reset");
             await _emailService.SendEmailOtpAsync(user.Email!, user.FirstName, code);
@@ -362,16 +347,9 @@ namespace Graduation.API.Controllers
             if (user == null || user.EmailConfirmed)
                 return OkResult(message: Lang.GetMessage(LangKeys.Verification.Sent));
 
-            var oneMinuteAgo = DateTime.UtcNow.AddMinutes(-1);
-            var recent = await _context.EmailOtps
-                .AnyAsync(e => e.Email == user.Email && e.CreatedAt >= oneMinuteAgo);
-            if (recent)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.RecentlySent)));
-
-            var lastHourCount = await _context.EmailOtps
-                .CountAsync(e => e.Email == user.Email && e.CreatedAt >= DateTime.UtcNow.AddHours(-1));
-            if (lastHourCount >= 5)
-                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(LangKeys.Otp.TooMany)));
+            var (allowed, reasonKey) = await _otpService.CheckRateLimitAsync(user.Email!);
+            if (!allowed)
+                return StatusCode(429, new ApiResponse(429, Lang.GetMessage(reasonKey!)));
 
             await SendVerificationEmail(user);
             return OkResult(message: Lang.GetMessage(LangKeys.Verification.NewSent));
