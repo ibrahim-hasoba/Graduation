@@ -1,16 +1,16 @@
 # Heka API
 
-[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](.github/PULL_REQUEST_TEMPLATE.md)
 
-Multi-vendor e-commerce marketplace API built with **.NET 8 Clean Architecture**, serving the Egyptian market with full bilingual (English/Arabic) support.
+Multi-vendor e-commerce marketplace API built with **.NET 10 Clean Architecture**, serving the Egyptian market with full bilingual (English/Arabic) support.
 
 ## Tech Stack
 
 | Category         | Technologies |
 |-----------------|--------------|
-| **Runtime**     | .NET 8, ASP.NET Core |
+| **Runtime**     | .NET 10, ASP.NET Core |
 | **Database**    | SQL Server + Entity Framework Core |
 | **Auth**        | JWT + Refresh Tokens, Google OAuth, Email OTP |
 | **Payments**    | Paymob gateway integration |
@@ -33,7 +33,7 @@ Built with **Clean Architecture**: API depends on BLL, BLL depends on DAL. Inver
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - SQL Server instance (local or remote)
 - (Optional) [Paymob](https://paymob.com) account for payments
 - (Optional) Firebase project for push notifications
