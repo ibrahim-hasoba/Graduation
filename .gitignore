@@ -391,3 +391,7 @@ badwords.json
 # Runtime logs
 stderr.txt
 stdout.txt
+
+# User secrets (contains real credentials — use example template instead)
+Graduation.API/appsettings.json
+Graduation.API/appsettings.Development.json
